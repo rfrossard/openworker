@@ -250,6 +250,44 @@ def test_grounded_research_imports_bounded_claim_ledger(tmp_path, monkeypatch):
     assert restored.claims[0]["status"] == "supported"
 
 
+def test_presentation_research_prefers_pptx_as_primary_artifact(
+    tmp_path, monkeypatch
+):
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    artifacts: list[dict] = []
+    monkeypatch.setattr(manager, "list_artifacts", lambda _session: list(artifacts))
+    monkeypatch.setattr(
+        manager, "browser_state", lambda _session: {"history": [], "evidence": []}
+    )
+    created = manager.create_research_run(
+        "research-session",
+        question="Presentation",
+        depth="standard",
+        method="grounded_claims",
+        deliverable="presentation",
+        plan=["Research", "Storyboard", "Render"],
+    )["run"]
+    manager.start_research_run_from_text(
+        "research-session", f"Research Run: {created['run_id']}"
+    )
+    artifacts.extend(
+        [
+            {"path": "reports/deck-storyboard.md"},
+            {"path": "reports/deck.pptx"},
+            {"path": "reports/deck.sources.md"},
+        ]
+    )
+
+    completed = manager.finalize_research_turn("research-session", "completed")
+
+    assert completed["status"] == "completed"
+    assert completed["artifact_path"] == "reports/deck.pptx"
+
+
 def test_only_planned_research_projects_can_change_their_brief(
     tmp_path, monkeypatch
 ):

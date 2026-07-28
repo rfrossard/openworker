@@ -632,6 +632,8 @@ button.btn.danger { color: var(--accent); }
   cursor: pointer;
 }
 .research-launch-button:hover { border-color: var(--accent); color: var(--accent); }
+.artifact-studio-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 9px; }
+.artifact-studio-actions .research-launch-button { margin-bottom: 0; min-width: 0; }
 .research-modal-backdrop {
   position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px;
   background: color-mix(in srgb, #000 46%, transparent); backdrop-filter: blur(4px);
@@ -653,6 +655,15 @@ button.btn.danger { color: var(--accent); }
   border: 1px solid var(--line); border-radius: 9px; outline: 0;
   background: var(--panel); color: var(--ink); font: inherit; font-size: 13px; line-height: 1.45;
 }
+.research-field input, .research-field select {
+  width: 100%; box-sizing: border-box; padding: 9px 10px;
+  border: 1px solid var(--line); border-radius: 9px; outline: 0;
+  background: var(--panel); color: var(--ink); font: inherit; font-size: 12px;
+}
+.research-field input:focus, .research-field select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent); }
+.research-presentation-fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(82px, .65fr); gap: 10px; }
+.research-presentation-fields .research-visual-direction { grid-column: 1 / -1; }
+.markdown-pdf-modal { width: min(520px, 100%); }
 .research-field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent); }
 .research-field small { color: var(--faint); font-size: 11px; }
 .research-depth-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

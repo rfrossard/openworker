@@ -13,6 +13,7 @@ def test_research_run_persists_across_store_restart(tmp_path):
         question="Which model should we use?",
         depth="deep",
         plan=["Find primary evaluations", "Compare cost and quality"],
+        deliverable="presentation",
     )
 
     restored = ResearchRunStore(path).list("session-a")
@@ -21,6 +22,7 @@ def test_research_run_persists_across_store_restart(tmp_path):
     assert restored[0].run_id == created.run_id
     assert restored[0].status == "planned"
     assert restored[0].source_limit == 20
+    assert restored[0].deliverable == "presentation"
     assert restored[0].plan == [
         "Find primary evaluations",
         "Compare cost and quality",
@@ -257,7 +259,8 @@ def test_old_and_corrupt_claim_state_is_safely_normalized(tmp_path):
     "depth": "quick",
     "plan": ["Research"],
     "method": "future-method",
-    "claims": "corrupt"
+    "claims": "corrupt",
+    "deliverable": "future-format"
   }]
 }""",
         encoding="utf-8",
@@ -266,4 +269,5 @@ def test_old_and_corrupt_claim_state_is_safely_normalized(tmp_path):
     restored = ResearchRunStore(path).list("session-a")[0]
 
     assert restored.method == "standard"
+    assert restored.deliverable == "report"
     assert restored.claims == []

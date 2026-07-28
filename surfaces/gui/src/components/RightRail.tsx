@@ -27,6 +27,7 @@ import { Icon } from "./Icon";
 import { Markdown, OPEN_ARTIFACT_EVENT } from "./Markdown";
 import { ResearchEvidenceBoard } from "./ResearchEvidenceBoard";
 import { ResearchClaimsBoard } from "./ResearchClaimsBoard";
+import { MarkdownPdfLauncher } from "./MarkdownPdfLauncher";
 
 type Panel = "progress" | "browser" | "artifacts";
 
@@ -219,18 +220,26 @@ export function RightRail({
             }
           >
             {onResearchPrefill && (
-              <DeepResearchLauncher
-                sessionId={sessionId}
-                onCreate={onResearchPrefill}
-                editingRun={editingResearchRun}
-                onEditingClose={() => setEditingResearchRun(null)}
-                onRunCreated={(run) =>
-                  setResearchRuns((current) => [
-                    run,
-                    ...current.filter((item) => item.run_id !== run.run_id),
-                  ])
-                }
-              />
+              <>
+                <div className="artifact-studio-actions">
+                  <DeepResearchLauncher
+                    sessionId={sessionId}
+                    onCreate={onResearchPrefill}
+                    editingRun={editingResearchRun}
+                    onEditingClose={() => setEditingResearchRun(null)}
+                    onRunCreated={(run) =>
+                      setResearchRuns((current) => [
+                        run,
+                        ...current.filter((item) => item.run_id !== run.run_id),
+                      ])
+                    }
+                  />
+                  <MarkdownPdfLauncher
+                    artifacts={artifacts}
+                    onCreate={onResearchPrefill}
+                  />
+                </div>
+              </>
             )}
             {researchRuns.length > 0 && (
               <div className="research-project-list" aria-label="Research projects">
@@ -255,6 +264,7 @@ export function RightRail({
                       {run.browser_navigation_count} pages
                     </span>
                     <span>
+                      {run.deliverable === "presentation" ? "presentation" : "report"} ·{" "}
                       {run.method === "grounded_claims" ? "grounded claims" : "standard"} ·{" "}
                       {run.plan.length} plan steps · {run.source_limit} sources planned
                     </span>

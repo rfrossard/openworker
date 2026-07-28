@@ -19,6 +19,7 @@ from typing import Any, Optional
 
 RESEARCH_DEPTHS = {"quick", "standard", "deep"}
 RESEARCH_METHODS = {"standard", "grounded_claims"}
+RESEARCH_DELIVERABLES = {"report", "presentation"}
 RESEARCH_STATUSES = {
     "planned",
     "researching",
@@ -44,6 +45,7 @@ class ResearchRun:
     depth: str
     plan: list[str]
     method: str = "standard"
+    deliverable: str = "report"
     status: str = "planned"
     source_limit: int = 10
     agent_limit: int = 1
@@ -90,6 +92,8 @@ class ResearchRun:
             ]
         if known.get("method") not in RESEARCH_METHODS:
             known["method"] = "standard"
+        if known.get("deliverable") not in RESEARCH_DELIVERABLES:
+            known["deliverable"] = "report"
         return cls(**known)
 
     def to_dict(self) -> dict[str, Any]:
@@ -137,6 +141,7 @@ class ResearchRunStore:
         depth: str,
         plan: list[str],
         method: str = "standard",
+        deliverable: str = "report",
         artifact_paths_at_start: Optional[list[str]] = None,
         browser_history_count_at_start: int = 0,
         browser_evidence_count_at_start: int = 0,
@@ -153,6 +158,9 @@ class ResearchRunStore:
         method = str(method).strip().lower()
         if method not in RESEARCH_METHODS:
             raise ValueError("Research method must be standard or grounded_claims.")
+        deliverable = str(deliverable).strip().lower()
+        if deliverable not in RESEARCH_DELIVERABLES:
+            raise ValueError("Research deliverable must be report or presentation.")
         run = ResearchRun(
             run_id=f"research-{uuid.uuid4().hex[:12]}",
             session_id=session_id,
@@ -160,6 +168,7 @@ class ResearchRunStore:
             depth=depth,
             plan=clean_plan,
             method=method,
+            deliverable=deliverable,
             source_limit=SOURCE_LIMITS[depth],
             artifact_paths_at_start=list(artifact_paths_at_start or []),
             browser_history_count_at_start=max(0, browser_history_count_at_start),
@@ -183,6 +192,7 @@ class ResearchRunStore:
             "depth",
             "plan",
             "method",
+            "deliverable",
             "status",
             "sources_found",
             "artifact_path",
@@ -223,6 +233,12 @@ class ResearchRunStore:
                     if value not in RESEARCH_METHODS:
                         raise ValueError(
                             "Research method must be standard or grounded_claims."
+                        )
+                if key == "deliverable":
+                    value = str(value).strip().lower()
+                    if value not in RESEARCH_DELIVERABLES:
+                        raise ValueError(
+                            "Research deliverable must be report or presentation."
                         )
                 setattr(run, key, value)
                 if key == "depth":

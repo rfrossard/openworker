@@ -235,6 +235,7 @@ export interface ResearchRun {
   depth: "quick" | "standard" | "deep";
   plan: string[];
   method?: "standard" | "grounded_claims";
+  deliverable?: "report" | "presentation";
   status: "planned" | "researching" | "synthesizing" | "completed" | "failed" | "cancelled";
   source_limit: number;
   agent_limit: number;
@@ -288,6 +289,7 @@ export async function createResearchRun(
     depth: "quick" | "standard" | "deep";
     plan: string[];
     method?: "standard" | "grounded_claims";
+    deliverable?: "report" | "presentation";
   },
 ): Promise<{ ok: boolean; run?: ResearchRun; error?: string }> {
   const res = await fetch(`${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}/research-runs`, {
@@ -306,6 +308,7 @@ export async function updateResearchRun(
     depth: "quick" | "standard" | "deep";
     plan: string[];
     method?: "standard" | "grounded_claims";
+    deliverable?: "report" | "presentation";
   },
 ): Promise<{ ok: boolean; run?: ResearchRun; error?: string }> {
   const res = await fetch(

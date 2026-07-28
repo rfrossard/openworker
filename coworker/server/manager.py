@@ -1393,6 +1393,7 @@ class SessionManager:
         depth: str,
         plan: list[str],
         method: str = "standard",
+        deliverable: str = "report",
     ) -> dict[str, Any]:
         artifacts = self.list_artifacts(session_id)
         browser = self.browser_state(session_id)
@@ -1403,6 +1404,7 @@ class SessionManager:
                 depth=depth,
                 plan=plan,
                 method=method,
+                deliverable=deliverable,
                 artifact_paths_at_start=[
                     str(item.get("path") or "") for item in artifacts
                 ],
@@ -1495,7 +1497,10 @@ class SessionManager:
         )
         if run is None:
             return {"ok": False, "error": "Research run not found."}
-        if any(key in changes for key in {"question", "depth", "plan", "method"}):
+        if any(
+            key in changes
+            for key in {"question", "depth", "plan", "method", "deliverable"}
+        ):
             if run.status != "planned":
                 return {
                     "ok": False,
@@ -1642,7 +1647,16 @@ class SessionManager:
                     path
                     for path in artifacts
                     if path.startswith("reports/")
-                    and path.lower().endswith((".md", ".markdown"))
+                    and (
+                        (
+                            run.get("deliverable") == "presentation"
+                            and path.lower().endswith(".pptx")
+                        )
+                        or (
+                            run.get("deliverable") != "presentation"
+                            and path.lower().endswith((".md", ".markdown"))
+                        )
+                    )
                 ),
                 artifacts[0],
             )

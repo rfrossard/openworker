@@ -32,6 +32,28 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("final entailment check");
   });
 
+  it("builds a researched, image-aware, QA-gated presentation task", () => {
+    const prompt = buildDeepResearchPrompt({
+      question: "How should we launch the new product?",
+      depth: "deep",
+      plan: "Research the market\nBuild the recommendation",
+      method: "grounded_claims",
+      deliverable: "presentation",
+      audience: "Executive leadership",
+      slideCount: 12,
+      visualDirection: "Editorial with bold photography",
+    });
+
+    expect(prompt).toContain("Target 12 slides");
+    expect(prompt).toContain("Executive leadership");
+    expect(prompt).toContain("two-stage workflow inspired by PPTAgent");
+    expect(prompt).toContain("PptxGenJS");
+    expect(prompt).toContain("Presenton-style local/BYOK");
+    expect(prompt).toContain("Generate or source a distinct, relevant visual");
+    expect(prompt).toContain("speaker notes");
+    expect(prompt).toContain("inspect for overlap");
+  });
+
   it("persists the run before letting the user review it", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       json: async () => ({
@@ -54,7 +76,7 @@ describe("Deep Research launcher", () => {
     const onCreate = vi.fn();
     render(<DeepResearchLauncher sessionId="session-a" onCreate={onCreate} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "New research" }));
+    fireEvent.click(screen.getByRole("button", { name: "New artifact" }));
     fireEvent.change(screen.getByLabelText("Research question"), {
       target: { value: "Compare secure browser frameworks" },
     });
@@ -73,6 +95,7 @@ describe("Deep Research launcher", () => {
       (fetchMock.mock.calls[0][1] as RequestInit).body as string,
     );
     expect(request.method).toBe("grounded_claims");
+    expect(request.deliverable).toBe("report");
     fetchMock.mockRestore();
   });
 
