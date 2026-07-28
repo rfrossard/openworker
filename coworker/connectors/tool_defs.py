@@ -88,8 +88,8 @@ TOOL_DEFS: tuple[ConnectorToolDef, ...] = (
         "browser",
         "browser_screenshot",
         "Screenshot",
-        "read",
-        "Capture a browser screenshot.",
+        "write",
+        "Save a browser screenshot inside the granted workspace.",
     ),
     ConnectorToolDef(
         "browser",

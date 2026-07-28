@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   getSettings,
   setOnboarded,
+  setBrowserPreviewInterval,
   setPdfSettings,
   setScratchBase,
   setSessionsPeek,
@@ -424,6 +425,8 @@ function AppearanceSection() {
 
       <FilesCard />
 
+      <BrowserPreviewCard />
+
       {desktop && (
         <div className={CARD + " p-4"}>
           <div className={FIELD_LABEL + " mb-2.5"}>Always-on</div>
@@ -458,6 +461,68 @@ function AppearanceSection() {
         <div className={FIELD_HELP}>Replays the first-run setup: model, first automation, tips.</div>
       </div>
     </section>
+  );
+}
+
+function BrowserPreviewCard() {
+  const [saved, setSaved] = useState(3000);
+  const [draft, setDraft] = useState("3000");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    getSettings().then((settings) => {
+      const value = settings.browser_preview_interval_ms || 3000;
+      setSaved(value);
+      setDraft(String(value));
+    }).catch(() => undefined);
+  }, []);
+
+  const save = async () => {
+    const requested = Number(draft);
+    if (!Number.isFinite(requested)) {
+      setMessage("Enter a number between 500 and 60000.");
+      return;
+    }
+    const result = await setBrowserPreviewInterval(requested);
+    if (!result.ok || result.browser_preview_interval_ms == null) {
+      setMessage(result.error || "Could not save this interval.");
+      return;
+    }
+    const value = result.browser_preview_interval_ms;
+    setSaved(value);
+    setDraft(String(value));
+    setMessage("Saved.");
+    window.dispatchEvent(new CustomEvent("coworker:browser-preview-settings-changed", {
+      detail: { milliseconds: value },
+    }));
+  };
+
+  return (
+    <div className={CARD + " p-4 mb-4"} data-testid="browser-preview-settings">
+      <div className={FIELD_LABEL}>Secure Browser preview</div>
+      <div className={FIELD_HELP}>
+        Refresh the live browser image automatically while a session is open.
+      </div>
+      <div className="flex flex-wrap items-center gap-2 mt-3">
+        <input
+          className="w-28 px-3 py-2 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
+          type="number"
+          min={500}
+          max={60000}
+          step={100}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => event.key === "Enter" && save()}
+          aria-label="Browser preview interval in milliseconds"
+        />
+        <span className="text-[12.5px] text-muted">milliseconds</span>
+        <button className={BTN_ACCENT} onClick={save} disabled={String(saved) === draft}>
+          Save
+        </button>
+        {message && <span className="text-[12px] text-muted">{message}</span>}
+      </div>
+      <div className={FIELD_HELP}>Default: 3000 ms. Allowed range: 500–60000 ms.</div>
+    </div>
   );
 }
 

@@ -16,6 +16,7 @@
       `typer` is needed only at build time: PyInstaller walks the `mcp` package and `mcp.cli`
       calls sys.exit() at import if typer is absent, which aborts the freeze.
         py -m venv .venv ; .\.venv\Scripts\pip install -e . pyinstaller tzdata typer
+        $env:PLAYWRIGHT_BROWSERS_PATH=0 ; .\.venv\Scripts\python -m playwright install chromium
 
   The result is UNSIGNED — first launch shows a SmartScreen warning ("More info" -> "Run anyway").
   Authenticode signing is a later step.

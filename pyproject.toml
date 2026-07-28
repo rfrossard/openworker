@@ -33,6 +33,7 @@ dependencies = [
     # IANA tz database for zoneinfo. Windows ships no system tz db, so without this every
     # named schedule timezone (UTC, Asia/Kolkata, …) silently falls back to local time.
     "tzdata; sys_platform == 'win32'",
+    "playwright>=1.44",
 ]
 
 [project.optional-dependencies]
@@ -41,8 +42,6 @@ dev = ["pytest>=8", "pytest-asyncio", "httpx"]
 # aiohttp is slack-bolt's Socket Mode transport at runtime (and the FakeSlack test harness
 # drives the real handler) — declare it so CI installs it, not just transitively.
 messaging = ["python-telegram-bot>=21", "slack-bolt>=1.18", "aiohttp>=3.9"]
-# Interactive Cowork browser automation.
-browser = ["playwright>=1.44"]
 
 [project.scripts]
 openworker = "coworker.cli:main"

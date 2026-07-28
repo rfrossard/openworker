@@ -136,10 +136,12 @@ interface Props {
   onOpenAutomation: (id: string) => void;
   onOpenIntegrations: () => void;
   onOpenAudit: () => void;
+  onOpenDashboard?: () => void;
   onOpenInbox: () => void;
   scheduledActive: boolean;
   integrationsActive: boolean;
   auditActive: boolean;
+  dashboardActive?: boolean;
   inboxActive: boolean;
   // Collapse controls (⌘B / hover-peek). `onCollapse` docks/undocks; `onPeekLeave` hides the
   // floating peek when the pointer leaves the panel.
@@ -1185,6 +1187,7 @@ export function Sidebar(props: Props) {
                   false,
                   <span className="text-[11px] text-faint">⌘ ,</span>,
                 )}
+                {appMenuItem("chart", "Usage", props.onOpenDashboard ?? (() => {}), props.dashboardActive)}
                 {appMenuItem("clock", "Automations", props.onOpenScheduled, props.scheduledActive)}
                 {appMenuItem("audit", "Activity", props.onOpenAudit, props.auditActive)}
                 {cloud?.signed_in && (

@@ -29,6 +29,71 @@ export async function getHealth(): Promise<Health> {
   return res.json();
 }
 
+// --- Usage Dashboard ---------------------------------------------------------
+export interface DashboardData {
+  sessions: DashboardSession[];
+  aggregates: {
+    total_cost_usd: number;
+    total_tokens: number;
+    total_input_tokens: number;
+    total_output_tokens: number;
+    session_count: number;
+    by_provider: Record<string, { sessions: number; input_tokens: number; output_tokens: number; cost: number }>;
+    by_model: Record<string, { sessions: number; tokens: number; cost: number; provider: string }>;
+    daily: Record<string, { cost: number; tokens: number; sessions: number }>;
+    updated_at: string;
+  };
+}
+
+export interface DashboardSession {
+  id: string;
+  title: string;
+  model: string;
+  provider: string;
+  messages: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+  datetime: string;
+  measurement: "reported" | "mixed" | "estimated";
+  model_calls: number;
+}
+
+export function getUsageDashboard(): Promise<DashboardData> {
+  return fetch(`${httpBase()}/v1/dashboard/data`, { cache: "no-store" }).then((r) => r.json());
+}
+
+export function getUsageModels(): Promise<{
+  registry: Record<string, any>;
+  provider_summary: Record<string, any>;
+  benchmarks: Record<string, Record<string, number>>;
+  benchmark_meta: Record<string, any>;
+  media_capacity: any[];
+  benchmarks_updated_at: string;
+}> {
+  return fetch(`${httpBase()}/v1/dashboard/models`).then((r) => r.json());
+}
+
+export interface ProviderAccount {
+  configured: boolean;
+  status: string;
+  available?: boolean;
+  balances: { currency: string; total: number; granted: number; topped_up: number }[];
+  month_spend?: number;
+  currency?: string;
+  scope: string;
+  source: string;
+  message?: string;
+}
+
+export function getUsageAccounts(): Promise<{
+  accounts: Record<string, ProviderAccount>;
+  updated_at: string;
+}> {
+  return fetch(`${httpBase()}/v1/dashboard/accounts`).then((r) => r.json());
+}
+
 export async function getRecentWorkspaces(): Promise<RecentWorkspace[]> {
   const res = await fetch(`${httpBase()}/v1/workspaces/recent`);
   return (await res.json()).workspaces ?? [];
@@ -590,18 +655,21 @@ export interface BrowserState {
   controls: any[];
 }
 
-export async function getBrowserState(): Promise<BrowserState> {
-  const res = await fetch(`${httpBase()}/v1/browser/state`);
+export async function getBrowserState(sessionId: string): Promise<BrowserState> {
+  const q = new URLSearchParams({ session_id: sessionId });
+  const res = await fetch(`${httpBase()}/v1/browser/state?${q}`);
   return res.json();
 }
 
-export async function takeBrowserScreenshot(): Promise<BrowserState & { ok?: boolean; error?: string }> {
-  const res = await fetch(`${httpBase()}/v1/browser/screenshot`, { method: "POST" });
+export async function takeBrowserScreenshot(sessionId: string): Promise<BrowserState & { ok?: boolean; error?: string }> {
+  const q = new URLSearchParams({ session_id: sessionId });
+  const res = await fetch(`${httpBase()}/v1/browser/screenshot?${q}`, { method: "POST" });
   return res.json();
 }
 
-export async function closeBrowser(): Promise<{ ok?: boolean; error?: string }> {
-  const res = await fetch(`${httpBase()}/v1/browser/close`, { method: "POST" });
+export async function closeBrowser(sessionId: string): Promise<{ ok?: boolean; error?: string }> {
+  const q = new URLSearchParams({ session_id: sessionId });
+  const res = await fetch(`${httpBase()}/v1/browser/close?${q}`, { method: "POST" });
   return res.json();
 }
 
@@ -636,6 +704,7 @@ export interface ModelSettings {
   pdf_fallback?: "text" | "images";
   pdf_max_pages?: number; // default 20, 1–100
   pdf_max_mb?: number; // default 10, 1–10
+  browser_preview_interval_ms?: number; // default 3000, bounded to 500–60000
 }
 
 export interface PdfSettings {
@@ -652,6 +721,17 @@ export async function setPdfSettings(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
+  });
+  return res.json();
+}
+
+export async function setBrowserPreviewInterval(
+  milliseconds: number,
+): Promise<{ ok: boolean; browser_preview_interval_ms?: number; error?: string }> {
+  const res = await fetch(`${httpBase()}/v1/settings/browser-preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ browser_preview_interval_ms: milliseconds }),
   });
   return res.json();
 }
@@ -1771,4 +1851,3 @@ export class Session {
     this.ws.close();
   }
 }
-

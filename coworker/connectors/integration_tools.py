@@ -20,6 +20,7 @@ import aisuite as ai
 
 from ..secrets import SecretStore
 from .browser_automation import make_browser_automation_tools
+from .browser_policy import BrowserPolicyError, validate_public_url
 from .email_tools import make_email_tools
 from .tool_defs import approval_for_tool, connector_for_tool
 
@@ -524,22 +525,32 @@ def make_integration_tools(
     enabled_connectors: Optional[set[str]] = None,
     enabled_tools: Optional[set[str]] = None,
     roots: Optional[list[Any]] = None,
+    include_browser: bool = True,
+    session_id: str = "",
 ) -> list[Callable[..., Any]]:
-    tools: list[Callable[..., Any]] = make_browser_automation_tools()
+    tools: list[Callable[..., Any]] = (
+        make_browser_automation_tools(roots=roots, session_id=session_id)
+        if include_browser
+        else []
+    )
     # Email needs the session roots: attachment downloads land in the primary scratch
     # and outgoing attachments must resolve inside a granted directory.
     tools.extend(make_email_tools(secrets, roots=roots))
 
     def browser_read_url(url: str, max_chars: int = 20000) -> dict[str, Any]:
-        if not url.lower().startswith(("http://", "https://")):
-            return {"error": "url must start with http:// or https://"}
-        out = _request("GET", url, headers={"User-Agent": "coworker/0.1 (+connector)"})
+        try:
+            safe_url = validate_public_url(url)
+        except BrowserPolicyError as exc:
+            return {"error": str(exc)}
+        out = _request(
+            "GET", safe_url, headers={"User-Agent": "coworker/0.1 (+connector)"}
+        )
         if "error" in out:
             return out
         data = out["data"]
         text = _html_to_text(data) if isinstance(data, str) else str(data)
         cap = max(1, min(int(max_chars or 20000), 100000))
-        return {"url": url, "text": text[:cap], "truncated": len(text) > cap}
+        return {"url": safe_url, "text": text[:cap], "truncated": len(text) > cap}
 
     browser_read_url.__name__ = "browser_read_url"
     tools.append(

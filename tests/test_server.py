@@ -74,6 +74,27 @@ def test_agents_and_memory_rest(tmp_path):
     )
 
 
+def test_browser_preview_interval_defaults_persists_and_is_bounded(tmp_path):
+    client = _client(tmp_path, [])
+
+    assert client.get("/v1/settings").json()["browser_preview_interval_ms"] == 3000
+    saved = client.post(
+        "/v1/settings/browser-preview",
+        json={"browser_preview_interval_ms": 1750},
+    ).json()
+    assert saved == {"ok": True, "browser_preview_interval_ms": 1750}
+    assert client.get("/v1/settings").json()["browser_preview_interval_ms"] == 1750
+
+    assert client.post(
+        "/v1/settings/browser-preview",
+        json={"browser_preview_interval_ms": 100},
+    ).json()["browser_preview_interval_ms"] == 500
+    assert client.post(
+        "/v1/settings/browser-preview",
+        json={"browser_preview_interval_ms": 100_000},
+    ).json()["browser_preview_interval_ms"] == 60_000
+
+
 def test_disable_persona_archives_its_sessions(tmp_path):
     """Disable = "put this coworker and its history away": the persona's real sessions are
     archived atomically server-side (so its sidebar section disappears with it), internal
@@ -142,6 +163,44 @@ def test_connector_tool_settings_and_audit_rest(tmp_path):
         "open",
         "error",
     }
+
+
+def test_browser_rest_routes_actions_to_the_requested_session(tmp_path, monkeypatch):
+    manager = SessionManager(workspace=tmp_path, provider=ScriptedProvider([]))
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        manager,
+        "browser_state",
+        lambda session_id="": calls.append(("state", session_id))
+        or {"status": "closed"},
+    )
+    monkeypatch.setattr(
+        manager,
+        "browser_screenshot",
+        lambda session_id="": calls.append(("screenshot", session_id))
+        or {"ok": True},
+    )
+    monkeypatch.setattr(
+        manager,
+        "browser_close",
+        lambda session_id="": calls.append(("close", session_id)) or {"ok": True},
+    )
+    client = TestClient(create_app(manager))
+
+    assert client.get(
+        "/v1/browser/state", params={"session_id": "chat-a"}
+    ).status_code == 200
+    assert client.post(
+        "/v1/browser/screenshot", params={"session_id": "code-b"}
+    ).status_code == 200
+    assert client.post(
+        "/v1/browser/close", params={"session_id": "ops-c"}
+    ).status_code == 200
+    assert calls == [
+        ("state", "chat-a"),
+        ("screenshot", "code-b"),
+        ("close", "ops-c"),
+    ]
 
 
 def test_artifacts_list_and_read_previewable_files(tmp_path):

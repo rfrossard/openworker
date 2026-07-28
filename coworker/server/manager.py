@@ -1101,14 +1101,14 @@ class SessionManager:
             limit=limit, session_id=session_id, connector=connector, tool=tool
         )
 
-    def browser_state(self) -> dict[str, Any]:
-        return browser_state()
+    def browser_state(self, session_id: str = "") -> dict[str, Any]:
+        return browser_state(session_id)
 
-    def browser_screenshot(self) -> dict[str, Any]:
-        return browser_take_screenshot()
+    def browser_screenshot(self, session_id: str = "") -> dict[str, Any]:
+        return browser_take_screenshot(session_id)
 
-    def browser_close(self) -> dict[str, Any]:
-        return browser_close_session()
+    def browser_close(self, session_id: str = "") -> dict[str, Any]:
+        return browser_close_session(session_id)
 
     def list_artifacts(self, session_id: str) -> list[dict[str, Any]]:
         record = self.session_store.load(session_id)
@@ -1588,9 +1588,9 @@ class SessionManager:
         """Live list of models pulled into the configured Ollama server (via its native
         `/api/tags`), as `ollama:<name>` so they're directly selectable. Empty if Ollama isn't
         configured or unreachable — best-effort, never raises."""
-        profile = self.secrets.get("provider:ollama")
-        if not profile:
-            return []
+        # Ollama is keyless and its localhost URL is a usable default: discovery should work
+        # without making the user save a provider profile first.
+        profile = self.secrets.get("provider:ollama") or {}
         base = (profile.get("base_url") or "http://localhost:11434").strip().rstrip("/")
         if base.endswith("/v1"):
             base = base[: -len("/v1")]
@@ -1616,7 +1616,9 @@ class SessionManager:
         user = self._prefs.get("models")
         user = user if isinstance(user, list) else []
         hidden = set(self._prefs.get("hidden_models") or [])
-        models = [m for m in [*MATRIX, *user] if m not in hidden]
+        # Pulled Ollama models are live catalog entries, not preferences: include them
+        # automatically while the local server is reachable. Explicitly hidden ids remain hidden.
+        models = [m for m in [*MATRIX, *user, *self._ollama_models()] if m not in hidden]
         return list(dict.fromkeys([self.model, *models]))
 
     def add_model(self, model: str) -> dict[str, Any]:
@@ -1679,13 +1681,22 @@ class SessionManager:
             selectable.insert(0, self.model)
         from ..providers.matrix import model_labels
 
+        labels = model_labels()
+        labels.update(
+            {
+                m: f"{m.split(':', 1)[-1]} · Ollama (local)"
+                for m in selectable
+                if self._model_provider(m) == "ollama"
+            }
+        )
+
         return {
             "provider": "openai",
             "model": self.model,
             "models": selectable,
             # Curated-matrix display names ({full id → "GLM-5.2 · via Together"}) so every
             # picker shows human labels; custom models absent here render their raw id.
-            "model_labels": model_labels(),
+            "model_labels": labels,
             "has_key": env_key or stored,
             # Provider-agnostic "can this default model actually run?" — true when the default
             # model's provider is configured (any provider, not just OpenAI). Drives the GUI's
@@ -1697,6 +1708,7 @@ class SessionManager:
             "surfaces": self._surfaces(),
             "nav_layout": self._nav_layout(),
             "sessions_peek": self.sessions_peek(),
+            "browser_preview_interval_ms": self.browser_preview_interval_ms(),
             "scratch_base": self._prefs.get("scratch_base")
             or self.DEFAULT_SCRATCH_BASE,
             # Real on-disk secrets location, so the UI shows the OS-native path instead of a
@@ -1754,6 +1766,33 @@ class SessionManager:
             return {"ok": False, "error": "sessions_peek must be a number"}
         self._save_prefs()
         return {"ok": True, "sessions_peek": self.sessions_peek()}
+
+    DEFAULT_BROWSER_PREVIEW_INTERVAL_MS = 3000
+
+    def browser_preview_interval_ms(self) -> int:
+        """Secure Browser preview cadence. Bounded to protect the local browser and UI."""
+        try:
+            value = int(
+                self._prefs.get(
+                    "browser_preview_interval_ms",
+                    self.DEFAULT_BROWSER_PREVIEW_INTERVAL_MS,
+                )
+            )
+        except (TypeError, ValueError):
+            value = self.DEFAULT_BROWSER_PREVIEW_INTERVAL_MS
+        return max(500, min(value, 60_000))
+
+    def set_browser_preview_interval(self, milliseconds: Any) -> dict[str, Any]:
+        try:
+            value = int(milliseconds)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "milliseconds must be a number"}
+        self._prefs["browser_preview_interval_ms"] = max(500, min(value, 60_000))
+        self._save_prefs()
+        return {
+            "ok": True,
+            "browser_preview_interval_ms": self.browser_preview_interval_ms(),
+        }
 
     # -- PDF attachments / token savings (owner ask, 2026-07-17) ----------------
     DEFAULT_PDF_MAX_PAGES = 20

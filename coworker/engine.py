@@ -353,6 +353,8 @@ class TurnEngine:
             if turn is None:
                 turn = AssistantTurn()
 
+            if turn.usage:
+                turn.usage["model"] = self.model
             self.messages.append(_assistant_message(turn))
             payload: dict[str, Any] = {
                 "text": turn.text,
@@ -889,7 +891,7 @@ class TurnEngine:
         # (e.g. filter-hidden counts), `ts` (append-time timestamps), and `reasoning`
         # (thinking text) — copying only messages that carry one. Whole `notice` messages
         # (error/interrupted/model-switch markers) are display-only too: dropped entirely.
-        _SIDECARS = ("source", "_display", "ts", "reasoning")
+        _SIDECARS = ("source", "_display", "ts", "reasoning", "_usage")
         out = [
             (
                 {k: v for k, v in msg.items() if k not in _SIDECARS}
@@ -996,6 +998,8 @@ def _assistant_message(turn: AssistantTurn) -> dict[str, Any]:
         # Provider-private sidecars (e.g. `_gemini` thought signatures) persist with the
         # message; the owning provider reattaches them, the rest strip them (base.py).
         message.update(turn.extras)
+    if turn.usage:
+        message["_usage"] = dict(turn.usage)
     if turn.tool_calls:
         message["tool_calls"] = [
             {

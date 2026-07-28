@@ -491,10 +491,23 @@ class GeminiProvider(ProviderClient):
         finish = None
         text_sig: Optional[str] = None
         call_sigs: list[Optional[str]] = []
+        usage = None
 
         # Unlike Anthropic, function_call parts arrive whole (args are a complete dict per
         # part), so there is no JSON accumulation — just collect parts across chunks.
         for chunk in client.models.generate_content_stream(**kwargs):
+            metadata = getattr(chunk, "usage_metadata", None)
+            if metadata is not None:
+                input_tokens = int(getattr(metadata, "prompt_token_count", 0) or 0)
+                output_tokens = int(getattr(metadata, "candidates_token_count", 0) or 0)
+                usage = {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": int(
+                        getattr(metadata, "total_token_count", 0)
+                        or input_tokens + output_tokens
+                    ),
+                }
             parsed = _parse_candidate(chunk)
             for thought in parsed.thoughts:
                 thought_parts.append(thought)
@@ -520,5 +533,6 @@ class GeminiProvider(ProviderClient):
                 finish_reason=_map_finish(finish, bool(tool_calls)),
                 reasoning="".join(thought_parts) or None,
                 extras=_signature_extras(text_sig, call_sigs),
+                usage=usage,
             )
         )

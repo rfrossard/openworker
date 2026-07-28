@@ -174,3 +174,22 @@ def test_ollama_models_gated_on_liveness(tmp_path, monkeypatch):
 
     monkeypatch.setattr(SessionManager, "_ollama_alive", lambda self: True)
     assert "ollama:llama3.3" in manager.get_settings()["models"]
+
+
+def test_pulled_ollama_models_automatically_join_picker(tmp_path, monkeypatch):
+    """Live `/api/tags` results appear without a saved Ollama provider profile."""
+    from coworker.server.manager import SessionManager
+
+    monkeypatch.setenv("COWORKER_STATE_DIR", str(tmp_path / "state"))
+    manager = SessionManager(data_dir=tmp_path / "data")
+    monkeypatch.setattr(
+        SessionManager,
+        "_ollama_models",
+        lambda self: ["ollama:qwen3:latest", "ollama:deepseek-r1:70b"],
+    )
+    monkeypatch.setattr(SessionManager, "_ollama_alive", lambda self: True)
+
+    settings = manager.get_settings()
+    assert "ollama:qwen3:latest" in settings["models"]
+    assert "ollama:deepseek-r1:70b" in settings["models"]
+    assert settings["model_labels"]["ollama:qwen3:latest"] == "qwen3:latest · Ollama (local)"

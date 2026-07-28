@@ -11,11 +11,75 @@ import tempfile
 import threading
 import time
 import base64
+import hashlib
+import os
+import shutil
+import subprocess
+import tarfile
+import zlib
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 import aisuite as ai
+
+from .browser_policy import BrowserPolicyError, resolve_workspace_path, validate_public_url
+
+
+BROWSER_LAUNCH_OPTIONS = {"headless": True}
+
+
+def _prepare_packaged_browsers() -> None:
+    """Extract the signed packaged browser tree once and point Playwright at it."""
+
+    import playwright
+
+    archive = (
+        Path(playwright.__file__).resolve().parent
+        / "driver"
+        / "package"
+        / "playwright-browsers.tar.gz"
+    )
+    if not archive.is_file():
+        return
+    checksum = hashlib.sha256()
+    with archive.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            checksum.update(chunk)
+    digest = checksum.hexdigest()[:16]
+    cache_root = (
+        Path.home()
+        / "Library"
+        / "Caches"
+        / "OpenWorker"
+        / "secure-browser"
+        / digest
+    )
+    marker = cache_root / ".ready"
+    if not marker.is_file():
+        cache_root.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=f"{digest}-", dir=cache_root.parent))
+        try:
+            try:
+                with tarfile.open(archive, "r:gz") as bundle:
+                    bundle.extractall(staging, filter="data")
+            except (OSError, tarfile.TarError, zlib.error):
+                system_tar = shutil.which("tar")
+                if not system_tar:
+                    raise
+                subprocess.run(
+                    [system_tar, "-xzf", str(archive), "-C", str(staging)],
+                    check=True,
+                    capture_output=True,
+                )
+            (staging / ".ready").write_text(digest, encoding="utf-8")
+            if cache_root.exists():
+                shutil.rmtree(cache_root)
+            staging.replace(cache_root)
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging, ignore_errors=True)
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(cache_root)
 
 
 def _meta(
@@ -89,7 +153,13 @@ class _BrowserController:
 
     def _refresh_page_state(self) -> None:
         if self._page is None:
-            self._touch(open=False, status="closed", url="", title="", controls=[])
+            self._touch(
+                open=False,
+                status="closed",
+                url="",
+                title="",
+                controls=[],
+            )
             return
         try:
             snap = _snapshot(self._page, 2000)
@@ -103,11 +173,18 @@ class _BrowserController:
         except Exception as exc:
             self._touch(open=True, status="error", last_error=str(exc))
 
+    def _capture_preview(self) -> None:
+        if self._page is None:
+            return
+        png = self._page.screenshot(full_page=False)
+        data_url = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+        self._touch(screenshot_data_url=data_url)
+
     def _setup_error(self, exc: Exception) -> dict[str, str]:
         return {
             "error": (
-                "Interactive browser automation requires Playwright. Install it with "
-                "`pip install playwright` and `python -m playwright install chromium`."
+                "The Secure Browser runtime is not available in this build. "
+                "Reinstall OpenWorker or run the browser setup for a source checkout."
             ),
             "details": str(exc),
         }
@@ -119,13 +196,18 @@ class _BrowserController:
             if self._page is not None:
                 return self._page, None
             try:
+                _prepare_packaged_browsers()
                 from playwright.sync_api import sync_playwright
 
                 self._playwright = sync_playwright().start()
-                self._browser = self._playwright.chromium.launch(headless=False)
-                self._context = self._browser.new_context(
-                    viewport={"width": 1280, "height": 900}
+                self._browser = self._playwright.chromium.launch(
+                    **BROWSER_LAUNCH_OPTIONS
                 )
+                self._context = self._browser.new_context(
+                    viewport={"width": 1280, "height": 900},
+                    accept_downloads=False,
+                )
+                self._context.route("**/*", self._guard_request)
                 self._page = self._context.new_page()
                 self._touch(
                     open=True, status="open", last_action="open browser", last_error=""
@@ -134,6 +216,19 @@ class _BrowserController:
             except Exception as exc:
                 self._touch(open=False, status="error", last_error=str(exc))
                 return None, self._setup_error(exc)
+
+    @staticmethod
+    def _guard_request(route) -> None:
+        url = route.request.url
+        if url.startswith(("data:", "blob:", "about:")):
+            route.continue_()
+            return
+        try:
+            validate_public_url(url)
+        except BrowserPolicyError:
+            route.abort("blockedbyclient")
+            return
+        route.continue_()
 
     def _submit(self, fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         return self._executor.submit(fn).result()
@@ -157,7 +252,13 @@ class _BrowserController:
                 self._browser = None
                 self._context = None
                 self._page = None
-                self._touch(open=False, status="closed", url="", title="", controls=[])
+                self._touch(
+                    open=False,
+                    status="closed",
+                    url="",
+                    title="",
+                    controls=[],
+                )
             return {"ok": True}
 
     def state(self) -> dict[str, Any]:
@@ -177,12 +278,8 @@ class _BrowserController:
             if err:
                 return err
             try:
-                png = page.screenshot(full_page=False)
-                data_url = "data:image/png;base64," + base64.b64encode(png).decode(
-                    "ascii"
-                )
+                self._capture_preview()
                 self._touch(
-                    screenshot_data_url=data_url,
                     last_action="screenshot",
                     last_result="ok",
                     last_error="",
@@ -214,25 +311,39 @@ class _BrowserController:
                     )
                 else:
                     self._refresh_page_state()
+                    self._capture_preview()
                     self._touch(last_action=action, last_result="ok", last_error="")
                 return out
 
         return self._submit(run)
 
 
-_BROWSER = _BrowserController()
+_BROWSERS_LOCK = threading.RLock()
+_BROWSERS: dict[str, _BrowserController] = {}
 
 
-def browser_state() -> dict[str, Any]:
-    return _BROWSER.state()
+def _browser_for(session_id: str = "") -> _BrowserController:
+    key = session_id or "__default__"
+    with _BROWSERS_LOCK:
+        controller = _BROWSERS.get(key)
+        if controller is None:
+            controller = _BrowserController()
+            _BROWSERS[key] = controller
+        return controller
 
 
-def browser_take_screenshot() -> dict[str, Any]:
-    return _BROWSER.screenshot()
+def browser_state(session_id: str = "") -> dict[str, Any]:
+    return _browser_for(session_id).state()
 
 
-def browser_close_session() -> dict[str, Any]:
-    return _BROWSER.close()
+def browser_take_screenshot(session_id: str = "") -> dict[str, Any]:
+    return _browser_for(session_id).screenshot()
+
+
+def browser_close_session(session_id: str = "") -> dict[str, Any]:
+    with _BROWSERS_LOCK:
+        controller = _BROWSERS.get(session_id or "__default__")
+    return controller.close() if controller is not None else {"ok": True}
 
 
 def _cap(value: int, default: int = 20000, upper: int = 100000) -> int:
@@ -261,10 +372,6 @@ def _safe_call(fn: Callable[[], Any]) -> dict[str, Any]:
         return fn()
     except Exception as exc:
         return {"error": str(exc)}
-
-
-def _browser_call(action: str, fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
-    return _BROWSER.call(action, lambda _page: fn())
 
 
 _SNAPSHOT_JS = """
@@ -324,18 +431,24 @@ def _snapshot(page, max_chars: int) -> dict[str, Any]:
     }
 
 
-def make_browser_automation_tools() -> list[Callable[..., Any]]:
+def make_browser_automation_tools(
+    *, roots: Optional[list[str | Path]] = None, session_id: str = ""
+) -> list[Callable[..., Any]]:
     tools: list[Callable[..., Any]] = []
+    workspace_roots = list(roots or [])
+    controller = _browser_for(session_id)
 
     def browser_open_url(
         url: str, wait_until: str = "domcontentloaded"
     ) -> dict[str, Any]:
-        if not url.lower().startswith(("http://", "https://")):
-            return {"error": "url must start with http:// or https://"}
-        return _BROWSER.call(
+        try:
+            safe_url = validate_public_url(url)
+        except BrowserPolicyError as exc:
+            return {"error": str(exc)}
+        return controller.call(
             "open_url",
             lambda page: (
-                page.goto(url, wait_until=wait_until, timeout=30000),
+                page.goto(safe_url, wait_until=wait_until, timeout=30000),
                 {"ok": True, "url": page.url},
             )[1],
         )
@@ -355,7 +468,7 @@ def make_browser_automation_tools() -> list[Callable[..., Any]]:
     )
 
     def browser_snapshot(max_chars: int = 20000) -> dict[str, Any]:
-        return _BROWSER.call("snapshot", lambda page: _snapshot(page, max_chars))
+        return controller.call("snapshot", lambda page: _snapshot(page, max_chars))
 
     browser_snapshot.__name__ = "browser_snapshot"
     tools.append(
@@ -384,7 +497,7 @@ def make_browser_automation_tools() -> list[Callable[..., Any]]:
                 "truncated": len(text) > cap,
             }
 
-        return _BROWSER.call("get_text", run)
+        return controller.call("get_text", run)
 
     browser_get_text.__name__ = "browser_get_text"
     tools.append(
@@ -401,7 +514,7 @@ def make_browser_automation_tools() -> list[Callable[..., Any]]:
     )
 
     def browser_click(target: str) -> dict[str, Any]:
-        return _BROWSER.call(
+        return controller.call(
             "click",
             lambda page: (
                 _target_locator(page, target).click(timeout=10000),
@@ -432,7 +545,7 @@ def make_browser_automation_tools() -> list[Callable[..., Any]]:
                 loc.type(text, timeout=10000)
             return {"ok": True, "url": page.url}
 
-        return _BROWSER.call("type", run)
+        return controller.call("type", run)
 
     browser_type.__name__ = "browser_type"
     tools.append(
@@ -453,7 +566,7 @@ def make_browser_automation_tools() -> list[Callable[..., Any]]:
     )
 
     def browser_select(target: str, value: str) -> dict[str, Any]:
-        return _BROWSER.call(
+        return controller.call(
             "select",
             lambda page: (
                 _target_locator(page, target).select_option(value, timeout=10000),
@@ -476,10 +589,13 @@ def make_browser_automation_tools() -> list[Callable[..., Any]]:
     )
 
     def browser_upload_file(target: str, path: str) -> dict[str, Any]:
-        file_path = Path(path).expanduser().resolve()
-        if not file_path.exists():
-            return {"error": f"file not found: {file_path}"}
-        return _BROWSER.call(
+        try:
+            file_path = resolve_workspace_path(
+                path, workspace_roots, must_exist=True
+            )
+        except BrowserPolicyError as exc:
+            return {"error": str(exc)}
+        return controller.call(
             "upload_file",
             lambda page: (
                 _target_locator(page, target).set_input_files(
@@ -513,7 +629,7 @@ def make_browser_automation_tools() -> list[Callable[..., Any]]:
                 page.wait_for_timeout(max(1, min(int(milliseconds or 1000), 30000)))
             return {"ok": True, "url": page.url}
 
-        return _BROWSER.call("wait", run)
+        return controller.call("wait", run)
 
     browser_wait.__name__ = "browser_wait"
     tools.append(
@@ -531,17 +647,22 @@ def make_browser_automation_tools() -> list[Callable[..., Any]]:
 
     def browser_screenshot(path: str = "") -> dict[str, Any]:
         def run(page):
-            out = (
-                Path(path).expanduser()
-                if path
-                else Path(tempfile.gettempdir()) / "coworker-browser-screenshot.png"
-            )
-            out = out.resolve()
+            if path:
+                try:
+                    out = resolve_workspace_path(path, workspace_roots)
+                except BrowserPolicyError as exc:
+                    return {"error": str(exc)}
+            else:
+                out = (
+                    Path(tempfile.gettempdir())
+                    / "openworker"
+                    / "browser-screenshot.png"
+                ).resolve()
             out.parent.mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(out), full_page=True)
             return {"ok": True, "path": str(out), "url": page.url}
 
-        return _BROWSER.call("screenshot", run)
+        return controller.call("screenshot", run)
 
     browser_screenshot.__name__ = "browser_screenshot"
     tools.append(
@@ -558,7 +679,7 @@ def make_browser_automation_tools() -> list[Callable[..., Any]]:
     )
 
     def browser_close() -> dict[str, Any]:
-        return browser_close_session()
+        return browser_close_session(session_id)
 
     browser_close.__name__ = "browser_close"
     tools.append(

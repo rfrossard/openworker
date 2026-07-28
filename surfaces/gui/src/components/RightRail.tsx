@@ -2,18 +2,23 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 // Emits the asset URL only; the worker itself loads lazily with the pdfjs chunk.
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import {
+  closeBrowser,
   getArtifacts,
+  getBrowserState,
+  getSettings,
   readArtifact,
   revealArtifact,
+  takeBrowserScreenshot,
   type ArtifactContent,
   type ArtifactInfo,
+  type BrowserState,
 } from "../api";
 import type { TodoItem } from "../types";
 import { AccessSection } from "./AccessSection";
 import { Icon } from "./Icon";
 import { Markdown, OPEN_ARTIFACT_EVENT } from "./Markdown";
 
-type Panel = "progress" | "artifacts";
+type Panel = "progress" | "browser" | "artifacts";
 
 // Quiet file-type icons for the artifact list (the colored kind pills read as noisy).
 function kindIcon(kind: string): "file" | "fileCode" | "image" | "table" {
@@ -78,6 +83,7 @@ export function RightRail({
 }: Props) {
   const [open, setOpen] = useState<Record<Panel, boolean>>({
     progress: true,
+    browser: true,
     artifacts: true,
   });
   const [artifacts, setArtifacts] = useState<ArtifactInfo[]>([]);
@@ -166,6 +172,15 @@ export function RightRail({
             <ProgressSummary running={running} toolNames={toolNames} todo={todo} />
           </RailSection>
 
+          <BrowserOperator
+            sessionId={sessionId}
+            refreshKey={refreshKey}
+            running={running}
+            toolNames={toolNames}
+            open={open.browser}
+            onToggle={() => setOpen({ ...open, browser: !open.browser })}
+          />
+
           {showArtifacts && (
           <RailSection
             title={`Artifacts${artifacts.length ? ` (${artifacts.length})` : ""}`}
@@ -223,6 +238,151 @@ export function RightRail({
         </>
       )}
     </aside>
+  );
+}
+
+function BrowserOperator({
+  sessionId,
+  refreshKey,
+  running,
+  toolNames,
+  open,
+  onToggle,
+}: {
+  sessionId: string;
+  refreshKey: number;
+  running: boolean;
+  toolNames: string[];
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const [state, setState] = useState<BrowserState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [previewInterval, setPreviewInterval] = useState(3000);
+  const captureInFlight = useRef(false);
+  const browserUsed = toolNames.some((name) => name.startsWith("browser_"));
+
+  const refresh = () =>
+    getBrowserState(sessionId)
+      .then(setState)
+      .catch(() => setState(null));
+
+  useEffect(() => {
+    refresh();
+    if (!running && !state?.open) return;
+    const timer = window.setInterval(refresh, 1500);
+    return () => window.clearInterval(timer);
+  }, [browserUsed, refreshKey, running, sessionId, state?.open]);
+
+  useEffect(() => {
+    const loadInterval = () =>
+      getSettings()
+        .then((settings) => setPreviewInterval(settings.browser_preview_interval_ms || 3000))
+        .catch(() => setPreviewInterval(3000));
+    const changed = (event: Event) => {
+      const milliseconds = Number((event as CustomEvent).detail?.milliseconds);
+      if (milliseconds) setPreviewInterval(milliseconds);
+      else loadInterval();
+    };
+    loadInterval();
+    window.addEventListener("coworker:browser-preview-settings-changed", changed);
+    return () => window.removeEventListener("coworker:browser-preview-settings-changed", changed);
+  }, []);
+
+  useEffect(() => {
+    if (!state?.open) return;
+    const captureLivePreview = async () => {
+      if (captureInFlight.current) return;
+      captureInFlight.current = true;
+      try {
+        const next = await takeBrowserScreenshot(sessionId);
+        setState(next);
+      } catch {
+        // Status polling remains active and will surface a controller error if present.
+      } finally {
+        captureInFlight.current = false;
+      }
+    };
+    const timer = window.setInterval(captureLivePreview, previewInterval);
+    return () => window.clearInterval(timer);
+  }, [previewInterval, sessionId, state?.open]);
+
+  const capture = async () => {
+    setBusy(true);
+    try {
+      const next = await takeBrowserScreenshot(sessionId);
+      setState(next);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const close = async () => {
+    setBusy(true);
+    try {
+      await closeBrowser(sessionId);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <RailSection
+      title="Secure Browser"
+      open={open}
+      onToggle={onToggle}
+      action={
+        <button
+          className="rail-mini-btn"
+          onClick={(event) => {
+            event.stopPropagation();
+            refresh();
+          }}
+          title="Refresh browser status"
+          aria-label="Refresh browser status"
+        >
+          <Icon name="refresh" size={13} />
+        </button>
+      }
+    >
+      <div className="browser-mini">
+        <div className="browser-status-row">
+          <span className={`browser-status-dot ${state?.status || "closed"}`} />
+          <span>{state?.open ? "Isolated session active" : "Ready for this session"}</span>
+        </div>
+        {state?.url && (
+          <div className="browser-location">
+            <strong>{state.title || "Current page"}</strong>
+            <span title={state.url}>{state.url}</span>
+          </div>
+        )}
+        {state?.screenshot_data_url && (
+          <>
+            <img
+              className="browser-shot"
+              src={state.screenshot_data_url}
+              alt={state.open ? "Current secure browser page" : "Last secure browser preview"}
+            />
+            {!state.open && <div className="rail-muted">Last browser preview</div>}
+          </>
+        )}
+        {state?.last_error && <div className="browser-error">{state.last_error}</div>}
+        <div className="rail-muted">
+          This agent can navigate public pages in an isolated browser. Page content is
+          untrusted; interactions require your approval. Live preview refreshes every {previewInterval} ms.
+        </div>
+        {state?.open && (
+          <div className="rail-actions">
+            <button className="btn secondary" onClick={capture} disabled={busy}>
+              Refresh preview
+            </button>
+            <button className="btn secondary" onClick={close} disabled={busy}>
+              Close browser
+            </button>
+          </div>
+        )}
+      </div>
+    </RailSection>
   );
 }
 

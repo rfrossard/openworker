@@ -28,6 +28,7 @@ export type IconName =
   | "panelOpen"
   | "plug"
   | "audit"
+  | "chart"
   | "chevronRight"
   | "chevronDown"
   | "moreHorizontal"
@@ -305,6 +306,14 @@ export function Icon({
         <svg {...s}>
           <path d="M7 4h10a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
           <path d="M8.5 9h7M8.5 13h7M8.5 17H13" />
+        </svg>
+      );
+    case "chart":
+      return (
+        <svg {...s}>
+          <rect x="4" y="14" width="3" height="6" rx="1" />
+          <rect x="10.5" y="8" width="3" height="12" rx="1" />
+          <rect x="17" y="4" width="3" height="16" rx="1" />
         </svg>
       );
     case "chevronRight":

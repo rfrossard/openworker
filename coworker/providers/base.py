@@ -38,6 +38,9 @@ class AssistantTurn:
     # owning provider consumes its own key when converting history; every other
     # provider must strip or ignore foreign underscore keys before its wire call.
     extras: dict[str, Any] = field(default_factory=dict)
+    # Provider-reported token counts for this model call. Persisted locally with the
+    # assistant message so Usage can aggregate exact spend by session and day.
+    usage: Optional[dict[str, Any]] = None
 
     @property
     def has_tool_calls(self) -> bool:

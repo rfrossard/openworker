@@ -1165,16 +1165,16 @@ def create_app(manager: SessionManager) -> FastAPI:
         }
 
     @app.get("/v1/browser/state")
-    def browser_state_get() -> dict[str, Any]:
-        return manager.browser_state()
+    def browser_state_get(session_id: str = "") -> dict[str, Any]:
+        return manager.browser_state(session_id)
 
     @app.post("/v1/browser/screenshot")
-    def browser_screenshot_post() -> dict[str, Any]:
-        return manager.browser_screenshot()
+    def browser_screenshot_post(session_id: str = "") -> dict[str, Any]:
+        return manager.browser_screenshot(session_id)
 
     @app.post("/v1/browser/close")
-    def browser_close_post() -> dict[str, Any]:
-        return manager.browser_close()
+    def browser_close_post(session_id: str = "") -> dict[str, Any]:
+        return manager.browser_close(session_id)
 
     # -- web search -------------------------------------------------------------
     @app.get("/v1/web-search")
@@ -1258,6 +1258,12 @@ def create_app(manager: SessionManager) -> FastAPI:
     def settings_set_sessions_peek(body: dict) -> dict[str, Any]:
         # Sidebar: sessions shown per group before "Show more" (owner ask, 2026-07-03).
         return manager.set_sessions_peek((body or {}).get("sessions_peek", 5))
+
+    @app.post("/v1/settings/browser-preview")
+    def settings_set_browser_preview(body: dict) -> dict[str, Any]:
+        return manager.set_browser_preview_interval(
+            (body or {}).get("browser_preview_interval_ms", 3000)
+        )
 
     @app.post("/v1/settings/pdf")
     def settings_set_pdf(body: dict) -> dict[str, Any]:
@@ -1695,6 +1701,9 @@ def create_app(manager: SessionManager) -> FastAPI:
         finally:
             manager.unregister_event_client(ws.send_json)
 
+    from .dashboard import create_dashboard_routes
+
+    create_dashboard_routes(app, manager)
     return app
 
 

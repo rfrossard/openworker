@@ -246,6 +246,8 @@ def test_engine_connector_tools_are_cowork_scoped(tmp_path):
     assert "send_message" not in code.registry.names()
     assert "browser_read_url" not in chat.registry.names()
     assert "browser_read_url" not in code.registry.names()
+    assert "browser_open_url" in chat.registry.names()
+    assert "browser_open_url" in code.registry.names()
 
     assert "send_message" in cowork.registry.names()
     assert "browser_read_url" in cowork.registry.names()
@@ -255,7 +257,9 @@ def test_engine_connector_tools_are_cowork_scoped(tmp_path):
     assert "github_search" not in cowork.registry.names()
     assert "send_message" in helper.registry.names()
     assert "browser_read_url" not in helper.registry.names()
-    assert "browser_open_url" not in helper.registry.names()
+    assert "browser_open_url" in helper.registry.names()
+    assert "Secure Browser:" in chat.messages[0]["content"]
+    assert "browser_snapshot" in code.messages[0]["content"]
 
     # §36: browser READS (registry kind) are free; interactions still gate.
     assert cowork.registry.get("browser_open_url").metadata.requires_approval is False

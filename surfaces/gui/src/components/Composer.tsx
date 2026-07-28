@@ -1,10 +1,25 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { Attachment } from "../types";
 import { isPdfFile, readFile } from "../attach";
-import { getSettings, inspectPdf } from "../api";
+import { getSettings, getUsageModels, inspectPdf } from "../api";
 import { Dropdown, type Option } from "./Dropdown";
 import { Icon } from "./Icon";
 import { Toggle } from "./Toggle";
+import {
+  buildModelRecommendations,
+  evaluateRoutingGuardrails,
+  loadRoutingCostLimit,
+  loadRoutingEvents,
+  loadRoutingMinConfidence,
+  loadRoutingMode,
+  ROUTING_STRATEGY_KEY,
+  saveRoutingMode,
+  saveRoutingEvent,
+  ModelRouterGuide,
+  type DashboardModels,
+  type RoutingMode,
+  type Strategy,
+} from "./ModelRouterGuide";
 import {
   cancelDictation,
   getDictationLevel,
@@ -58,7 +73,7 @@ interface Props {
   modelReady?: boolean;
   onConnectModel?: () => void;
   onConfigureVoiceInput?: () => void;
-  onSend: (text: string, attachments?: Attachment[]) => void;
+  onSend: (text: string, attachments?: Attachment[], modelOverride?: string) => void;
   onInterrupt: () => void;
   onModeChange: (mode: string) => void;
   onModelChange: (model: string) => void;
@@ -89,6 +104,14 @@ export function Composer(props: Props) {
   const [dictationError, setDictationError] = useState<string | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [attachNotice, setAttachNotice] = useState<string | null>(null);
+  const [modelAdvisorOpen, setModelAdvisorOpen] = useState(false);
+  const [routingDashboard, setRoutingDashboard] = useState<DashboardModels | null>(null);
+  const [routingNotice, setRoutingNotice] = useState<string | null>(null);
+  const [routingStrategy, setRoutingStrategy] = useState<Strategy>(() => {
+    const saved = localStorage.getItem(ROUTING_STRATEGY_KEY);
+    return saved === "quality" || saved === "cost" ? saved : "balanced";
+  });
+  const [routingMode, setRoutingMode] = useState<RoutingMode>(() => loadRoutingMode());
   const fileInput = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const noticeTimer = useRef<number | null>(null);
@@ -254,6 +277,21 @@ export function Composer(props: Props) {
 
   const needsModel = props.modelReady === false;
 
+  useEffect(() => {
+    if (!modelAdvisorOpen && routingMode === "manual") return;
+    getUsageModels().then(setRoutingDashboard).catch(() => undefined);
+  }, [modelAdvisorOpen, routingMode]);
+
+  const changeRoutingStrategy = (strategy: Strategy) => {
+    setRoutingStrategy(strategy);
+    localStorage.setItem(ROUTING_STRATEGY_KEY, strategy);
+  };
+
+  const changeRoutingMode = (mode: RoutingMode) => {
+    setRoutingMode(mode);
+    saveRoutingMode(mode);
+  };
+
   const submit = () => {
     const t = text.trim();
     if ((!t && attachments.length === 0) || props.running || dictation?.recording || dictationBusy) return;
@@ -262,7 +300,58 @@ export function Composer(props: Props) {
       props.onConnectModel?.();
       return;
     }
-    props.onSend(t, attachments);
+    let selectedModel = props.model;
+    if (routingMode !== "manual" && routingDashboard && props.models?.length) {
+      const suggested = buildModelRecommendations(
+        props.models,
+        props.modelLabels || {},
+        routingDashboard,
+        t,
+        attachments,
+        loadRoutingEvents(),
+      ).find((item) => item.key === routingStrategy)?.choice;
+      if (suggested) {
+        const minimumConfidence = loadRoutingMinConfidence();
+        const maximumEstimatedCost = loadRoutingCostLimit();
+        const outcome = evaluateRoutingGuardrails(suggested, minimumConfidence, maximumEstimatedCost);
+        const applied = routingMode === "automatic" && outcome === "applied";
+        const strategyLabel = routingStrategy === "quality" ? "Best quality" : routingStrategy === "cost" ? "Lowest cost" : "Balanced";
+        if (routingMode === "shadow") {
+          const guardrail = outcome === "applied" ? "would apply" : outcome.replace(/_/g, " ");
+          setRoutingNotice(`Shadow recommendation: ${suggested.label} · ${suggested.confidence}% confidence · ${guardrail}`);
+        } else if (applied) {
+          selectedModel = suggested.model;
+          props.onModelChange(selectedModel);
+          setRoutingNotice(`Auto-selected ${suggested.label} · ${strategyLabel} · ${suggested.confidence}% confidence`);
+        } else {
+          const currentLabel = props.modelLabels?.[props.model] || props.model;
+          const reason = outcome === "below_confidence"
+            ? `${suggested.confidence}% confidence is below the ${minimumConfidence}% guardrail`
+            : outcome === "unknown_cost"
+              ? "API cost is unavailable"
+              : `${formatRoutingCost(suggested.estimatedCost)} estimate exceeds the ${formatRoutingCost(maximumEstimatedCost)} guardrail`;
+          setRoutingNotice(`Kept ${currentLabel} · ${reason}`);
+        }
+        saveRoutingEvent({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          timestamp: new Date().toISOString(),
+          strategy: routingStrategy,
+          model: suggested.model,
+          label: suggested.label,
+          local: suggested.local,
+          taskTypes: suggested.taskTypes,
+          estimatedCost: suggested.estimatedCost,
+          qualityScore: suggested.quality,
+          confidence: suggested.confidence,
+          sessionId: props.resetKey,
+          outcome,
+          actualModel: selectedModel,
+          mode: routingMode,
+        });
+        window.setTimeout(() => setRoutingNotice(null), 6000);
+      }
+    }
+    props.onSend(t, attachments, selectedModel);
     setText("");
     setAttachments([]);
   };
@@ -345,6 +434,13 @@ export function Composer(props: Props) {
         </div>
       )}
 
+      {routingNotice && (
+        <div className="max-w-3xl mx-auto mb-2 px-3 py-2 rounded-lg border border-line bg-accentSoft text-[11px] text-accent flex items-center gap-2">
+          <Icon name="sparkle" size={13} />
+          {routingNotice}
+        </div>
+      )}
+
       {/* Rejected-attachment notice (PDF over the user's Token-savings thresholds). */}
       {attachNotice && (
         <div
@@ -369,6 +465,25 @@ export function Composer(props: Props) {
             <AttachChip key={i} a={a} onRemove={() => setAttachments((all) => all.filter((_, j) => j !== i))} />
           ))}
         </div>
+      )}
+
+      {modelAdvisorOpen && modelsLoaded && (
+        <ModelRouterGuide
+          prompt={text}
+          attachments={attachments}
+          models={props.models || []}
+          labels={props.modelLabels || {}}
+          current={props.model}
+          strategy={routingStrategy}
+          routingMode={routingMode}
+          onStrategyChange={changeRoutingStrategy}
+          onRoutingModeChange={changeRoutingMode}
+          onSelect={(model) => {
+            props.onModelChange(model);
+            setModelAdvisorOpen(false);
+          }}
+          onClose={() => setModelAdvisorOpen(false)}
+        />
       )}
 
       <div
@@ -475,9 +590,19 @@ export function Composer(props: Props) {
               <span className="pill-label">No model</span>
               <span className="model-warn-ico" aria-hidden>⚠</span>
             </button>
-          ) : modelsLoaded ? (
+          ) : modelsLoaded ? (<>
+            <button
+              className={iconBtn + (modelAdvisorOpen ? " bg-accentSoft text-accent" : "")}
+              onClick={() => setModelAdvisorOpen((open) => !open)}
+              title="Get model recommendations"
+              aria-label="Open model advisor"
+              disabled={props.running}
+            >
+              <Icon name="sparkle" size={15} />
+              {routingMode !== "manual" && <span className={`absolute w-1.5 h-1.5 rounded-full translate-x-2 -translate-y-2 ${routingMode === "shadow" ? "bg-[#d08a32]" : "bg-accent"}`} />}
+            </button>
             <Dropdown value={props.model} options={modelOptions} onChange={props.onModelChange} align="right" />
-          ) : (
+          </>) : (
             <button
               className="pill chip text-faint cursor-default"
               disabled
@@ -544,6 +669,10 @@ export function Composer(props: Props) {
       </span>
     </div>
   );
+}
+
+function formatRoutingCost(value?: number) {
+  return `$${Number(value || 0).toFixed(4)}`;
 }
 
 // The composer's Mode menu (§22): a quiet "Mode ⌄" chip opening the five permission options with

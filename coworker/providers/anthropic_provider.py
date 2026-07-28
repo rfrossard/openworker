@@ -507,11 +507,16 @@ class AnthropicProvider(ProviderClient):
         # so both the text and the signature_delta tail are collected (in block order).
         thinking_accum: dict[int, dict[str, Any]] = {}
         stop_reason = None
+        input_tokens = 0
+        output_tokens = 0
 
         last_message_delta: Any = None
         for event in events:
             kind = getattr(event, "type", None)
-            if kind == "content_block_start":
+            if kind == "message_start":
+                usage = getattr(getattr(event, "message", None), "usage", None)
+                input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+            elif kind == "content_block_start":
                 block = getattr(event, "content_block", None)
                 block_kind = getattr(block, "type", None)
                 if block_kind == "tool_use":
@@ -558,6 +563,8 @@ class AnthropicProvider(ProviderClient):
                         )
             elif kind == "message_delta":
                 last_message_delta = getattr(event, "delta", None)
+                usage = getattr(event, "usage", None)
+                output_tokens = int(getattr(usage, "output_tokens", 0) or output_tokens)
                 reason = getattr(last_message_delta, "stop_reason", None)
                 if reason:
                     stop_reason = reason
@@ -580,5 +587,10 @@ class AnthropicProvider(ProviderClient):
                 finish_reason=_STOP_REASON_MAP.get(stop_reason, stop_reason),
                 reasoning=_reasoning_text(thinking_blocks),
                 extras=_thinking_extras(thinking_blocks),
+                usage={
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": input_tokens + output_tokens,
+                } if input_tokens or output_tokens else None,
             )
         )

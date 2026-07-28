@@ -16,7 +16,10 @@ python3 -m venv "$VENV"
 # the next PyPI release).
 "$VENV/bin/pip" install --quiet --upgrade pip
 "$VENV/bin/pip" install --quiet -e "$ROOT[messaging,dev]"
+# Keep Chromium beside the Playwright package. PyInstaller then stages the browser in
+# the desktop sidecar, so installed builds do not depend on a user-level browser cache.
+PLAYWRIGHT_BROWSERS_PATH=0 "$VENV/bin/python" -m playwright install chromium
 
-"$VENV/bin/python" -c 'import aisuite, coworker' # fail loudly if the wiring broke
+"$VENV/bin/python" -c 'import aisuite, coworker, playwright' # fail loudly if the wiring broke
 echo "Ready: $VENV"
 echo "  server: $VENV/bin/openworker-server --cwd /path/to/your/project --port 8765"

@@ -13,6 +13,7 @@
 #     build-only deps:
 #       python3 -m venv .venv
 #       .venv/bin/pip install -e . pyinstaller tzdata typer
+#       PLAYWRIGHT_BROWSERS_PATH=0 .venv/bin/python -m playwright install chromium
 #     `typer` is needed only at BUILD time: PyInstaller walks the `mcp` package and
 #     `mcp.cli` calls sys.exit() at import if typer is absent, which aborts the freeze.
 #     (aisuite installs like any other dependency — git-pinned in pyproject.toml.)
@@ -70,8 +71,29 @@ if [ -n "${APPLE_CERTIFICATE:-}" ] && [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
 fi
 
 echo "==> [1/5] PyInstaller: bundling openworker-server ($TRIPLE)"
+BROWSER_DIR="$(find "$PLATFORM/.venv/lib" -type d -path "*/playwright/driver/package/.local-browsers" -print -quit)"
+if [ -z "$BROWSER_DIR" ] || [ -z "$(find "$BROWSER_DIR" -mindepth 1 -print -quit)" ]; then
+  echo "ERROR: bundled Chromium is missing. Run:" >&2
+  echo "  PLAYWRIGHT_BROWSERS_PATH=0 .venv/bin/python -m playwright install chromium" >&2
+  exit 1
+fi
+# PyInstaller treats Chromium's nested Mach-O files as loose binaries and tries to
+# re-sign them individually, which corrupts the signed .app/framework structure.
+# Freeze Python without the browser payload, then copy the untouched browser tree
+# into the exact package-relative location Playwright resolves at runtime.
+BROWSER_STASH="$(mktemp -d)/.local-browsers"
+mv "$BROWSER_DIR" "$BROWSER_STASH"
+restore_browser() {
+  if [ -d "$BROWSER_STASH" ]; then
+    mkdir -p "$(dirname "$BROWSER_DIR")"
+    mv "$BROWSER_STASH" "$BROWSER_DIR"
+  fi
+}
+trap restore_browser EXIT
 "$PLATFORM/.venv/bin/pyinstaller" --noconfirm --clean \
   --distpath "$HERE/dist" --workpath "$HERE/build" "$HERE/openworker-server.spec"
+restore_browser
+trap - EXIT
 
 echo "==> [2/5] staging sidecar resources"
 # Onedir bundle (exe + _internal/) ships via Tauri `resources` as Contents/Resources/sidecar/
@@ -103,6 +125,12 @@ if [ -n "$(find "$GUI/src-tauri/binaries/sidecar" -type d -name "*.framework" | 
   echo "ERROR: a .framework appeared in the sidecar — it cannot pass notarization in this layout" >&2
   exit 1
 fi
+# Add Chromium only after the dereferencing/framework cleanup above. Tauri's
+# resource bundler flattens symlinks, so preserve the signed nested app/frameworks
+# in an archive that OpenWorker extracts to its cache on first browser use.
+PLAYWRIGHT_PACKAGE="$GUI/src-tauri/binaries/sidecar/_internal/playwright/driver/package"
+mkdir -p "$PLAYWRIGHT_PACKAGE"
+tar -czf "$PLAYWRIGHT_PACKAGE/playwright-browsers.tar.gz" -C "$BROWSER_DIR" .
 chmod +x "$GUI/src-tauri/binaries/sidecar/openworker-server"
 
 # Sign the sidecar's Mach-O files BEFORE tauri build: `tauri build` signs the .app (sealing
@@ -118,6 +146,7 @@ if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
   # what the notary service checks). Entitlements only on the entrypoint
   # (disable-library-validation: the bundled python.org dylibs carry another Team ID).
   find "$SIDECAR" -type f ! -name "openworker-server" \
+    ! -path "*/playwright/driver/package/.local-browsers/*" \
     ! -name "*.py" ! -name "*.pyc" ! -name "*.txt" ! -name "*.pem" ! -name "*.json" \
     -print0 | while IFS= read -r -d '' f; do
     file -b "$f" | grep -q "Mach-O" || continue

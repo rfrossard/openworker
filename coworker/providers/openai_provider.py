@@ -73,6 +73,19 @@ def _strip_foreign_sidecars(messages: list[dict[str, Any]]) -> list[dict[str, An
     ]
 
 
+def _usage_dict(usage: Any) -> Optional[dict[str, int]]:
+    if usage is None:
+        return None
+    prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
+    completion = int(getattr(usage, "completion_tokens", 0) or 0)
+    total = int(getattr(usage, "total_tokens", 0) or prompt + completion)
+    return {
+        "input_tokens": prompt,
+        "output_tokens": completion,
+        "total_tokens": total,
+    }
+
+
 _MAX_TOKENS_ERROR = "'max_tokens' is not supported"
 
 
@@ -193,6 +206,8 @@ class OpenAIProvider(ProviderClient):
             "stream": True,
             **settings,
         }
+        if not self._base_url:
+            kwargs.setdefault("stream_options", {"include_usage": True})
         if tools:
             kwargs["tools"] = tools
         _pin_reasoning_effort(kwargs)
@@ -202,6 +217,7 @@ class OpenAIProvider(ProviderClient):
         reasoning_parts: list[str] = []
         tool_accum: dict[int, dict[str, str]] = {}
         finish_reason = None
+        usage = None
 
         # Up to two param-fix retries: effort and max_tokens can BOTH need fixing.
         for _ in range(2):
@@ -213,6 +229,9 @@ class OpenAIProvider(ProviderClient):
         else:
             chunks = client.chat.completions.create(**kwargs)
         for chunk in chunks:
+            reported_usage = _usage_dict(getattr(chunk, "usage", None))
+            if reported_usage:
+                usage = reported_usage
             choices = getattr(chunk, "choices", None)
             if not choices:
                 continue
@@ -262,6 +281,7 @@ class OpenAIProvider(ProviderClient):
                 tool_calls=tool_calls,
                 finish_reason=finish_reason,
                 reasoning="".join(reasoning_parts) or None,
+                usage=usage,
             )
         )
 
