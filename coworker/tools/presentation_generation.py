@@ -56,6 +56,21 @@ _TEMPLATES = {
     "dashboard-pro": {"background": "F8FAFC", "ink": "172033", "muted": "64748B", "accent": "2563EB", "cover": "172033", "gradient": "EFF6FF", "transition": "push"},
     "science-spectrum": {"background": "F0FDFA", "ink": "134E4A", "muted": "64748B", "accent": "8B5CF6", "cover": "134E4A", "gradient": "F5F3FF", "transition": "wipe"},
     "impact-report": {"background": "FAFAF9", "ink": "1C1917", "muted": "78716C", "accent": "16A34A", "cover": "1C1917", "gradient": "F0FDF4", "transition": "fade"},
+    "science-studio": {"background": "070B12", "ink": "E8F7FA", "muted": "94A9B3", "accent": "56CFE1", "cover": "070B12", "gradient": "122B3A", "transition": "fade", "composition": "photo-right"},
+    "digital-pulse": {"background": "F8FAFC", "ink": "17191C", "muted": "667085", "accent": "C7F43B", "cover": "17191C", "gradient": "334155", "transition": "push", "composition": "photo-left"},
+    "eco-sketchbook": {"background": "FFFDFC", "ink": "1F2937", "muted": "73807B", "accent": "4FA8A5", "cover": "FFFDFC", "gradient": "FDE3D4", "transition": "wipe", "composition": "botanical", "cover_ink": "1F2937"},
+    "social-workshop": {"background": "FFFDF8", "ink": "292524", "muted": "78716C", "accent": "F5C542", "cover": "292524", "gradient": "57534E", "transition": "split", "composition": "collage"},
+    "environmental-fieldwork": {"background": "FFFEFB", "ink": "12372A", "muted": "708276", "accent": "91B29A", "cover": "FFFEFB", "gradient": "EAF4EC", "transition": "wipe", "composition": "torn-photo", "cover_ink": "12372A"},
+    "personal-brand": {"background": "F7F3F2", "ink": "09090B", "muted": "71717A", "accent": "0B5CAD", "cover": "F7F3F2", "gradient": "EEE9E7", "transition": "cover", "composition": "editorial", "cover_ink": "09090B"},
+    "botanical-noir": {"background": "080D0B", "ink": "EAF7F0", "muted": "9CB2A7", "accent": "8ED1B2", "cover": "080D0B", "gradient": "17241E", "transition": "fade", "composition": "botanical"},
+    "nature-balance": {"background": "0D2C22", "ink": "F7FFF9", "muted": "B7CCC0", "accent": "A8D5BA", "cover": "0D2C22", "gradient": "0B3B50", "transition": "cover", "composition": "full-bleed"},
+    "storytelling-lab": {"background": "F7F3EB", "ink": "111111", "muted": "69635A", "accent": "2C8C8C", "cover": "F7F3EB", "gradient": "EEE8DC", "transition": "push", "composition": "minimal-frame", "cover_ink": "111111"},
+    "agricultural-motion": {"background": "263A18", "ink": "FFFFFF", "muted": "CBD5B5", "accent": "A8C96A", "cover": "263A18", "gradient": "566B25", "transition": "push", "composition": "full-bleed"},
+    "cultural-heritage": {"background": "17120F", "ink": "F6ECD8", "muted": "C2B29C", "accent": "B88A3B", "cover": "17120F", "gradient": "3B2419", "transition": "fade", "composition": "heritage"},
+    "cyan-infographic": {"background": "FFFFFF", "ink": "172033", "muted": "64748B", "accent": "18B8E6", "cover": "FFFFFF", "gradient": "E7F8FD", "transition": "wipe", "composition": "infographic", "cover_ink": "172033"},
+    "growth-momentum": {"background": "07131C", "ink": "F8FAFC", "muted": "94A3B8", "accent": "38BDF8", "cover": "07131C", "gradient": "0C4A6E", "transition": "push", "composition": "infographic"},
+    "home-investment": {"background": "FCFAF7", "ink": "312E2B", "muted": "78716C", "accent": "F0645A", "cover": "FCFAF7", "gradient": "F4E8DA", "transition": "split", "composition": "minimal-frame", "cover_ink": "312E2B"},
+    "museum-editorial": {"background": "15110E", "ink": "F2E7D2", "muted": "B8A998", "accent": "9D6B2F", "cover": "15110E", "gradient": "30221B", "transition": "fade", "composition": "heritage"},
 }
 
 _SCHEMA = {
@@ -72,6 +87,10 @@ _SCHEMA = {
             "properties": {
                 "title": {"type": "string"},
                 "subtitle": {"type": "string"},
+                "cover_image_path": {
+                    "type": "string",
+                    "description": "Optional workspace-relative PNG or JPEG composed for the selected template cover.",
+                },
                 "slides": {
                     "type": "array",
                     "items": {
@@ -300,6 +319,7 @@ def _add_pptx(
     subtitle: str,
     slides: list[dict[str, Any]],
     style: dict[str, str],
+    cover_image: Path | None = None,
     template: Path | None = None,
 ) -> None:
     from pptx import Presentation
@@ -321,6 +341,7 @@ def _add_pptx(
     muted = RGBColor.from_string(style["muted"])
     accent_rgb = RGBColor.from_string(style["accent"])
     cover_rgb = RGBColor.from_string(style["cover"])
+    cover_ink = RGBColor.from_string(style.get("cover_ink", "FFFFFF"))
     blank_layout = next(
         (layout for layout in deck.slide_layouts if "blank" in layout.name.lower()),
         deck.slide_layouts[-1],
@@ -380,9 +401,85 @@ def _add_pptx(
     cover.background.fill.solid()
     cover.background.fill.fore_color.rgb = cover_rgb
     apply_template_canvas(cover, cover_slide=True)
-    textbox(cover, title, 0.8, 1.55, 11.7, 2.0, 40, RGBColor(255, 255, 255), True)
-    textbox(cover, subtitle, 0.82, 3.8, 10.8, 1.1, 20, RGBColor(205, 213, 225))
-    bar = cover.shapes.add_shape(1, Inches(0.82), Inches(5.75), Inches(1.8), Inches(0.12))
+    composition = style.get("composition", "standard")
+    title_box = (0.8, 1.55, 11.7, 2.0, 40)
+    subtitle_box = (0.82, 3.8, 10.8, 1.1, 20)
+    if composition in {"photo-right", "editorial"}:
+        visual = cover.shapes.add_shape(1, Inches(7.0), 0, Inches(6.34), Inches(7.5))
+        visual.fill.solid()
+        visual.fill.fore_color.rgb = accent_rgb
+        visual.line.fill.background()
+        title_box = (0.72, 1.7, 5.8, 2.7, 38)
+        subtitle_box = (0.76, 4.7, 5.6, 1.0, 17)
+    elif composition == "photo-left":
+        visual = cover.shapes.add_shape(1, 0, 0, Inches(6.25), Inches(7.5))
+        visual.fill.solid()
+        visual.fill.fore_color.rgb = accent_rgb
+        visual.line.fill.background()
+        title_box = (6.75, 1.7, 5.8, 2.7, 38)
+        subtitle_box = (6.78, 4.7, 5.6, 1.0, 17)
+    elif composition == "collage":
+        for x, y, w, h, color in (
+            (7.4, 0.6, 4.8, 3.0, accent_rgb),
+            (8.2, 3.85, 4.2, 2.7, muted),
+        ):
+            visual = cover.shapes.add_shape(1, Inches(x), Inches(y), Inches(w), Inches(h))
+            visual.fill.solid()
+            visual.fill.fore_color.rgb = color
+            visual.line.fill.background()
+        title_box = (0.72, 3.85, 6.3, 2.0, 38)
+        subtitle_box = (0.76, 6.0, 5.8, 0.7, 16)
+    elif composition == "torn-photo":
+        visual = cover.shapes.add_shape(1, 0, 0, Inches(13.34), Inches(4.25))
+        visual.fill.solid()
+        visual.fill.fore_color.rgb = accent_rgb
+        visual.line.fill.background()
+        title_box = (0.72, 4.55, 7.4, 1.4, 34)
+        subtitle_box = (8.45, 5.0, 4.0, 1.0, 16)
+    elif composition == "minimal-frame":
+        visual = cover.shapes.add_shape(1, Inches(7.45), Inches(0.75), Inches(4.8), Inches(2.85))
+        visual.fill.solid()
+        visual.fill.fore_color.rgb = accent_rgb
+        visual.line.color.rgb = cover_ink
+        title_box = (0.78, 4.0, 8.9, 1.8, 39)
+        subtitle_box = (8.95, 5.55, 3.4, 0.85, 15)
+    elif composition == "infographic":
+        rail = cover.shapes.add_shape(1, 0, 0, Inches(1.75), Inches(7.5))
+        rail.fill.solid()
+        rail.fill.fore_color.rgb = accent_rgb
+        rail.line.fill.background()
+        title_box = (2.25, 1.6, 9.8, 2.2, 40)
+        subtitle_box = (2.28, 4.15, 8.8, 0.9, 18)
+    elif composition == "botanical":
+        title_box = (3.0, 1.75, 7.35, 2.0, 39)
+        subtitle_box = (3.02, 4.0, 7.2, 0.9, 18)
+    elif composition == "heritage":
+        title_box = (0.72, 1.25, 7.0, 2.8, 39)
+        subtitle_box = (0.76, 5.55, 4.2, 0.9, 16)
+    elif composition == "full-bleed":
+        title_box = (0.52, 0.72, 9.8, 2.2, 46)
+        subtitle_box = (9.25, 6.15, 3.3, 0.7, 15)
+    if cover_image:
+        image_frame = {
+            "photo-right": (7.0, 0, 6.34, 7.5),
+            "editorial": (7.0, 0, 6.34, 7.5),
+            "photo-left": (0, 0, 6.25, 7.5),
+            "collage": (7.4, 0.6, 4.8, 5.95),
+            "torn-photo": (0, 0, 13.34, 4.25),
+            "minimal-frame": (7.45, 0.75, 4.8, 2.85),
+            "infographic": (8.65, 0.72, 3.75, 2.75),
+            "botanical": (0, 0, 13.34, 7.5),
+            "heritage": (0, 0, 13.34, 7.5),
+            "full-bleed": (0, 0, 13.34, 7.5),
+        }.get(composition, (6.7, 0, 6.64, 7.5))
+        x, y, w, h = image_frame
+        cover.shapes.add_picture(
+            _cover_image(cover_image, fit="cover", focus="center"),
+            Inches(x), Inches(y), width=Inches(w), height=Inches(h),
+        )
+    textbox(cover, title, *title_box, cover_ink, True)
+    textbox(cover, subtitle, *subtitle_box, cover_ink)
+    bar = cover.shapes.add_shape(1, Inches(title_box[0]), Inches(6.82), Inches(1.8), Inches(0.12))
     bar.fill.solid()
     bar.fill.fore_color.rgb = accent_rgb
     bar.line.fill.background()
@@ -565,6 +662,7 @@ def _add_pdf(
     subtitle: str,
     slides: list[dict[str, Any]],
     style: dict[str, str],
+    cover_image: Path | None = None,
 ) -> None:
     from reportlab.lib.colors import HexColor
     from reportlab.lib.pagesizes import landscape
@@ -579,6 +677,7 @@ def _add_pdf(
     accent_color = HexColor(f"#{style['accent']}")
     background = HexColor(f"#{style['background']}")
     cover = HexColor(f"#{style['cover']}")
+    cover_ink = HexColor(f"#{style.get('cover_ink', 'FFFFFF')}")
 
     def paint_background(color, *, cover_page=False):
         canvas.setFillColor(color)
@@ -613,8 +712,67 @@ def _add_pdf(
             canvas.drawString(x, y - offset * size * 1.25, line)
 
     paint_background(cover, cover_page=True)
-    text(title, 58, 385, 32, HexColor("#FFFFFF"), "Helvetica-Bold", 840)
-    text(subtitle, 60, 275, 16, HexColor("#CDD5E1"), max_width=760)
+    composition = style.get("composition", "standard")
+    title_position = (58, 385, 32, 840)
+    subtitle_position = (60, 275, 16, 760)
+    if composition in {"photo-right", "editorial"}:
+        canvas.setFillColor(accent_color)
+        canvas.rect(width * .53, 0, width * .47, height, stroke=0, fill=1)
+        title_position = (52, 360, 30, 420)
+        subtitle_position = (54, 165, 14, 400)
+    elif composition == "photo-left":
+        canvas.setFillColor(accent_color)
+        canvas.rect(0, 0, width * .47, height, stroke=0, fill=1)
+        title_position = (510, 360, 30, 390)
+        subtitle_position = (512, 165, 14, 380)
+    elif composition == "collage":
+        canvas.setFillColor(accent_color)
+        canvas.rect(560, 270, 315, 205, stroke=0, fill=1)
+        canvas.setFillColor(muted)
+        canvas.rect(620, 65, 275, 165, stroke=0, fill=1)
+        title_position = (54, 190, 30, 460)
+        subtitle_position = (56, 75, 14, 430)
+    elif composition == "torn-photo":
+        canvas.setFillColor(accent_color)
+        canvas.rect(0, 235, width, 305, stroke=0, fill=1)
+        title_position = (55, 135, 28, 560)
+        subtitle_position = (660, 85, 14, 250)
+    elif composition == "minimal-frame":
+        canvas.setFillColor(accent_color)
+        canvas.rect(565, 280, 315, 190, stroke=0, fill=1)
+        title_position = (58, 135, 31, 680)
+        subtitle_position = (700, 70, 13, 210)
+    elif composition == "infographic":
+        canvas.setFillColor(accent_color)
+        canvas.rect(0, 0, 135, height, stroke=0, fill=1)
+        title_position = (180, 360, 32, 700)
+        subtitle_position = (182, 235, 15, 650)
+    elif composition == "botanical":
+        title_position = (220, 350, 31, 570)
+        subtitle_position = (222, 235, 15, 550)
+    elif composition == "heritage":
+        title_position = (55, 350, 31, 540)
+        subtitle_position = (58, 80, 14, 330)
+    elif composition == "full-bleed":
+        title_position = (42, 420, 37, 730)
+        subtitle_position = (700, 55, 13, 220)
+    if cover_image:
+        x, y, w, h = {
+            "photo-right": (width * .53, 0, width * .47, height),
+            "editorial": (width * .53, 0, width * .47, height),
+            "photo-left": (0, 0, width * .47, height),
+            "collage": (560, 65, 315, 410),
+            "torn-photo": (0, 235, width, 305),
+            "minimal-frame": (565, 280, 315, 190),
+            "infographic": (665, 285, 245, 175),
+            "botanical": (0, 0, width, height),
+            "heritage": (0, 0, width, height),
+            "full-bleed": (0, 0, width, height),
+        }.get(composition, (width * .5, 0, width * .5, height))
+        prepared = _cover_image(cover_image, 1200, 750, fit="cover", focus="center")
+        canvas.drawImage(ImageReader(prepared), x, y, width=w, height=h, preserveAspectRatio=False, mask="auto")
+    text(title, *title_position[:3], cover_ink, "Helvetica-Bold", title_position[3])
+    text(subtitle, *subtitle_position[:3], cover_ink, max_width=subtitle_position[3])
     canvas.setFillColor(accent_color)
     canvas.rect(60, 115, 130, 8, stroke=0, fill=1)
     canvas.showPage()
@@ -840,6 +998,7 @@ def make_build_presentation_tool(*, workspace: Path | str):
         accent_color: str = "",
         template_id: str = "atlas",
         template_path: str = "",
+        cover_image_path: str = "",
         minimum_images: int = 0,
     ) -> dict[str, Any]:
         """Render an editable PPTX and a matching slide-formatted PDF."""
@@ -860,6 +1019,7 @@ def make_build_presentation_tool(*, workspace: Path | str):
             pdf_target = _safe_target(root, pdf_path, ".pdf")
             normalized = _normalize_slides(root, slides)
             custom_template = _safe_template(root, template_path)
+            cover_image = _safe_image(root, cover_image_path)
             required_images = max(0, min(_MAX_SLIDES, int(minimum_images or 0)))
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
@@ -886,6 +1046,7 @@ def make_build_presentation_tool(*, workspace: Path | str):
                 subtitle=str(subtitle or "").strip()[:300],
                 slides=normalized,
                 style=style,
+                cover_image=cover_image,
                 template=custom_template,
             )
             _add_pdf(
@@ -894,6 +1055,7 @@ def make_build_presentation_tool(*, workspace: Path | str):
                 subtitle=str(subtitle or "").strip()[:300],
                 slides=normalized,
                 style=style,
+                cover_image=cover_image,
             )
             if not Path(pptx_temp).read_bytes().startswith(b"PK"):
                 raise ValueError("PPTX renderer produced an invalid file.")
@@ -918,7 +1080,7 @@ def make_build_presentation_tool(*, workspace: Path | str):
             "pptx_path": str(pptx_target.relative_to(root)),
             "pdf_path": str(pdf_target.relative_to(root)),
             "slides": len(normalized) + 1,
-            "images_embedded": embedded_images,
+            "images_embedded": embedded_images + bool(cover_image),
             "minimum_images": required_images,
             "visual_plan_complete": embedded_images >= required_images,
             "formats": ["pptx", "pdf"],

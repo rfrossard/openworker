@@ -45,6 +45,6 @@ describe("ManusPresentationLauncher", () => {
     render(<ManusPresentationLauncher artifacts={[]} onCreate={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /Manus-style presentation/i }));
     const options = screen.getByLabelText("Editable PowerPoint template").querySelectorAll("option");
-    expect(options.length).toBeGreaterThanOrEqual(32);
+    expect(options.length).toBeGreaterThanOrEqual(47);
   });
 });

@@ -50,6 +50,9 @@ Choose the first investment.`);
     expect(prompt).toContain('"image_required": true');
     expect(prompt).toContain("minimum_images=1");
     expect(prompt).toContain("Do not silently replace a selected layout");
+    const photographicPrompt = buildMarkdownSlideDesignerPrompt("reports/plan.md", deck, "science-studio");
+    expect(photographicPrompt).toContain("cover_image_path");
+    expect(photographicPrompt).toContain('"photo-right" template treatment');
   });
 
   it("loads real Markdown and updates the simulated slide when a style is selected", async () => {
@@ -93,7 +96,12 @@ Choose the first investment.`);
     expect(preview.dataset.motif).toBe("chart");
     expect(preview.getAttribute("style")).not.toBe(atlasStyle);
     expect(screen.getByText(/Animated neon gradient/i)).toBeTruthy();
-    expect(screen.getByLabelText("Presentation template").querySelectorAll("option")).toHaveLength(32);
+    fireEvent.change(screen.getByLabelText("Presentation template"), {
+      target: { value: "environmental-fieldwork" },
+    });
+    expect(preview.dataset.composition).toBe("torn-photo");
+    expect(screen.getByText(/torn-paper edge/i)).toBeTruthy();
+    expect(screen.getByLabelText("Presentation template").querySelectorAll("option")).toHaveLength(47);
     expect(screen.getByLabelText("Slide styles").querySelectorAll("button")).toHaveLength(22);
     fireEvent.click(screen.getByRole("button", { name: /Image background/i }));
     expect(preview.className).toContain("layout-image-background");

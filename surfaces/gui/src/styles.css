@@ -704,6 +704,58 @@ button.btn.danger { color: var(--accent); }
   background: radial-gradient(circle at 82% 22%, var(--slide-accent) 0 9%, transparent 9.5%),
     radial-gradient(ellipse at 75% 70%, var(--slide-accent) 0 20%, transparent 20.5%);
 }
+.slide-designer-preview[data-composition="photo-left"]::before,
+.slide-designer-preview[data-composition="photo-right"]::before {
+  opacity: .32;
+  width: 48%;
+  left: auto;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--slide-accent) 65%, #10131a), color-mix(in srgb, var(--slide-ink) 78%, #000));
+  clip-path: polygon(8% 0, 100% 0, 100% 100%, 0 100%);
+}
+.slide-designer-preview[data-composition="photo-left"]::before { left: 0; right: auto; transform: scaleX(-1); }
+.slide-designer-preview[data-composition="photo-left"] h3 { margin-left: 48%; max-width: 47%; }
+.slide-designer-preview[data-composition="photo-right"] h3 { max-width: 50%; }
+.slide-designer-preview[data-composition="botanical"]::before {
+  opacity: .22;
+  background:
+    radial-gradient(ellipse at 8% 78%, var(--slide-accent) 0 5%, transparent 5.5%),
+    radial-gradient(ellipse at 16% 66%, var(--slide-accent) 0 7%, transparent 7.5%),
+    radial-gradient(ellipse at 88% 18%, var(--slide-accent) 0 8%, transparent 8.5%);
+}
+.slide-designer-preview[data-composition="botanical"] h3 { font-family: Georgia, serif; font-weight: 500; }
+.slide-designer-preview[data-composition="collage"]::before {
+  inset: 8% 4% 10% 52%; opacity: .28; transform: rotate(2deg);
+  border: 7px solid color-mix(in srgb, var(--slide-bg) 85%, white);
+  background: linear-gradient(135deg, var(--slide-accent), var(--slide-ink));
+  box-shadow: -18px 15px 0 color-mix(in srgb, var(--slide-accent) 22%, transparent);
+}
+.slide-designer-preview[data-composition="torn-photo"]::before {
+  inset: 0 0 42%; opacity: .3; background: linear-gradient(120deg, var(--slide-accent), var(--slide-ink));
+  clip-path: polygon(0 0,100% 0,100% 88%,92% 93%,84% 88%,74% 96%,62% 89%,50% 97%,36% 90%,24% 96%,12% 89%,0 96%);
+}
+.slide-designer-preview[data-composition="torn-photo"] h3 { margin-top: 38%; }
+.slide-designer-preview[data-composition="editorial"] h3 { max-width: 46%; text-transform: uppercase; font-size: clamp(25px, 3.7vw, 46px); }
+.slide-designer-preview[data-composition="editorial"]::before {
+  inset: 0 0 0 47%; opacity: .3; background: linear-gradient(155deg, var(--slide-accent), var(--slide-ink));
+}
+.slide-designer-preview[data-composition="full-bleed"] { color: #fff; text-shadow: 0 2px 12px #0008; }
+.slide-designer-preview[data-composition="full-bleed"]::before { opacity: .4; background: linear-gradient(100deg, var(--slide-ink), transparent 72%); }
+.slide-designer-preview[data-composition="full-bleed"] h3 { font-family: Georgia, serif; font-weight: 400; font-size: clamp(27px, 4vw, 48px); }
+.slide-designer-preview[data-composition="infographic"]::before {
+  inset: 18% 5% 12%; opacity: .24;
+  background: repeating-linear-gradient(90deg, transparent 0 14%, var(--slide-accent) 14% 14.7%);
+  border-bottom: 3px solid var(--slide-accent);
+}
+.slide-designer-preview[data-composition="minimal-frame"]::before {
+  inset: 7% 5% 48% 56%; opacity: .32; background: linear-gradient(145deg, var(--slide-ink), var(--slide-accent));
+  outline: 1px solid color-mix(in srgb, var(--slide-accent) 60%, transparent); outline-offset: 7px;
+}
+.slide-designer-preview[data-composition="minimal-frame"] h3 { margin-top: 31%; max-width: 72%; }
+.slide-designer-preview[data-composition="heritage"] { color: var(--slide-bg); }
+.slide-designer-preview[data-composition="heritage"]::before {
+  opacity: .25; background: radial-gradient(circle at 72% 45%, var(--slide-accent), transparent 32%), linear-gradient(90deg, #0008, transparent);
+}
+.slide-designer-preview[data-composition="heritage"] h3 { font-family: Georgia, serif; text-transform: uppercase; font-weight: 500; letter-spacing: .04em; }
 .slide-designer-preview > * { position: relative; z-index: 1; }
 .slide-designer-preview::after { content: ""; position: absolute; left: 7%; bottom: 5%; width: 12%; height: 3px; border-radius: 9px; background: var(--slide-accent); }
 .slide-designer-preview-kicker { position: absolute; top: 5%; right: 5%; color: color-mix(in srgb, var(--slide-ink) 54%, transparent); font-size: 8px; text-transform: uppercase; letter-spacing: .08em; }

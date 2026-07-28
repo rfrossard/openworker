@@ -6,6 +6,7 @@ export interface PresentationTemplate {
   gradient?: [string, string];
   transition?: "fade" | "push" | "wipe" | "split" | "cover";
   motif?: "clean" | "chart" | "table" | "image";
+  composition?: "photo-left" | "photo-right" | "botanical" | "collage" | "torn-photo" | "editorial" | "full-bleed" | "infographic" | "minimal-frame" | "heritage";
 }
 
 // Native, editable themes inspired by Presenton's reusable-template model. They are
@@ -43,6 +44,21 @@ export const PRESENTATION_TEMPLATES: PresentationTemplate[] = [
   { id: "dashboard-pro", name: "Dashboard Pro", description: "Structured KPI charts and comparison tables", colors: ["#172033", "#2563EB", "#F8FAFC"], gradient: ["#EFF6FF", "#F8FAFC"], transition: "push", motif: "chart" },
   { id: "science-spectrum", name: "Science Spectrum", description: "Research gradients, tables, and evidence charts", colors: ["#134E4A", "#8B5CF6", "#F0FDFA"], gradient: ["#F0FDFA", "#F5F3FF"], transition: "wipe", motif: "table" },
   { id: "impact-report", name: "Impact Report", description: "Human-centered imagery with metric storytelling", colors: ["#1C1917", "#16A34A", "#FAFAF9"], gradient: ["#F0FDF4", "#FAFAF9"], transition: "fade", motif: "image" },
+  { id: "science-studio", name: "Science Studio", description: "Cinematic laboratory photography with elegant type", colors: ["#E8F7FA", "#56CFE1", "#070B12"], gradient: ["#070B12", "#122B3A"], transition: "fade", motif: "image", composition: "photo-right" },
+  { id: "digital-pulse", name: "Digital Pulse", description: "Energetic maker photography with electric highlights", colors: ["#F8FAFC", "#C7F43B", "#17191C"], gradient: ["#17191C", "#334155"], transition: "push", motif: "image", composition: "photo-left" },
+  { id: "eco-sketchbook", name: "Eco Sketchbook", description: "Playful hand-drawn sustainability storytelling", colors: ["#1F2937", "#4FA8A5", "#FFFDFC"], gradient: ["#FFFDFC", "#FDE3D4"], transition: "wipe", motif: "clean", composition: "botanical" },
+  { id: "social-workshop", name: "Social Workshop", description: "Documentary collage for learning and collaboration", colors: ["#FFFDF8", "#F5C542", "#292524"], gradient: ["#292524", "#57534E"], transition: "split", motif: "image", composition: "collage" },
+  { id: "environmental-fieldwork", name: "Environmental Fieldwork", description: "Optimistic field photography with a torn-paper edge", colors: ["#12372A", "#91B29A", "#FFFEFB"], gradient: ["#FFFEFB", "#EAF4EC"], transition: "wipe", motif: "image", composition: "torn-photo" },
+  { id: "personal-brand", name: "Personal Brand", description: "Fashion editorial with strong asymmetric typography", colors: ["#09090B", "#0B5CAD", "#F7F3F2"], gradient: ["#F7F3F2", "#EEE9E7"], transition: "cover", motif: "image", composition: "editorial" },
+  { id: "botanical-noir", name: "Botanical Noir", description: "Dark botanical photography and restrained mint accents", colors: ["#EAF7F0", "#8ED1B2", "#080D0B"], gradient: ["#080D0B", "#17241E"], transition: "fade", motif: "image", composition: "botanical" },
+  { id: "nature-balance", name: "Nature Balance", description: "Immersive full-bleed nature photography and serif details", colors: ["#F7FFF9", "#A8D5BA", "#0D2C22"], gradient: ["#0D2C22", "#0B3B50"], transition: "cover", motif: "image", composition: "full-bleed" },
+  { id: "storytelling-lab", name: "Storytelling Lab", description: "Minimal cream editorial with a framed documentary image", colors: ["#111111", "#2C8C8C", "#F7F3EB"], gradient: ["#F7F3EB", "#EEE8DC"], transition: "push", motif: "image", composition: "minimal-frame" },
+  { id: "agricultural-motion", name: "Agricultural Motion", description: "Dynamic aerial agriculture imagery and lime accents", colors: ["#FFFFFF", "#A8C96A", "#263A18"], gradient: ["#263A18", "#566B25"], transition: "push", motif: "image", composition: "full-bleed" },
+  { id: "cultural-heritage", name: "Cultural Heritage", description: "Museum-like cinematic storytelling with antique gold", colors: ["#F6ECD8", "#B88A3B", "#17120F"], gradient: ["#17120F", "#3B2419"], transition: "fade", motif: "image", composition: "heritage" },
+  { id: "cyan-infographic", name: "Cyan Infographic", description: "Friendly line-art infographics and structured agendas", colors: ["#172033", "#18B8E6", "#FFFFFF"], gradient: ["#FFFFFF", "#E7F8FD"], transition: "wipe", motif: "chart", composition: "infographic" },
+  { id: "growth-momentum", name: "Growth Momentum", description: "Dark growth narrative with luminous chart direction", colors: ["#F8FAFC", "#38BDF8", "#07131C"], gradient: ["#07131C", "#0C4A6E"], transition: "push", motif: "chart", composition: "infographic" },
+  { id: "home-investment", name: "Home Investment", description: "Warm property finance with approachable infographics", colors: ["#312E2B", "#F0645A", "#FCFAF7"], gradient: ["#FCFAF7", "#F4E8DA"], transition: "split", motif: "table", composition: "minimal-frame" },
+  { id: "museum-editorial", name: "Museum Editorial", description: "Refined cultural layouts with archival framing", colors: ["#F2E7D2", "#9D6B2F", "#15110E"], gradient: ["#15110E", "#30221B"], transition: "fade", motif: "image", composition: "heritage" },
 ];
 
 export function templateById(id: string): PresentationTemplate {

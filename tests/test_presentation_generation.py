@@ -228,6 +228,28 @@ def test_animated_gradient_template_writes_native_transition_and_gradient(tmp_pa
         assert b"<a:gradFill" in slide_xml
 
 
+def test_reference_inspired_templates_use_distinct_cover_compositions(tmp_path):
+    cover_image = tmp_path / "cover.png"
+    _sample_image(cover_image)
+    tool = make_build_presentation_tool(workspace=tmp_path)
+    for template_id in ("science-studio", "environmental-fieldwork", "cyan-infographic"):
+        result = tool(
+            title=f"{template_id} visual system",
+            subtitle="A distinct reference-inspired composition",
+            slides=[{"title": "The content remains editable", "layout": "statement"}],
+            pptx_path=f"{template_id}.pptx",
+            pdf_path=f"{template_id}.pdf",
+            template_id=template_id,
+            cover_image_path="cover.png",
+        )
+        assert result["ok"] is True
+        assert result["template_id"] == template_id
+        assert result["images_embedded"] == 1
+        presentation = Presentation(tmp_path / f"{template_id}.pptx")
+        assert len(presentation.slides[0].shapes) >= 5
+        assert len(presentation.slides[0].shapes._spTree.xpath(".//p:pic")) == 1
+
+
 def test_quality_gate_rejects_markdown_renamed_as_pdf(tmp_path):
     reports = tmp_path / "reports"
     reports.mkdir()

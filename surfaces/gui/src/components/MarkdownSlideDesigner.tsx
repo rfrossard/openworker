@@ -167,6 +167,7 @@ Requirements:
 - Run the presentation-studio skill. Build an editable widescreen PPTX and matching slide PDF with build_presentation.
 - Use template_id="${selectedTemplate.id}" and call build_presentation with minimum_images=${visualSlides}.
 - For every image layout (image-left, image-right, image-background, image-top, or image-bottom), generate one original slide-specific visual with Gemini Nano Banana 2 Lite at 1K, then copy its exact result.path into image_path and keep image_required=true.
+- ${selectedTemplate.composition ? `Generate a separate widescreen cover visual composed specifically for the "${selectedTemplate.composition}" template treatment. Preserve intentional negative space for the title, and pass its exact result.path as cover_image_path.` : "Keep the template's native typographic cover."}
 - For non-image layouts, keep image_required=false unless the user explicitly adds an image later.
 - Write the files beside the source with descriptive .pptx and .pdf names. Also keep the structured slide specification as a .presentation.json artifact.
 - Inspect all rendered slide previews and the contact sheet. Fix clipping, overflow, weak contrast, missing images, and layout mismatches before finishing.
@@ -216,6 +217,7 @@ function SlidePreview({
       data-template={templateId}
       data-transition={template.transition || "none"}
       data-motif={template.motif || "clean"}
+      data-composition={template.composition || "standard"}
       style={previewStyle}
     >
       <span className="slide-designer-preview-kicker">Slide preview</span>
