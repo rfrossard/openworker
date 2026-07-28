@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { readArtifact, type ArtifactInfo } from "../api";
 import { PRESENTATION_TEMPLATES, templateById } from "../presentationTemplates";
@@ -11,7 +11,22 @@ export type SlideLayout =
   | "image-right"
   | "two-column"
   | "quote"
-  | "section";
+  | "section"
+  | "title-only"
+  | "big-number"
+  | "checklist"
+  | "timeline"
+  | "process"
+  | "comparison"
+  | "pros-cons"
+  | "three-columns"
+  | "four-cards"
+  | "metric-grid"
+  | "image-background"
+  | "image-top"
+  | "image-bottom"
+  | "agenda"
+  | "conclusion";
 
 export interface MarkdownSlide {
   id: string;
@@ -34,6 +49,25 @@ const LAYOUTS: { id: SlideLayout; label: string; description: string }[] = [
   { id: "two-column", label: "Two columns", description: "Compare or group ideas" },
   { id: "quote", label: "Quote", description: "Feature a quotation or key message" },
   { id: "section", label: "Section", description: "Introduce a new chapter" },
+  { id: "title-only", label: "Title only", description: "Minimal transition or opening" },
+  { id: "big-number", label: "Big number", description: "Lead with one important metric" },
+  { id: "checklist", label: "Checklist", description: "Actions or completion criteria" },
+  { id: "timeline", label: "Timeline", description: "Events in chronological order" },
+  { id: "process", label: "Process", description: "A connected sequence of steps" },
+  { id: "comparison", label: "Comparison", description: "Side-by-side alternatives" },
+  { id: "pros-cons", label: "Pros and cons", description: "Balanced benefits and tradeoffs" },
+  { id: "three-columns", label: "Three columns", description: "Three parallel themes" },
+  { id: "four-cards", label: "Four cards", description: "Four concise ideas or features" },
+  { id: "metric-grid", label: "Metric grid", description: "Multiple headline indicators" },
+  { id: "image-background", label: "Image background", description: "Full-bleed visual with overlay" },
+  { id: "image-top", label: "Image top", description: "Wide visual above the message" },
+  { id: "image-bottom", label: "Image bottom", description: "Message above a wide visual" },
+  { id: "agenda", label: "Agenda", description: "Numbered presentation roadmap" },
+  { id: "conclusion", label: "Conclusion", description: "Decision and final call to action" },
+];
+
+const IMAGE_LAYOUTS: SlideLayout[] = [
+  "image-left", "image-right", "image-background", "image-top", "image-bottom",
 ];
 
 function cleanInline(value: string): string {
@@ -112,11 +146,11 @@ export function buildMarkdownSlideDesignerPrompt(
 ): string {
   const selectedTemplate = templateById(templateId);
   const visualSlides = deck.slides.filter((slide) =>
-    ["image-left", "image-right"].includes(slide.layout),
+    IMAGE_LAYOUTS.includes(slide.layout),
   ).length;
   const specification = deck.slides.map(({ id: _id, ...slide }) => ({
     ...slide,
-    image_required: ["image-left", "image-right"].includes(slide.layout),
+    image_required: IMAGE_LAYOUTS.includes(slide.layout),
   }));
   return `Create an editable presentation from this existing Markdown artifact:
 
@@ -132,14 +166,26 @@ Requirements:
 - Preserve the approved slide order, titles, takeaways, bullets, and layout values. Do not silently replace a selected layout.
 - Run the presentation-studio skill. Build an editable widescreen PPTX and matching slide PDF with build_presentation.
 - Use template_id="${selectedTemplate.id}" and call build_presentation with minimum_images=${visualSlides}.
-- For every image-left or image-right slide, generate one original slide-specific visual with Gemini Nano Banana 2 Lite at 1K, then copy its exact result.path into image_path and keep image_required=true.
-- For auto, statement, two-column, quote, and section layouts, keep image_required=false unless the user explicitly adds an image later.
+- For every image layout (image-left, image-right, image-background, image-top, or image-bottom), generate one original slide-specific visual with Gemini Nano Banana 2 Lite at 1K, then copy its exact result.path into image_path and keep image_required=true.
+- For non-image layouts, keep image_required=false unless the user explicitly adds an image later.
 - Write the files beside the source with descriptive .pptx and .pdf names. Also keep the structured slide specification as a .presentation.json artifact.
 - Inspect all rendered slide previews and the contact sheet. Fix clipping, overflow, weak contrast, missing images, and layout mismatches before finishing.
 - Finish with clickable links to the PPTX, PDF, contact sheet, and presentation JSON.`;
 }
 
-function SlidePreview({ slide }: { slide: MarkdownSlide }) {
+function SlidePreview({
+  slide,
+  templateId,
+}: {
+  slide: MarkdownSlide;
+  templateId: string;
+}) {
+  const template = templateById(templateId);
+  const previewStyle = {
+    "--slide-ink": template.colors[0],
+    "--slide-accent": template.colors[1],
+    "--slide-bg": template.colors[2],
+  } as CSSProperties;
   const midpoint = Math.ceil(slide.bullets.length / 2);
   const bullets = (items: string[]) => (
     <ul>{items.length ? items.map((item) => <li key={item}>{item}</li>) : <li>Add supporting content</li>}</ul>
@@ -150,8 +196,24 @@ function SlidePreview({ slide }: { slide: MarkdownSlide }) {
       {bullets(slide.bullets)}
     </div>
   );
+  const cards = (count: number) => (
+    <div className={`slide-designer-cards cards-${count}`}>
+      {Array.from({ length: count }, (_, index) => (
+        <div key={index}>
+          <b>{String(index + 1).padStart(2, "0")}</b>
+          <span>{slide.bullets[index] || slide.takeaway || `Idea ${index + 1}`}</span>
+        </div>
+      ))}
+    </div>
+  );
+  const image = <div className="slide-designer-image-placeholder">Generated visual</div>;
   return (
-    <div className={`slide-designer-preview layout-${slide.layout}`} data-testid="slide-preview">
+    <div
+      className={`slide-designer-preview layout-${slide.layout}`}
+      data-testid="slide-preview"
+      data-template={templateId}
+      style={previewStyle}
+    >
       <span className="slide-designer-preview-kicker">Slide preview</span>
       <h3>{slide.title}</h3>
       {slide.layout === "statement" ? (
@@ -160,6 +222,27 @@ function SlidePreview({ slide }: { slide: MarkdownSlide }) {
         <blockquote>“{slide.takeaway || slide.bullets[0] || slide.title}”</blockquote>
       ) : slide.layout === "section" ? (
         <p className="slide-designer-section-copy">{slide.takeaway}</p>
+      ) : slide.layout === "title-only" ? null
+      : slide.layout === "big-number" ? (
+        <div className="slide-designer-big-number"><b>{slide.bullets[0] || "42%"}</b><span>{slide.takeaway || slide.title}</span></div>
+      ) : slide.layout === "checklist" ? (
+        <div className="slide-designer-checklist">{slide.bullets.map((item) => <span key={item}>✓ {item}</span>)}</div>
+      ) : slide.layout === "timeline" || slide.layout === "process" ? (
+        <div className={`slide-designer-sequence ${slide.layout}`}>{slide.bullets.slice(0, 5).map((item, index) => <div key={item}><b>{index + 1}</b><span>{item}</span></div>)}</div>
+      ) : slide.layout === "comparison" || slide.layout === "pros-cons" ? (
+        <div className="slide-designer-comparison"><div><b>{slide.layout === "pros-cons" ? "Pros" : "Option A"}</b>{bullets(slide.bullets.slice(0, midpoint))}</div><div><b>{slide.layout === "pros-cons" ? "Cons" : "Option B"}</b>{bullets(slide.bullets.slice(midpoint))}</div></div>
+      ) : slide.layout === "three-columns" ? cards(3)
+      : slide.layout === "four-cards" || slide.layout === "metric-grid" ? cards(4)
+      : slide.layout === "agenda" ? (
+        <div className="slide-designer-agenda">{slide.bullets.slice(0, 6).map((item, index) => <span key={item}><b>{String(index + 1).padStart(2, "0")}</b>{item}</span>)}</div>
+      ) : slide.layout === "conclusion" ? (
+        <div className="slide-designer-conclusion"><b>{slide.takeaway || "The decision"}</b>{bullets(slide.bullets.slice(0, 3))}</div>
+      ) : slide.layout === "image-background" ? (
+        <div className="slide-designer-background-image">{image}<b>{slide.takeaway}</b></div>
+      ) : slide.layout === "image-top" ? (
+        <div className="slide-designer-stacked">{image}{text}</div>
+      ) : slide.layout === "image-bottom" ? (
+        <div className="slide-designer-stacked">{text}{image}</div>
       ) : slide.layout === "two-column" ? (
         <div className="slide-designer-columns">{bullets(slide.bullets.slice(0, midpoint))}{bullets(slide.bullets.slice(midpoint))}</div>
       ) : slide.layout === "image-left" ? (
@@ -250,7 +333,7 @@ export function MarkdownSlideDesigner({
                   {deck.slides.map((item, index) => <button key={item.id} className={index === selected ? "selected" : ""} onClick={() => setSelected(index)}><span>{index + 1}</span><strong>{item.title}</strong><small>{LAYOUTS.find((layout) => layout.id === item.layout)?.label}</small></button>)}
                 </nav>
                 <div className="slide-designer-stage">
-                  <SlidePreview slide={slide} />
+                  <SlidePreview slide={slide} templateId={templateId} />
                   <div className="slide-designer-edit-fields">
                     <label className="research-field"><span>Slide title</span><input aria-label="Slide title" value={slide.title} onChange={(event) => updateSlide({ title: event.target.value })} /></label>
                     <label className="research-field"><span>Key message</span><textarea aria-label="Key message" rows={2} value={slide.takeaway} onChange={(event) => updateSlide({ takeaway: event.target.value })} /></label>

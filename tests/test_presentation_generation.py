@@ -98,6 +98,41 @@ def test_build_presentation_supports_designer_layouts(tmp_path):
     assert len(PdfReader(tmp_path / "designer.pdf").pages) == 4
 
 
+def test_build_presentation_supports_extended_designer_layouts(tmp_path):
+    image = tmp_path / "visual.png"
+    _sample_image(image)
+    layouts = [
+        "title-only", "big-number", "checklist", "timeline", "process", "comparison",
+        "pros-cons", "three-columns", "four-cards", "metric-grid", "image-background",
+        "image-top", "image-bottom", "agenda", "conclusion",
+    ]
+    image_layouts = {"image-background", "image-top", "image-bottom"}
+    tool = make_build_presentation_tool(workspace=tmp_path)
+    result = tool(
+        title="Extended designer layouts",
+        slides=[
+            {
+                "title": f"{layout} composition",
+                "takeaway": "A deliberate visual hierarchy",
+                "bullets": ["42%", "First idea", "Second idea", "Third idea", "Fourth idea"],
+                "layout": layout,
+                "image_path": "visual.png" if layout in image_layouts else "",
+                "image_required": layout in image_layouts,
+            }
+            for layout in layouts
+        ],
+        pptx_path="extended-designer.pptx",
+        pdf_path="extended-designer.pdf",
+        minimum_images=3,
+        template_id="midnight",
+    )
+
+    assert result["ok"] is True
+    assert result["images_embedded"] == 3
+    assert len(Presentation(tmp_path / "extended-designer.pptx").slides) == 16
+    assert len(PdfReader(tmp_path / "extended-designer.pdf").pages) == 16
+
+
 def test_build_presentation_rejects_path_escape_and_missing_image(tmp_path):
     tool = make_build_presentation_tool(workspace=tmp_path)
     escaped = tool(

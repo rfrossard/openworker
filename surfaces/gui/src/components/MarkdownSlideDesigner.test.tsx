@@ -71,4 +71,27 @@ Choose the first investment.`);
     await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
     expect(onCreate.mock.calls[0][0]).toContain('"layout": "two-column"');
   });
+
+  it("applies template tokens to the preview and offers twenty-two slide styles", async () => {
+    vi.spyOn(api, "readArtifact").mockResolvedValue({
+      ok: true,
+      path: "reports/strategy.md",
+      kind: "markdown",
+      content: "# Strategy\n## The choice\nAct this quarter.\n- Move now\n- Measure results",
+    });
+    render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
+    await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    const preview = screen.getByTestId("slide-preview");
+    expect(preview.dataset.template).toBe("atlas");
+    const atlasStyle = preview.getAttribute("style");
+    fireEvent.change(screen.getByLabelText("Presentation template"), {
+      target: { value: "midnight" },
+    });
+    expect(preview.dataset.template).toBe("midnight");
+    expect(preview.getAttribute("style")).not.toBe(atlasStyle);
+    expect(screen.getByLabelText("Slide styles").querySelectorAll("button")).toHaveLength(22);
+    fireEvent.click(screen.getByRole("button", { name: /Image background/i }));
+    expect(preview.className).toContain("layout-image-background");
+  });
 });

@@ -17,6 +17,12 @@ _MAX_SLIDES = 40
 _MAX_BULLETS = 6
 _WIDE_WIDTH = 13.333
 _WIDE_HEIGHT = 7.5
+_LAYOUTS = {
+    "auto", "image-right", "image-left", "statement", "two-column", "quote", "section",
+    "title-only", "big-number", "checklist", "timeline", "process", "comparison",
+    "pros-cons", "three-columns", "four-cards", "metric-grid", "image-background",
+    "image-top", "image-bottom", "agenda", "conclusion",
+}
 _TEMPLATES = {
     "atlas": {"background": "F7F8FA", "ink": "1A1F2C", "muted": "5B6577", "accent": "2F6BFF", "cover": "1A1F2C"},
     "aurora": {"background": "F3F5FA", "ink": "101827", "muted": "667085", "accent": "8B5CF6", "cover": "101827"},
@@ -78,15 +84,7 @@ _SCHEMA = {
                             },
                             "layout": {
                                 "type": "string",
-                                "enum": [
-                                    "auto",
-                                    "image-right",
-                                    "image-left",
-                                    "statement",
-                                    "two-column",
-                                    "quote",
-                                    "section",
-                                ],
+                                "enum": sorted(_LAYOUTS),
                                 "description": "Intentional slide composition; auto selects image-right when an image exists.",
                             },
                             "sources": {
@@ -264,15 +262,7 @@ def _normalize_slides(root: Path, slides: list[dict[str, Any]]) -> list[dict[str
                 "layout": str(item.get("layout") or "auto").strip().lower(),
             }
         )
-        if normalized[-1]["layout"] not in {
-            "auto",
-            "image-right",
-            "image-left",
-            "statement",
-            "two-column",
-            "quote",
-            "section",
-        }:
+        if normalized[-1]["layout"] not in _LAYOUTS:
             raise ValueError(f"Slide {index} has an unsupported layout.")
         if normalized[-1]["image_fit"] not in {"cover", "contain"}:
             raise ValueError(f"Slide {index} has an unsupported image fit.")
@@ -328,6 +318,13 @@ def _add_pptx(
         paragraph.font.color.rgb = color
         return shape
 
+    def panel(slide, x, y, w, h, color=background):
+        shape = slide.shapes.add_shape(5, Inches(x), Inches(y), Inches(w), Inches(h))
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = color
+        shape.line.color.rgb = muted
+        return shape
+
     cover = deck.slides.add_slide(blank_layout)
     cover.background.fill.solid()
     cover.background.fill.fore_color.rgb = cover_rgb
@@ -342,13 +339,20 @@ def _add_pptx(
         slide = deck.slides.add_slide(blank_layout)
         slide.background.fill.solid()
         layout = spec["layout"]
-        slide.background.fill.fore_color.rgb = cover_rgb if layout == "section" else background
-        if layout == "section":
+        slide.background.fill.fore_color.rgb = cover_rgb if layout in {"section", "conclusion"} else background
+        if layout in {"section", "conclusion"}:
             textbox(slide, f"{number:02d}", 0.82, 0.72, 1.0, 0.45, 13, accent_rgb, True)
             textbox(slide, spec["title"], 0.82, 2.05, 11.4, 1.7, 42, RGBColor(255, 255, 255), True)
             if spec["takeaway"]:
                 textbox(slide, spec["takeaway"], 0.86, 4.15, 10.6, 1.15, 19, RGBColor(205, 213, 225))
             bar = slide.shapes.add_shape(1, Inches(0.84), Inches(5.78), Inches(1.6), Inches(0.1))
+            bar.fill.solid()
+            bar.fill.fore_color.rgb = accent_rgb
+            bar.line.fill.background()
+            continue
+        if layout == "title-only":
+            textbox(slide, spec["title"], 0.95, 2.2, 11.4, 2.2, 42, ink, True)
+            bar = slide.shapes.add_shape(1, Inches(0.98), Inches(4.85), Inches(1.7), Inches(0.1))
             bar.fill.solid()
             bar.fill.fore_color.rgb = accent_rgb
             bar.line.fill.background()
@@ -375,6 +379,65 @@ def _add_pptx(
             if spec["bullets"]:
                 textbox(slide, spec["bullets"][-1], 1.55, 5.25, 9.8, 0.6, 14, muted)
             textbox(slide, str(number), 12.25, 7.0, 0.4, 0.22, 9, muted)
+            continue
+        if layout == "big-number":
+            metric = spec["bullets"][0] if spec["bullets"] else "42%"
+            textbox(slide, metric, 0.78, 2.0, 5.2, 2.3, 62, accent_rgb, True)
+            textbox(slide, spec["takeaway"] or spec["title"], 6.0, 2.25, 6.0, 2.0, 24, ink, True)
+            textbox(slide, str(number), 12.25, 7.0, 0.4, 0.22, 9, muted)
+            continue
+        if layout in {"comparison", "pros-cons"}:
+            midpoint = max(1, (len(spec["bullets"]) + 1) // 2)
+            headings = ("Pros", "Cons") if layout == "pros-cons" else ("Option A", "Option B")
+            for column, values in enumerate((spec["bullets"][:midpoint], spec["bullets"][midpoint:])):
+                x = 0.76 + column * 6.15
+                panel(slide, x, 2.0, 5.65, 4.5)
+                textbox(slide, headings[column], x + 0.3, 2.28, 4.9, 0.5, 20, accent_rgb, True)
+                textbox(slide, "\n".join(f"• {value}" for value in values), x + 0.3, 3.0, 4.9, 2.9, 17, ink)
+            continue
+        if layout in {"timeline", "process"}:
+            values = spec["bullets"][:5] or [spec["takeaway"] or spec["title"]]
+            step_width = 11.7 / len(values)
+            for index, value in enumerate(values):
+                x = 0.8 + index * step_width
+                panel(slide, x, 2.4, step_width - 0.18, 2.7)
+                textbox(slide, str(index + 1), x + 0.18, 2.64, 0.55, 0.5, 19, accent_rgb, True)
+                textbox(slide, value, x + 0.18, 3.38, step_width - 0.55, 1.25, 15, ink, True)
+            continue
+        if layout in {"checklist", "three-columns", "four-cards", "metric-grid", "agenda"}:
+            values = spec["bullets"][:6] or [spec["takeaway"] or spec["title"]]
+            columns = 3 if layout == "three-columns" else 2
+            if layout == "agenda":
+                columns = 2
+            rows = (len(values) + columns - 1) // columns
+            card_w = 11.75 / columns
+            card_h = min(1.35, 4.45 / max(1, rows))
+            for index, value in enumerate(values):
+                column, row = index % columns, index // columns
+                x, y = 0.78 + column * card_w, 2.0 + row * (card_h + 0.14)
+                panel(slide, x, y, card_w - 0.16, card_h)
+                marker = "✓" if layout == "checklist" else f"{index + 1:02d}"
+                textbox(slide, marker, x + 0.18, y + 0.2, 0.7, 0.35, 13, accent_rgb, True)
+                size = 22 if layout == "metric-grid" else 15
+                textbox(slide, value, x + 0.9, y + 0.18, card_w - 1.25, card_h - 0.25, size, ink, layout == "metric-grid")
+            continue
+        if layout in {"image-background", "image-top", "image-bottom"}:
+            if image:
+                if layout == "image-background":
+                    slide.shapes.add_picture(_cover_image(image), 0, 0, width=Inches(_WIDE_WIDTH), height=Inches(_WIDE_HEIGHT))
+                    overlay = slide.shapes.add_shape(1, 0, 0, Inches(_WIDE_WIDTH), Inches(_WIDE_HEIGHT))
+                    overlay.fill.solid()
+                    overlay.fill.fore_color.rgb = cover_rgb
+                    overlay.fill.transparency = 30
+                    overlay.line.fill.background()
+                    textbox(slide, spec["title"], 0.85, 0.75, 10.8, 1.2, 34, RGBColor(255, 255, 255), True)
+                    textbox(slide, spec["takeaway"], 0.88, 5.4, 9.7, 0.9, 21, RGBColor(255, 255, 255), True)
+                else:
+                    image_y = 1.65 if layout == "image-top" else 4.15
+                    slide.shapes.add_picture(_cover_image(image), Inches(0.76), Inches(image_y), width=Inches(11.8), height=Inches(2.55))
+                    body_y = 4.48 if layout == "image-top" else 1.8
+                    textbox(slide, spec["takeaway"], 0.8, body_y, 11.6, 0.65, 17, accent_rgb, True)
+                    textbox(slide, "\n".join(f"• {value}" for value in spec["bullets"][:4]), 0.8, body_y + 0.75, 11.4, 1.3, 16, ink)
             continue
         if layout == "two-column":
             midpoint = max(1, (len(spec["bullets"]) + 1) // 2)
@@ -496,7 +559,7 @@ def _add_pdf(
         canvas.setFillColor(background)
         canvas.rect(0, 0, width, height, stroke=0, fill=1)
         layout = spec["layout"]
-        if layout == "section":
+        if layout in {"section", "conclusion"}:
             canvas.setFillColor(cover)
             canvas.rect(0, 0, width, height, stroke=0, fill=1)
             text(f"{number:02d}", 60, 465, 12, accent_color, "Helvetica-Bold")
@@ -505,6 +568,12 @@ def _add_pdf(
                 text(spec["takeaway"], 62, 205, 16, HexColor("#CDD5E1"), max_width=760)
             canvas.setFillColor(accent_color)
             canvas.rect(62, 95, 115, 7, stroke=0, fill=1)
+            canvas.showPage()
+            continue
+        if layout == "title-only":
+            text(spec["title"], 70, 310, 36, ink, "Helvetica-Bold", 810)
+            canvas.setFillColor(accent_color)
+            canvas.rect(72, 120, 120, 7, stroke=0, fill=1)
             canvas.showPage()
             continue
         text(spec["title"], 52, 485, 24, ink, "Helvetica-Bold", 850)
@@ -524,6 +593,65 @@ def _add_pdf(
             if spec["bullets"]:
                 text(spec["bullets"][-1], 120, 115, 12, muted, max_width=700)
             text(str(number), 895, 25, 8, muted)
+            canvas.showPage()
+            continue
+        if layout == "big-number":
+            metric = spec["bullets"][0] if spec["bullets"] else "42%"
+            text(metric, 60, 300, 58, accent_color, "Helvetica-Bold", 400)
+            text(spec["takeaway"] or spec["title"], 485, 310, 22, ink, "Helvetica-Bold", 410)
+            canvas.showPage()
+            continue
+        if layout in {"comparison", "pros-cons"}:
+            midpoint = max(1, (len(spec["bullets"]) + 1) // 2)
+            headings = ("Pros", "Cons") if layout == "pros-cons" else ("Option A", "Option B")
+            for column, values in enumerate((spec["bullets"][:midpoint], spec["bullets"][midpoint:])):
+                x = 55 + column * 455
+                canvas.setFillColor(HexColor(f"#{style['background']}"))
+                canvas.roundRect(x, 90, 395, 300, 10, stroke=1, fill=1)
+                text(headings[column], x + 22, 350, 18, accent_color, "Helvetica-Bold")
+                y = 305
+                for value in values:
+                    text(f"• {value}", x + 22, y, 12, ink, max_width=345)
+                    y -= 52
+            canvas.showPage()
+            continue
+        if layout in {"timeline", "process"}:
+            values = spec["bullets"][:5] or [spec["takeaway"] or spec["title"]]
+            step_width = 830 / len(values)
+            for index, value in enumerate(values):
+                x = 60 + index * step_width
+                canvas.setFillColor(accent_color)
+                canvas.circle(x + 14, 315, 14, stroke=0, fill=1)
+                text(str(index + 1), x + 10, 310, 9, HexColor("#FFFFFF"), "Helvetica-Bold")
+                text(value, x, 260, 11, ink, "Helvetica-Bold", step_width - 18)
+            canvas.showPage()
+            continue
+        if layout in {"checklist", "three-columns", "four-cards", "metric-grid", "agenda"}:
+            values = spec["bullets"][:6] or [spec["takeaway"] or spec["title"]]
+            columns = 3 if layout == "three-columns" else 2
+            card_width = 840 / columns
+            for index, value in enumerate(values):
+                column, row = index % columns, index // columns
+                x, y = 55 + column * card_width, 345 - row * 95
+                marker = "✓" if layout == "checklist" else f"{index + 1:02d}"
+                text(marker, x + 12, y, 11, accent_color, "Helvetica-Bold")
+                text(value, x + 52, y, 15 if layout == "metric-grid" else 11, ink, "Helvetica-Bold", card_width - 75)
+            canvas.showPage()
+            continue
+        if layout in {"image-background", "image-top", "image-bottom"}:
+            if image:
+                prepared = _cover_image(image, 1200, 675, fit=spec["image_fit"], focus=spec["image_focus"])
+                if layout == "image-background":
+                    canvas.drawImage(ImageReader(prepared), 0, 0, width=960, height=540, mask="auto")
+                    canvas.setFillColorRGB(0, 0, 0, alpha=0.5)
+                    canvas.rect(0, 0, 960, 540, stroke=0, fill=1)
+                    text(spec["title"], 55, 445, 28, HexColor("#FFFFFF"), "Helvetica-Bold", 820)
+                    text(spec["takeaway"], 58, 100, 18, HexColor("#FFFFFF"), "Helvetica-Bold", 760)
+                else:
+                    image_y = 245 if layout == "image-top" else 35
+                    canvas.drawImage(ImageReader(prepared), 55, image_y, width=850, height=225, mask="auto")
+                    body_y = 190 if layout == "image-top" else 385
+                    text(spec["takeaway"], 58, body_y, 15, accent_color, "Helvetica-Bold", 820)
             canvas.showPage()
             continue
         if layout == "two-column":
