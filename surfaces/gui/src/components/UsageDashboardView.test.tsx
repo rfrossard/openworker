@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { AccountCard, formatAccountUpdatedAt } from "./UsageDashboardView";
+import { AccountCard, formatAccountUpdatedAt, OperationUsage } from "./UsageDashboardView";
 
 describe("provider balance update time", () => {
   it("renders the provider-specific timestamp below an official balance", () => {
@@ -29,5 +29,33 @@ describe("provider balance update time", () => {
   it("does not invent a time when the provider omitted it", () => {
     expect(formatAccountUpdatedAt()).toBe("Update time unavailable");
     expect(formatAccountUpdatedAt("invalid")).toBe("Update time unavailable");
+  });
+});
+
+describe("generated media usage", () => {
+  it("shows Gemini image count and estimated cost explicitly", () => {
+    render(
+      <OperationUsage
+        operations={{
+          "Gemini Nano Banana 2 Lite": {
+            type: "image",
+            provider: "Google",
+            model_id: "gemini-3.1-flash-lite-image",
+            units: 2,
+            cost: 0.0672,
+            measurement: "estimated",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Gemini Nano Banana 2 Lite")).toBeTruthy();
+    expect(screen.getByText("$0.0672")).toBeTruthy();
+    expect(screen.getByText("2")).toBeTruthy();
+  });
+
+  it("explains why Gemini has no row before a successful generation", () => {
+    render(<OperationUsage operations={{}} />);
+    expect(screen.getByText(/No billed image or audio generations/)).toBeTruthy();
   });
 });

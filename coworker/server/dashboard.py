@@ -82,9 +82,13 @@ BENCHMARK_META = {
 
 MEDIA_CAPACITY = [
     {"kind": "image", "provider": "OpenAI", "model": "GPT Image 1.5", "unit": "medium 1K image", "cost_per_unit": 0.034},
-    {"kind": "image", "provider": "Google", "model": "Gemini 3.1 Flash Image", "unit": "1K image", "cost_per_unit": 0.067},
+    {"kind": "image", "provider": "Google", "model": "Gemini Nano Banana 2 Lite", "unit": "1K image", "cost_per_unit": 0.0336},
     {"kind": "audio", "provider": "Google", "model": "Gemini 3.1 Flash TTS", "unit": "audio minute", "cost_per_unit": 0.03},
 ]
+
+_OPERATION_MODEL_LABELS = {
+    "gemini-3.1-flash-lite-image": "Gemini Nano Banana 2 Lite",
+}
 
 
 def _provider_summary() -> dict[str, dict[str, Any]]:
@@ -302,13 +306,18 @@ def _operation_usage_events(
         if not isinstance(usage, dict):
             continue
         operation_type = str(usage.get("type") or "").strip().lower()
-        model = str(usage.get("model") or "").strip()
+        model_id = str(usage.get("model") or "").strip()
+        model = (
+            str(usage.get("display_name") or "").strip()
+            or _OPERATION_MODEL_LABELS.get(model_id, model_id)
+        )
         provider = str(usage.get("provider") or "Unknown").strip() or "Unknown"
         if operation_type not in {"image", "audio", "browser", "artifact"} or not model:
             continue
         events.append(
             {
                 "model": model,
+                "model_id": model_id,
                 "provider": provider,
                 "input_tokens": max(0, int(usage.get("input_tokens") or 0)),
                 "output_tokens": max(0, int(usage.get("output_tokens") or 0)),
@@ -329,6 +338,7 @@ def _dashboard_data(manager: Any) -> dict[str, Any]:
     daily: dict[str, dict[str, Any]] = {}
     daily_session_ids: dict[str, set[str]] = defaultdict(set)
     operation_totals: dict[str, dict[str, Any]] = {}
+    operation_models: dict[str, dict[str, Any]] = {}
     total_input = total_output = 0
 
     for record in manager.session_store.list():
@@ -392,6 +402,24 @@ def _dashboard_data(manager: Any) -> dict[str, Any]:
                 )
                 operation["units"] += event.get("units", 0)
                 operation["cost"] += event["cost"]
+                operation_model = operation_models.setdefault(
+                    model_name,
+                    {
+                        "type": operation_type,
+                        "provider": provider_name,
+                        "model_id": event.get("model_id", model_name),
+                        "units": 0,
+                        "cost": 0.0,
+                        "measurement": "reported" if event["exact"] else "estimated",
+                    },
+                )
+                operation_model["units"] += event.get("units", 0)
+                operation_model["cost"] += event["cost"]
+                if event["exact"]:
+                    if operation_model["measurement"] == "estimated":
+                        operation_model["measurement"] = "mixed"
+                elif operation_model["measurement"] == "reported":
+                    operation_model["measurement"] = "mixed"
         for provider_name in session_providers:
             by_provider[provider_name]["sessions"] += 1
         for model_name in session_models:
@@ -410,6 +438,7 @@ def _dashboard_data(manager: Any) -> dict[str, Any]:
             "session_count": len(sessions),
             "by_provider": by_provider, "by_model": by_model,
             "operations": operation_totals,
+            "operation_models": operation_models,
             "daily": dict(sorted(daily.items())),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         },

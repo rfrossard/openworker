@@ -133,3 +133,51 @@ def test_dashboard_counts_image_generation_once_by_session_day_and_provider(tmp_
     }
     assert data["aggregates"]["by_provider"]["OpenAI"]["cost"] == 0.05
     assert data["aggregates"]["daily"][today]["sessions"] == 1
+
+
+def test_dashboard_labels_and_exposes_gemini_image_cost(tmp_path):
+    store = ConversationStore(tmp_path / "state")
+    timestamp = datetime.now().astimezone().replace(hour=14, minute=0, second=0).timestamp()
+    store.save(
+        SessionRecord(
+            session_id="gemini-image-session",
+            workspace=str(tmp_path),
+            model="deepseek:deepseek-v4-flash",
+            mode="interactive",
+            messages=[
+                {
+                    "role": "tool",
+                    "tool_call_id": "gemini-image-1",
+                    "ts": timestamp,
+                    "content": json.dumps(
+                        {
+                            "ok": True,
+                            "operation_usage": {
+                                "type": "image",
+                                "provider": "Google",
+                                "model": "gemini-3.1-flash-lite-image",
+                                "units": 1,
+                                "estimated_cost_usd": 0.0336,
+                                "measurement": "estimated",
+                            },
+                        }
+                    ),
+                },
+            ],
+        )
+    )
+
+    data = _dashboard_data(
+        SimpleNamespace(session_store=store, model="deepseek:deepseek-v4-flash")
+    )
+
+    assert data["aggregates"]["by_model"]["Gemini Nano Banana 2 Lite"]["cost"] == 0.0336
+    assert data["aggregates"]["operation_models"]["Gemini Nano Banana 2 Lite"] == {
+        "type": "image",
+        "provider": "Google",
+        "model_id": "gemini-3.1-flash-lite-image",
+        "units": 1,
+        "cost": 0.0336,
+        "measurement": "estimated",
+    }
+    assert data["sessions"][0]["operations"] == {"image": 1}

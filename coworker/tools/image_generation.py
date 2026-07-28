@@ -13,6 +13,7 @@ import aisuite as ai
 
 
 _MODEL = "gemini-3.1-flash-lite-image"
+_DISPLAY_NAME = "Gemini Nano Banana 2 Lite"
 _SIZES = {"1024x1024", "1536x1024", "1024x1536"}
 _QUALITIES = {"low", "medium", "high"}
 _MAX_IMAGE_BYTES = 30 * 1024 * 1024
@@ -192,6 +193,7 @@ def make_generate_image_tool(
                 "type": "image",
                 "provider": "Google",
                 "model": _MODEL,
+                "display_name": _DISPLAY_NAME,
                 "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
                 "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
                 "units": 1,

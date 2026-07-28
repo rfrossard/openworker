@@ -52,6 +52,7 @@ def test_generate_image_writes_png_atomically_inside_workspace(tmp_path):
     assert result["ok"] is True
     assert (tmp_path / result["path"]).read_bytes() == PNG
     assert result["operation_usage"]["type"] == "image"
+    assert result["operation_usage"]["display_name"] == "Gemini Nano Banana 2 Lite"
     assert result["operation_usage"]["units"] == 1
     assert result["provider"] == "Google"
     assert result["quality"] == "1K"

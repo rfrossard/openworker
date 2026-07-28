@@ -40,6 +40,15 @@ export interface DashboardData {
     session_count: number;
     by_provider: Record<string, { sessions: number; input_tokens: number; output_tokens: number; cost: number }>;
     by_model: Record<string, { sessions: number; tokens: number; cost: number; provider: string }>;
+    operations: Record<string, { units: number; cost: number }>;
+    operation_models: Record<string, {
+      type: string;
+      provider: string;
+      model_id: string;
+      units: number;
+      cost: number;
+      measurement: "reported" | "mixed" | "estimated";
+    }>;
     daily: Record<string, { cost: number; tokens: number; sessions: number }>;
     updated_at: string;
   };
@@ -58,6 +67,7 @@ export interface DashboardSession {
   datetime: string;
   measurement: "reported" | "mixed" | "estimated";
   model_calls: number;
+  operations: Record<string, number>;
 }
 
 export function getUsageDashboard(): Promise<DashboardData> {

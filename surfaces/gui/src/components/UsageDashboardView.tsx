@@ -400,6 +400,7 @@ function UsageTab({
         <Kpi label="Avg / Session" value={money(a.session_count ? a.total_cost_usd / a.session_count : 0)} />
       </div>
       <CapacityPlanner registry={registry} accounts={accounts} media={media} />
+      <OperationUsage operations={a.operation_models || {}} />
       <div className="grid md:grid-cols-2 gap-4">
         <ChartCard title="Cost by Provider">
           <DonutChart values={Object.entries(a.by_provider).map(([label, v]) => ({ label, value: v.cost }))} />
@@ -431,13 +432,16 @@ function UsageTab({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[11.5px]">
             <thead className="text-faint bg-paper"><tr>
-              {["Session", "Model", "Calls", "Input", "Output", "Cost", "Source", "Updated"].map((h) => <th key={h} className="px-3 py-2 font-medium">{h}</th>)}
+              {["Session", "Model", "Calls", "Paid operations", "Input", "Output", "Cost", "Source", "Updated"].map((h) => <th key={h} className="px-3 py-2 font-medium">{h}</th>)}
             </tr></thead>
             <tbody>
               {data.sessions.map((s) => <tr key={s.id} className="border-t border-line">
                 <td className="px-3 py-2 text-ink max-w-[190px] truncate" title={s.title}>{s.title}</td>
                 <td className="px-3 py-2 text-muted whitespace-nowrap">{s.model}</td>
                 <td className="px-3 py-2 text-muted">{s.model_calls}</td>
+                <td className="px-3 py-2 text-muted whitespace-nowrap">
+                  {Object.entries(s.operations || {}).map(([kind, units]) => `${units} ${kind}`).join(", ") || "—"}
+                </td>
                 <td className="px-3 py-2 text-muted">{count(s.input_tokens)}</td>
                 <td className="px-3 py-2 text-muted">{count(s.output_tokens)}</td>
                 <td className="px-3 py-2 text-ink">{money(s.cost_usd)}</td>
@@ -456,6 +460,40 @@ function UsageTab({
       <p className="text-[11px] text-faint">Provider-reported token counts are used when available. Older sessions and providers without usage metadata use a clearly labeled local estimate.</p>
     </div>
   );
+}
+
+export function OperationUsage({ operations }: {
+  operations: DashboardData["aggregates"]["operation_models"];
+}) {
+  const entries = Object.entries(operations).sort(([, a], [, b]) => b.cost - a.cost);
+  return <section className={`${CARD} overflow-hidden`}>
+    <div className="px-4 py-3 border-b border-line">
+      <h2 className="text-[13px] font-semibold">Generated media costs</h2>
+      <p className="text-[10px] text-faint mt-0.5">
+        Successful paid generations recorded by OpenWorker. Estimates are separate from official provider balances.
+      </p>
+    </div>
+    {entries.length ? <div className="overflow-x-auto">
+      <table className="w-full text-left text-[11.5px]">
+        <thead className="text-faint bg-paper"><tr>
+          {["Type", "Provider", "Model", "Quantity", "Cost", "Source"].map((h) =>
+            <th key={h} className="px-3 py-2 font-medium">{h}</th>)}
+        </tr></thead>
+        <tbody>
+          {entries.map(([name, item]) => <tr key={`${item.provider}-${item.model_id}`} className="border-t border-line">
+            <td className="px-3 py-2 text-muted capitalize">{item.type}</td>
+            <td className="px-3 py-2 text-muted">{item.provider}</td>
+            <td className="px-3 py-2 text-ink" title={item.model_id}>{name}</td>
+            <td className="px-3 py-2 text-muted">{count(item.units)}</td>
+            <td className="px-3 py-2 text-ink">{money(item.cost)}</td>
+            <td className="px-3 py-2 text-faint capitalize">{item.measurement}</td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div> : <div className="p-4 text-[11.5px] text-muted">
+      No billed image or audio generations have been recorded yet. A Gemini row appears after a successful, approved image generation.
+    </div>}
+  </section>;
 }
 
 const WORKLOADS = [
