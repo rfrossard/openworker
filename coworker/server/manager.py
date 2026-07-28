@@ -1151,7 +1151,12 @@ class SessionManager:
         if not context.get("ok"):
             return context
         browser_set_streaming_media(session_id, status="analyzing")
-        result = analyze_streaming_media(session_id, str(context["url"]))
+        result = analyze_streaming_media(
+            session_id,
+            str(context["url"]),
+            cookies=list(context.get("cookies") or []),
+            user_agent=str(context.get("user_agent") or ""),
+        )
         if not result.get("ok"):
             browser_set_streaming_media(
                 session_id,

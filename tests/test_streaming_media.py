@@ -94,6 +94,39 @@ def test_analyzes_video_and_audio_formats_without_downloading(monkeypatch):
     assert captured["noplaylist"] is True
 
 
+def test_analysis_forwards_ephemeral_browser_cookies_and_user_agent(monkeypatch):
+    monkeypatch.setattr(streaming_media, "validate_public_url", lambda url: url)
+    captured = {}
+
+    def factory(options):
+        captured.update(options)
+        cookiefile = Path(options["cookiefile"])
+        assert cookiefile.exists()
+        assert "\tSID\tbrowser-cookie" in cookiefile.read_text()
+        return FakeYDL(options, _video_info())
+
+    result = streaming_media.analyze_streaming_media(
+        "session-browser-auth",
+        "https://example.com/watch",
+        cookies=[
+            {
+                "domain": ".example.com",
+                "path": "/",
+                "secure": True,
+                "expires": 0,
+                "name": "SID",
+                "value": "browser-cookie",
+            }
+        ],
+        user_agent="OpenWorker Browser Test",
+        ydl_factory=factory,
+    )
+
+    assert result["ok"] is True
+    assert captured["http_headers"]["User-Agent"] == "OpenWorker Browser Test"
+    assert not Path(captured["cookiefile"]).exists()
+
+
 def test_blocks_drm_only_media(monkeypatch):
     monkeypatch.setattr(streaming_media, "validate_public_url", lambda url: url)
     info = {
@@ -247,7 +280,36 @@ def test_missing_portuguese_track_uses_youtube_auto_translation(
     assert result["ok"] is True
     subtitle = captured_info["subtitles"]["pt"][0]
     assert subtitle["ext"] == "vtt"
-    assert "tlang=pt" in subtitle["url"]
+    assert "tlang=pt-BR" in subtitle["url"]
+
+
+def test_subtitle_rate_limit_returns_login_and_retry_guidance(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(streaming_media, "validate_public_url", lambda url: url)
+    analyzed = streaming_media.analyze_streaming_media(
+        "session-rate-limit",
+        "https://example.com/watch",
+        ydl_factory=lambda options: FakeYDL(options, _video_info()),
+    )
+
+    class RateLimitedYDL(FakeYDL):
+        def extract_info(self, _url, download=False):
+            raise RuntimeError("HTTP Error 429: Too Many Requests")
+
+    result = streaming_media.download_streaming_media(
+        "session-rate-limit",
+        analyzed["formats"][0]["id"],
+        tmp_path,
+        subtitle_language="pt",
+        ydl_factory=lambda options: RateLimitedYDL(options, _video_info()),
+        ffmpeg_path="/safe/ffmpeg",
+    )
+
+    assert result["error"] == (
+        "YouTube temporarily rate-limited subtitle downloads. "
+        "Sign in inside Secure Browser, analyze the page again, and retry."
+    )
 
 
 def test_download_recognizes_an_existing_file_reported_by_downloader(

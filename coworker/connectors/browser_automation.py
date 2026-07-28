@@ -285,6 +285,11 @@ class _BrowserController:
                 return {
                     "ok": True,
                     "url": self._state["url"],
+                    "user_agent": (
+                        self._page.evaluate("navigator.userAgent")
+                        if self._page is not None
+                        else ""
+                    ),
                     "cookies": (
                         self._context.cookies() if self._context is not None else []
                     ),

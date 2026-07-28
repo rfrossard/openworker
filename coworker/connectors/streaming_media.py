@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import tempfile
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -34,6 +37,45 @@ def _youtube_dl_factory(options: dict[str, Any]):
     import yt_dlp
 
     return yt_dlp.YoutubeDL(options)
+
+
+@contextmanager
+def _cookie_file(cookies: list[dict[str, Any]]):
+    """Expose Playwright session cookies to yt-dlp without persisting them."""
+    if not cookies:
+        yield ""
+        return
+    path: Optional[Path] = None
+    try:
+        descriptor, raw_path = tempfile.mkstemp(
+            prefix="openworker-media-", suffix=".cookies"
+        )
+        os.close(descriptor)
+        path = Path(raw_path)
+        lines = ["# Netscape HTTP Cookie File"]
+        for cookie in cookies:
+            domain = str(cookie.get("domain") or "")
+            name = str(cookie.get("name") or "")
+            if not domain or not name:
+                continue
+            lines.append(
+                "\t".join(
+                    (
+                        domain,
+                        "TRUE" if domain.startswith(".") else "FALSE",
+                        str(cookie.get("path") or "/"),
+                        "TRUE" if cookie.get("secure") else "FALSE",
+                        str(max(0, int(cookie.get("expires") or 0))),
+                        name,
+                        str(cookie.get("value") or ""),
+                    )
+                )
+            )
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        yield str(path)
+    finally:
+        if path is not None:
+            path.unlink(missing_ok=True)
 
 
 def _size(item: dict[str, Any]) -> int:
@@ -107,8 +149,10 @@ def _translated_subtitles(
     if not source:
         return {}
     translated: dict[str, dict[str, Any]] = {}
-    for language in ("pt", "es"):
-        if language in choices:
+    for language, translated_code in (("pt", "pt-BR"), ("es", "es")):
+        # PT-BR is intentionally synthesized even when YouTube lists generic "pt":
+        # the generic translation endpoint is frequently rate-limited while PT-BR works.
+        if language in choices and language != "pt":
             continue
         parts = urlsplit(str(source["url"]))
         query = [
@@ -116,7 +160,7 @@ def _translated_subtitles(
             for key, value in parse_qsl(parts.query, keep_blank_values=True)
             if key != "tlang"
         ]
-        query.append(("tlang", language))
+        query.append(("tlang", translated_code))
         translated[language] = {
             **source,
             "url": urlunsplit(
@@ -134,13 +178,45 @@ def _translated_subtitles(
     return translated
 
 
+def _subtitle_records(
+    info: dict[str, Any], choices: dict[str, str]
+) -> dict[str, dict[str, Any]]:
+    records: dict[str, dict[str, Any]] = {}
+    for language, track in choices.items():
+        for source in ("subtitles", "automatic_captions"):
+            values = info.get(source)
+            formats = values.get(track) if isinstance(values, dict) else None
+            if not isinstance(formats, list):
+                continue
+            selected = next(
+                (
+                    item
+                    for item in formats
+                    if isinstance(item, dict)
+                    and item.get("url")
+                    and str(item.get("ext") or "") == "vtt"
+                ),
+                None,
+            )
+            if selected:
+                records[language] = dict(selected)
+                break
+    return records
+
+
 def _normalized_formats(
-    session_id: str, source_url: str, info: dict[str, Any]
+    session_id: str,
+    source_url: str,
+    info: dict[str, Any],
+    *,
+    cookies: Optional[list[dict[str, Any]]] = None,
+    user_agent: str = "",
 ) -> list[dict[str, Any]]:
     selections: dict[str, dict[str, Any]] = {}
     output: list[dict[str, Any]] = []
     seen: set[tuple[Any, ...]] = set()
     subtitle_choices = _subtitle_choices(info)
+    subtitle_records = _subtitle_records(info, subtitle_choices)
     translated_subtitles = _translated_subtitles(info, subtitle_choices)
     formats = [
         item
@@ -196,7 +272,10 @@ def _normalized_formats(
                 else "Audio"
             ),
             "subtitles": subtitle_choices,
+            "subtitle_records": subtitle_records,
             "translated_subtitles": translated_subtitles,
+            "cookies": list(cookies or []),
+            "user_agent": user_agent,
         }
         output.append(
             {
@@ -221,6 +300,8 @@ def analyze_streaming_media(
     session_id: str,
     url: str,
     *,
+    cookies: Optional[list[dict[str, Any]]] = None,
+    user_agent: str = "",
     ydl_factory: Callable[[dict[str, Any]], Any] = _youtube_dl_factory,
 ) -> dict[str, Any]:
     try:
@@ -238,10 +319,44 @@ def analyze_streaming_media(
         "extractor_retries": 2,
         "fragment_retries": 2,
         "socket_timeout": 20,
+        "retries": 5,
+        "sleep_interval_requests": 1,
     }
+    if user_agent:
+        options["http_headers"] = {
+            "User-Agent": user_agent,
+            "Accept-Language": "en-US,en;q=0.9",
+        }
     try:
-        with ydl_factory(options) as ydl:
-            info = ydl.extract_info(source_url, download=False)
+        with _cookie_file(list(cookies or [])) as cookiefile:
+            if cookiefile:
+                options["cookiefile"] = cookiefile
+            with ydl_factory(options) as ydl:
+                info = ydl.extract_info(source_url, download=False)
+            hostname = (urlsplit(source_url).hostname or "").lower()
+            if isinstance(info, dict) and hostname.endswith(
+                ("youtube.com", "youtu.be")
+            ):
+                # Preserve the web client's richer 720p/1080p format list, but merge in
+                # Android's translated captions when the anonymous web player hides them.
+                alternate_options = {
+                    **options,
+                    "extractor_args": {
+                        "youtube": {"player_client": ["android"]}
+                    },
+                }
+                try:
+                    with ydl_factory(alternate_options) as alternate_ydl:
+                        alternate = alternate_ydl.extract_info(
+                            source_url, download=False
+                        )
+                    if isinstance(alternate, dict):
+                        for key in ("subtitles", "automatic_captions"):
+                            merged = dict(info.get(key) or {})
+                            merged.update(dict(alternate.get(key) or {}))
+                            info[key] = merged
+                except Exception:
+                    pass
     except Exception as exc:
         return {"error": f"Could not analyze this stream: {exc}"}
     if not isinstance(info, dict):
@@ -250,7 +365,13 @@ def analyze_streaming_media(
         return {"error": "Playlists and multi-video downloads are not supported."}
     if info.get("is_live"):
         return {"error": "Live recording will be added in a later streaming phase."}
-    formats = _normalized_formats(session_id, source_url, info)
+    formats = _normalized_formats(
+        session_id,
+        source_url,
+        info,
+        cookies=cookies,
+        user_agent=user_agent,
+    )
     if not formats:
         if any(item.get("has_drm") for item in info.get("formats", [])):
             return {"error": "This media is protected by DRM and cannot be downloaded."}
@@ -297,17 +418,28 @@ def download_streaming_media(
         if subtitle_language
         else None
     )
-    if subtitle_language and not subtitle_track and not translated_subtitle:
+    subtitle_record = (
+        dict(selection.get("subtitle_records") or {}).get(subtitle_language)
+        if subtitle_language
+        else None
+    )
+    if (
+        subtitle_language
+        and not subtitle_track
+        and not translated_subtitle
+        and not subtitle_record
+    ):
         return {
             "error": (
                 "The selected subtitle language is not available for this video, "
                 "including automatic captions."
             )
         }
-    if translated_subtitle:
+    injected_subtitle = translated_subtitle or subtitle_record
+    if injected_subtitle:
         try:
-            translated_subtitle["url"] = validate_public_url(
-                str(translated_subtitle.get("url") or "")
+            injected_subtitle["url"] = validate_public_url(
+                str(injected_subtitle.get("url") or "")
             )
         except BrowserPolicyError as exc:
             return {"error": str(exc)}
@@ -378,7 +510,15 @@ def download_streaming_media(
         "extractor_retries": 2,
         "fragment_retries": 3,
         "socket_timeout": 30,
+        "retries": 5,
+        "sleep_interval_requests": 1,
     }
+    user_agent = str(selection.get("user_agent") or "")
+    if user_agent:
+        options["http_headers"] = {
+            "User-Agent": user_agent,
+            "Accept-Language": "en-US,en;q=0.9",
+        }
     if subtitle_language:
         options.update(
             {
@@ -396,17 +536,20 @@ def download_streaming_media(
             }
         )
     try:
-        with ydl_factory(options) as ydl:
-            if translated_subtitle:
-                info = ydl.extract_info(source_url, download=False)
-                if not isinstance(info, dict):
-                    return {"error": "The stream analyzer returned no media information."}
-                subtitles = dict(info.get("subtitles") or {})
-                subtitles[subtitle_language] = [translated_subtitle]
-                info["subtitles"] = subtitles
-                info = ydl.process_ie_result(info, download=True)
-            else:
-                info = ydl.extract_info(source_url, download=True)
+        with _cookie_file(list(selection.get("cookies") or [])) as cookiefile:
+            if cookiefile:
+                options["cookiefile"] = cookiefile
+            with ydl_factory(options) as ydl:
+                if injected_subtitle:
+                    info = ydl.extract_info(source_url, download=False)
+                    if not isinstance(info, dict):
+                        return {"error": "The stream analyzer returned no media information."}
+                    subtitles = dict(info.get("subtitles") or {})
+                    subtitles[subtitle_language] = [injected_subtitle]
+                    info["subtitles"] = subtitles
+                    info = ydl.process_ie_result(info, download=True)
+                else:
+                    info = ydl.extract_info(source_url, download=True)
             if isinstance(info, dict):
                 remember_path(info.get("filepath"))
                 remember_path(info.get("_filename"))
@@ -418,7 +561,15 @@ def download_streaming_media(
         for path in destination.iterdir():
             if path.resolve() not in before and path.suffix in {".part", ".ytdl"}:
                 path.unlink(missing_ok=True)
-        return {"error": f"Download failed: {exc}"}
+        message = str(exc)
+        if "HTTP Error 429" in message and subtitle_language:
+            return {
+                "error": (
+                    "YouTube temporarily rate-limited subtitle downloads. "
+                    "Sign in inside Secure Browser, analyze the page again, and retry."
+                )
+            }
+        return {"error": f"Download failed: {message}"}
 
     created = [
         path
