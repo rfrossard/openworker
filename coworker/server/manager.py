@@ -1427,6 +1427,11 @@ class SessionManager:
         evidence_count = len(browser.get("evidence") or [])
         result = []
         for run in self.research_runs.list(session_id):
+            if run.status in {"researching", "synthesizing"}:
+                captured = list(browser.get("evidence") or [])[
+                    run.browser_evidence_count_at_start :
+                ]
+                self.research_runs.merge_evidence(run.run_id, captured)
             value = run.to_dict()
             baseline = set(run.artifact_paths_at_start)
             produced = [path for path in current_paths if path not in baseline]
@@ -1444,6 +1449,36 @@ class SessionManager:
             )
             result.append(value)
         return result
+
+    def update_research_evidence(
+        self,
+        session_id: str,
+        run_id: str,
+        evidence_id: str,
+        changes: dict[str, Any],
+    ) -> dict[str, Any]:
+        run = next(
+            (
+                item
+                for item in self.research_runs.list(session_id)
+                if item.run_id == run_id
+            ),
+            None,
+        )
+        if run is None:
+            return {"ok": False, "error": "Research run not found."}
+        try:
+            evidence = self.research_runs.update_evidence(
+                run_id,
+                evidence_id,
+                status=changes.get("status"),
+                note=changes.get("note"),
+            )
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        if evidence is None:
+            return {"ok": False, "error": "Research evidence not found."}
+        return {"ok": True, "evidence": evidence}
 
     def update_research_run(
         self, session_id: str, run_id: str, changes: dict[str, Any]

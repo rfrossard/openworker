@@ -574,6 +574,16 @@ def create_app(manager: SessionManager) -> FastAPI:
     ) -> dict[str, Any]:
         return manager.update_research_run(session_id, run_id, body or {})
 
+    @app.patch(
+        "/v1/sessions/{session_id}/research-runs/{run_id}/evidence/{evidence_id}"
+    )
+    def session_update_research_evidence(
+        session_id: str, run_id: str, evidence_id: str, body: dict
+    ) -> dict[str, Any]:
+        return manager.update_research_evidence(
+            session_id, run_id, evidence_id, body or {}
+        )
+
     @app.get("/v1/memory")
     def memory() -> dict[str, Any]:
         return {"memory": manager.list_memory()}

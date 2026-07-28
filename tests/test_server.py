@@ -237,6 +237,79 @@ def test_only_planned_research_projects_can_change_their_brief(
     }
 
 
+def test_active_research_collects_browser_evidence_without_duplicates(
+    tmp_path, monkeypatch
+):
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    browser = {"history": [], "evidence": []}
+    monkeypatch.setattr(manager, "list_artifacts", lambda _session: [])
+    monkeypatch.setattr(manager, "browser_state", lambda _session: dict(browser))
+    created = manager.create_research_run(
+        "research-session",
+        question="Evidence",
+        depth="quick",
+        plan=["Collect"],
+    )["run"]
+    manager.start_research_run_from_text(
+        "research-session", f"Research Run: {created['run_id']}"
+    )
+    browser["evidence"] = [
+        {
+            "url": "https://example.com/report",
+            "title": "Report",
+            "action": "open_url",
+            "captured_at": "2026-07-27T00:00:00Z",
+            "screenshot_sha256": "snapshot",
+        }
+    ]
+
+    first = manager.list_research_runs("research-session")[0]
+    second = manager.list_research_runs("research-session")[0]
+
+    assert len(first["evidence"]) == 1
+    assert len(second["evidence"]) == 1
+    evidence_id = first["evidence"][0]["evidence_id"]
+    updated = manager.update_research_evidence(
+        "research-session",
+        created["run_id"],
+        evidence_id,
+        {"status": "conflicting", "note": "Numbers disagree."},
+    )
+    assert updated["ok"] is True
+    assert updated["evidence"]["status"] == "conflicting"
+
+
+def test_research_evidence_cannot_cross_sessions(tmp_path, monkeypatch):
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    monkeypatch.setattr(manager, "list_artifacts", lambda _session: [])
+    monkeypatch.setattr(
+        manager, "browser_state", lambda _session: {"history": [], "evidence": []}
+    )
+    created = manager.create_research_run(
+        "session-a",
+        question="Private evidence",
+        depth="quick",
+        plan=["Collect"],
+    )["run"]
+
+    result = manager.update_research_evidence(
+        "session-b",
+        created["run_id"],
+        "evidence-missing",
+        {"status": "verified"},
+    )
+
+    assert result == {"ok": False, "error": "Research run not found."}
+
+
 def test_research_run_failure_can_be_retried(tmp_path, monkeypatch):
     manager = SessionManager(
         workspace=tmp_path,

@@ -7,6 +7,7 @@ source of truth instead of inferring state from chat messages.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 import uuid
@@ -26,6 +27,7 @@ RESEARCH_STATUSES = {
     "cancelled",
 }
 SOURCE_LIMITS = {"quick": 5, "standard": 10, "deep": 20}
+EVIDENCE_STATUSES = {"collected", "verified", "conflicting", "discarded"}
 
 
 def _now() -> str:
@@ -48,6 +50,7 @@ class ResearchRun:
     artifact_paths_at_start: list[str] = field(default_factory=list)
     browser_history_count_at_start: int = 0
     browser_evidence_count_at_start: int = 0
+    evidence: list[dict[str, Any]] = field(default_factory=list)
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     extra_fields: dict[str, Any] = field(default_factory=dict, repr=False)
@@ -65,6 +68,14 @@ class ResearchRun:
             for key, item in value.items()
             if key not in fields
         }
+        if not isinstance(known.get("evidence", []), list):
+            known["evidence"] = []
+        else:
+            known["evidence"] = [
+                dict(item)
+                for item in known.get("evidence", [])
+                if isinstance(item, dict)
+            ]
         return cls(**known)
 
     def to_dict(self) -> dict[str, Any]:
@@ -193,3 +204,87 @@ class ResearchRunStore:
             run.updated_at = _now()
             self._save()
             return run
+
+    def merge_evidence(
+        self, run_id: str, items: list[dict[str, Any]]
+    ) -> Optional[ResearchRun]:
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is None:
+                return None
+            existing = {
+                str(item.get("fingerprint") or ""): item
+                for item in run.evidence
+                if item.get("fingerprint")
+            }
+            changed = False
+            for raw in items:
+                url = str(raw.get("url") or "").strip()
+                if not url:
+                    continue
+                screenshot_sha256 = str(
+                    raw.get("screenshot_sha256") or ""
+                ).strip()
+                fingerprint = hashlib.sha256(
+                    f"{url}\n{screenshot_sha256 or raw.get('title') or ''}".encode(
+                        "utf-8"
+                    )
+                ).hexdigest()
+                if fingerprint in existing:
+                    continue
+                item = {
+                    "evidence_id": f"evidence-{fingerprint[:12]}",
+                    "fingerprint": fingerprint,
+                    "url": url,
+                    "title": str(raw.get("title") or "").strip(),
+                    "action": str(raw.get("action") or "").strip(),
+                    "captured_at": str(raw.get("captured_at") or _now()),
+                    "screenshot_sha256": screenshot_sha256,
+                    "status": "collected",
+                    "note": "",
+                }
+                run.evidence.append(item)
+                existing[fingerprint] = item
+                changed = True
+            if changed:
+                run.updated_at = _now()
+                self._save()
+            return run
+
+    def update_evidence(
+        self,
+        run_id: str,
+        evidence_id: str,
+        *,
+        status: Any = None,
+        note: Any = None,
+    ) -> Optional[dict[str, Any]]:
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is None:
+                return None
+            item = next(
+                (
+                    value
+                    for value in run.evidence
+                    if value.get("evidence_id") == evidence_id
+                ),
+                None,
+            )
+            if item is None:
+                return None
+            if status is not None:
+                status = str(status).strip().lower()
+                if status not in EVIDENCE_STATUSES:
+                    raise ValueError("Invalid evidence status.")
+                item["status"] = status
+            if note is not None:
+                note = str(note).strip()
+                if len(note) > 2000:
+                    raise ValueError(
+                        "Evidence note must be 2,000 characters or fewer."
+                    )
+                item["note"] = note
+            run.updated_at = _now()
+            self._save()
+            return dict(item)

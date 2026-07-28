@@ -247,8 +247,21 @@ export interface ResearchRun {
   artifact_count: number;
   browser_navigation_count: number;
   browser_evidence_count: number;
+  evidence: ResearchEvidence[];
   created_at: string;
   updated_at: string;
+}
+
+export interface ResearchEvidence {
+  evidence_id: string;
+  fingerprint: string;
+  url: string;
+  title: string;
+  action: string;
+  captured_at: string;
+  screenshot_sha256: string;
+  status: "collected" | "verified" | "conflicting" | "discarded";
+  note: string;
 }
 
 export async function getResearchRuns(sessionId: string): Promise<ResearchRun[]> {
@@ -275,6 +288,23 @@ export async function updateResearchRun(
 ): Promise<{ ok: boolean; run?: ResearchRun; error?: string }> {
   const res = await fetch(
     `${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}/research-runs/${encodeURIComponent(runId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  return res.json();
+}
+
+export async function updateResearchEvidence(
+  sessionId: string,
+  runId: string,
+  evidenceId: string,
+  input: { status?: ResearchEvidence["status"]; note?: string },
+): Promise<{ ok: boolean; evidence?: ResearchEvidence; error?: string }> {
+  const res = await fetch(
+    `${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}/research-runs/${encodeURIComponent(runId)}/evidence/${encodeURIComponent(evidenceId)}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

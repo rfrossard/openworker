@@ -680,6 +680,18 @@ button.btn.danger { color: var(--accent); }
   font: inherit; font-size: 10.5px; font-weight: 650; cursor: pointer;
 }
 .research-project-edit:hover { text-decoration: underline; }
+.research-evidence-board { margin-top: 3px; border-top: 1px solid var(--line); padding-top: 6px; }
+.research-evidence-board > summary { color: var(--muted); font-size: 10.5px; font-weight: 650; cursor: pointer; }
+.research-evidence-list { display: flex; flex-direction: column; gap: 7px; padding-top: 7px; }
+.research-evidence-item { display: flex; flex-direction: column; gap: 3px; padding: 7px; border-radius: 7px; background: var(--panel); }
+.research-evidence-head { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
+.research-evidence-head strong { min-width: 0; overflow: hidden; color: var(--ink); font-size: 10.5px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.research-evidence-head select { max-width: 92px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--muted); font-size: 9.5px; }
+.research-evidence-item > span { overflow: hidden; color: var(--faint); font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
+.research-evidence-note { align-self: flex-start; padding: 0; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 9.5px; cursor: pointer; }
+.research-evidence-note-editor { display: flex; align-items: flex-end; gap: 5px; }
+.research-evidence-note-editor textarea { flex: 1; min-width: 0; resize: vertical; padding: 5px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit; font-size: 10px; }
+.research-evidence-note-editor .btn { flex: none; padding: 5px 7px; font-size: 9.5px; }
 .research-run-status { padding: 2px 5px; border-radius: 5px; color: var(--muted); background: var(--line); font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 .research-run-status.researching, .research-run-status.synthesizing { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .research-run-status.completed { color: #2e7d4f; background: color-mix(in srgb, #2e7d4f 12%, transparent); }

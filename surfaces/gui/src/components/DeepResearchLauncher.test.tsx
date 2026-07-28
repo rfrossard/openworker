@@ -75,6 +75,7 @@ describe("Deep Research launcher", () => {
       artifact_count: 0,
       browser_navigation_count: 0,
       browser_evidence_count: 0,
+      evidence: [],
       created_at: "2026-07-27T00:00:00Z",
       updated_at: "2026-07-27T00:00:00Z",
     };

@@ -25,6 +25,7 @@ import { AccessSection } from "./AccessSection";
 import { DeepResearchLauncher } from "./DeepResearchLauncher";
 import { Icon } from "./Icon";
 import { Markdown, OPEN_ARTIFACT_EVENT } from "./Markdown";
+import { ResearchEvidenceBoard } from "./ResearchEvidenceBoard";
 
 type Panel = "progress" | "browser" | "artifacts";
 
@@ -255,6 +256,26 @@ export function RightRail({
                     <span>
                       {run.plan.length} plan steps · {run.source_limit} sources planned
                     </span>
+                    <ResearchEvidenceBoard
+                      sessionId={sessionId}
+                      run={run}
+                      onEvidenceUpdated={(evidence) =>
+                        setResearchRuns((current) =>
+                          current.map((item) =>
+                            item.run_id === run.run_id
+                              ? {
+                                  ...item,
+                                  evidence: item.evidence.map((value) =>
+                                    value.evidence_id === evidence.evidence_id
+                                      ? evidence
+                                      : value,
+                                  ),
+                                }
+                              : item,
+                          ),
+                        )
+                      }
+                    />
                   </div>
                 ))}
               </div>

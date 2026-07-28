@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from coworker.research_runs import ResearchRunStore
 
 
@@ -116,3 +118,87 @@ def test_unknown_research_fields_survive_round_trip(tmp_path):
     payload = json.loads(path.read_text(encoding="utf-8"))
 
     assert payload["runs"][0]["future_field"] == {"keep": True}
+
+
+def test_research_evidence_is_deduplicated_and_persists(tmp_path):
+    path = tmp_path / "research-runs.json"
+    store = ResearchRunStore(path)
+    run = store.create(
+        session_id="session-a",
+        question="Evidence",
+        depth="quick",
+        plan=["Collect evidence"],
+    )
+    captured = {
+        "url": "https://example.com/report",
+        "title": "Primary report",
+        "action": "open_url",
+        "captured_at": "2026-07-27T00:00:00Z",
+        "screenshot_sha256": "abc123",
+    }
+
+    store.merge_evidence(run.run_id, [captured, dict(captured)])
+    restored = ResearchRunStore(path).list("session-a")[0]
+
+    assert len(restored.evidence) == 1
+    assert restored.evidence[0]["status"] == "collected"
+    assert restored.evidence[0]["title"] == "Primary report"
+
+
+def test_research_evidence_status_and_note_are_validated(tmp_path):
+    store = ResearchRunStore(tmp_path / "research-runs.json")
+    run = store.create(
+        session_id="session-a",
+        question="Evidence",
+        depth="quick",
+        plan=["Collect evidence"],
+    )
+    store.merge_evidence(
+        run.run_id,
+        [{"url": "https://example.com", "title": "Example"}],
+    )
+    evidence_id = run.evidence[0]["evidence_id"]
+
+    updated = store.update_evidence(
+        run.run_id,
+        evidence_id,
+        status="verified",
+        note="Confirmed by the primary source.",
+    )
+
+    assert updated["status"] == "verified"
+    assert updated["note"] == "Confirmed by the primary source."
+    with pytest.raises(ValueError, match="Invalid evidence status"):
+        store.update_evidence(
+            run.run_id,
+            evidence_id,
+            status="trusted",
+        )
+    with pytest.raises(ValueError, match="2,000 characters"):
+        store.update_evidence(
+            run.run_id,
+            evidence_id,
+            note="x" * 2001,
+        )
+
+
+def test_invalid_persisted_evidence_collection_is_safely_normalized(tmp_path):
+    path = tmp_path / "research-runs.json"
+    path.write_text(
+        """{
+  "version": 1,
+  "runs": [{
+    "run_id": "research-existing",
+    "session_id": "session-a",
+    "question": "Existing",
+    "depth": "quick",
+    "plan": ["Research"],
+    "evidence": "corrupt"
+  }]
+}""",
+        encoding="utf-8",
+    )
+
+    restored = ResearchRunStore(path).list("session-a")[0]
+
+    assert restored.evidence == []
