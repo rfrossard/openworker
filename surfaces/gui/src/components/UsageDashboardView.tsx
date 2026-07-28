@@ -636,7 +636,17 @@ function ProvidersTab({ providers, accounts }: { providers: Record<string, any>;
   </div>;
 }
 
-function AccountCard({ name, account }: { name: string; account: ProviderAccount }) {
+export function formatAccountUpdatedAt(value?: string): string {
+  if (!value) return "Update time unavailable";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Update time unavailable";
+  return `Last updated ${new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "medium",
+  }).format(parsed)}`;
+}
+
+export function AccountCard({ name, account }: { name: string; account: ProviderAccount }) {
   const balance = account.balances?.[0];
   const good = account.status === "available" || account.status === "usage_available";
   return <div className={`${CARD} p-4`}>
@@ -653,6 +663,9 @@ function AccountCard({ name, account }: { name: string; account: ProviderAccount
       <div className="text-[22px] font-semibold">{account.currency || "USD"} {account.month_spend.toFixed(2)}</div>
       <div className="text-[10.5px] text-faint">Official spend this month</div>
     </div> : <div className="text-[11.5px] text-muted mt-2">{account.message || "No financial data available."}</div>}
+    <div className="text-[10px] text-faint mt-2" title={account.updated_at || undefined}>
+      {formatAccountUpdatedAt(account.updated_at)}
+    </div>
   </div>;
 }
 

@@ -398,6 +398,7 @@ def _account_summary(manager: Any) -> dict[str, Any]:
                 "scope": "account", "source": "official",
                 "message": "Balance could not be retrieved with the configured key.",
             }
+        result["DeepSeek"]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     openai_key, _ = _provider_key(manager, "openai", "OPENAI_API_KEY")
     if openai_key:
@@ -437,6 +438,7 @@ def _account_summary(manager: Any) -> dict[str, Any]:
                 "scope": "organization", "source": "official",
                 "message": "Official costs could not be retrieved.",
             }
+        result["OpenAI"]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     return {"accounts": result, "updated_at": datetime.now(timezone.utc).isoformat()}
 

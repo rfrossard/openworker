@@ -85,6 +85,7 @@ export interface ProviderAccount {
   scope: string;
   source: string;
   message?: string;
+  updated_at?: string;
 }
 
 export function getUsageAccounts(): Promise<{
