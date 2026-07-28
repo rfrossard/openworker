@@ -39,6 +39,11 @@ dependencies = [
     "yt-dlp==2026.6.9",
     # Portable FFmpeg binary used to merge separate video/audio streams in desktop bundles.
     "imageio-ffmpeg>=0.6,<0.7",
+    # Deterministic, local presentation rendering. The same slide specification is
+    # exported to editable PPTX and a visually equivalent paginated PDF.
+    "python-pptx>=1.0,<2",
+    "reportlab>=4.2,<5",
+    "Pillow>=10,<13",
 ]
 
 [project.optional-dependencies]

@@ -64,11 +64,23 @@ for pkg in (
     "playwright",
     "yt_dlp",
     "imageio_ffmpeg",
+    "pptx",
+    "reportlab",
+    "PIL",
 ):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b
     hiddenimports += h
+
+# Built-in agent skills are immutable application resources. User and workspace
+# skills are loaded afterward and can intentionally override them by name.
+datas.append(
+    (
+        os.path.join(ROOT, "skills", "presentation-studio"),
+        os.path.join("skills", "presentation-studio"),
+    )
+)
 
 # Windows has no system tz database; tzdata ships the zoneinfo files the scheduler needs.
 if IS_WINDOWS:
@@ -94,7 +106,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    excludes=["tkinter", "matplotlib", "PIL", "PyQt5", "PySide6"]
+    excludes=["tkinter", "matplotlib", "PyQt5", "PySide6"]
     + ([] if INCLUDE_EXPERIMENTAL else ["coworker.connectors.experimental"]),
     noarchive=False,
 )

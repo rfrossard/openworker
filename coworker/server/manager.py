@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from ..agent import build_engine
+from ..agent import build_engine, builtin_skills_dir
 from ..agents import get_agent
 from ..connections import (
     PersonaConnectionStore,
@@ -94,6 +94,16 @@ from ..skills import SkillLoader
 _SCOPES = {s.value for s in Scope}
 
 logger = logging.getLogger("coworker.manager")
+
+
+def _artifact_has_signature(workspace: Path, relative_path: str, signature: bytes) -> bool:
+    try:
+        candidate = (workspace / relative_path).resolve()
+        candidate.relative_to(workspace)
+        with candidate.open("rb") as handle:
+            return handle.read(len(signature)) == signature
+    except (OSError, ValueError):
+        return False
 
 
 def _grants_of(engine) -> dict[str, Any]:
@@ -1436,6 +1446,12 @@ class SessionManager:
     def list_research_runs(self, session_id: str) -> list[dict[str, Any]]:
         current_artifacts = self.list_artifacts(session_id)
         current_paths = [str(item.get("path") or "") for item in current_artifacts]
+        record = self.session_store.load(session_id)
+        workspace = (
+            Path(record.workspace).expanduser().resolve()
+            if record and record.workspace
+            else None
+        )
         browser = self.browser_state(session_id)
         history_count = len(browser.get("history") or [])
         evidence_count = len(browser.get("evidence") or [])
@@ -1481,12 +1497,14 @@ class SessionManager:
                 )
                 if restored is not None and restored.claims:
                     value["claims"] = list(restored.claims)
-            value["quality"] = self._research_quality(value)
+            value["quality"] = self._research_quality(value, workspace=workspace)
             result.append(value)
         return result
 
     @staticmethod
-    def _research_quality(run: dict[str, Any]) -> dict[str, Any]:
+    def _research_quality(
+        run: dict[str, Any], *, workspace: Optional[Path] = None
+    ) -> dict[str, Any]:
         """Deterministic, non-model quality gate for completed research artifacts."""
         paths = [str(path) for path in run.get("artifact_paths") or []]
         if not paths:
@@ -1501,14 +1519,32 @@ class SessionManager:
                 issues.append(message)
 
         if run.get("deliverable") == "presentation":
+            pptx_paths = [path for path in paths if path.lower().endswith(".pptx")]
+            pdf_paths = [path for path in paths if path.lower().endswith(".pdf")]
             require(
-                any(path.lower().endswith(".pptx") for path in paths),
+                bool(pptx_paths),
                 "Editable PPTX is missing.",
             )
             require(
-                any(path.lower().endswith(".pdf") for path in paths),
+                bool(pdf_paths),
                 "Presentation PDF is missing.",
             )
+            if workspace and pptx_paths:
+                require(
+                    any(
+                        _artifact_has_signature(workspace, path, b"PK")
+                        for path in pptx_paths
+                    ),
+                    "The PPTX file is not a valid OOXML presentation.",
+                )
+            if workspace and pdf_paths:
+                require(
+                    any(
+                        _artifact_has_signature(workspace, path, b"%PDF-")
+                        for path in pdf_paths
+                    ),
+                    "The PDF file is not a real PDF document.",
+                )
             require(
                 any(path.lower().endswith("-storyboard.md") for path in paths),
                 "Storyboard is missing.",
@@ -4070,7 +4106,7 @@ class SessionManager:
         return _list_agents()
 
     def list_skills(self) -> list[dict[str, Any]]:
-        loader = SkillLoader([state_dir() / "skills"])
+        loader = SkillLoader([builtin_skills_dir(), state_dir() / "skills"])
         return loader.catalog()
 
     def list_memory(self) -> list[dict[str, Any]]:

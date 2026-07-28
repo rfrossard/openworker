@@ -6,6 +6,7 @@ the skill catalog (progressive disclosure) + load_skill into a TurnEngine.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -34,6 +35,7 @@ from .secrets import SecretStore, state_dir
 from .skills import SkillLoader, skill_catalog_text, skill_tools
 from .tools import ToolRegistry
 from .tools.image_generation import make_generate_image_tool
+from .tools.presentation_generation import make_build_presentation_tool
 from .tools.ask import ask_user_tool
 from .tools.directories import request_directory_tool
 from .tools.plan import propose_plan_tool
@@ -111,8 +113,14 @@ def _enabled_connector_tools(secrets: SecretStore) -> tuple[set[str], set[str]]:
     return enabled_connectors, enabled_tools
 
 
+def builtin_skills_dir() -> Path:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+    return base / "skills"
+
+
 def _skill_dirs(workspace: Optional[Path]) -> list[Path]:
-    dirs = [state_dir() / "skills"]
+    # Later directories intentionally override built-ins by name.
+    dirs = [builtin_skills_dir(), state_dir() / "skills"]
     if workspace is not None:
         dirs.append(workspace / ".coworker" / "skills")
     return dirs
@@ -237,6 +245,7 @@ def build_engine(
         registry.register(
             make_generate_image_tool(secrets, workspace=ws)
         )
+        registry.register(make_build_presentation_tool(workspace=ws))
     # ask_user: the universal human-in-the-loop Q&A primitive (every agent; engine-intercepted).
     if question_asker is not None:
         registry.register(ask_user_tool())

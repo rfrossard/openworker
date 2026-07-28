@@ -49,7 +49,9 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("Target 12 slides");
     expect(prompt).toContain("Executive leadership");
     expect(prompt).toContain("two-stage workflow inspired by PPTAgent");
-    expect(prompt).toContain("PptxGenJS");
+    expect(prompt).toContain("presentation-studio skill");
+    expect(prompt).toContain("native build_presentation tool");
+    expect(prompt).toContain("Never create the PDF with a Markdown writer");
     expect(prompt).toContain("Presenton-style local/BYOK");
     expect(prompt).toContain("native generate_image tool at high quality");
     expect(prompt).toContain("reports/assets/");

@@ -54,12 +54,14 @@ Research Presentation deliverable:
 - Target ${brief.slideCount || 10} slides. Keep the title slide minimal and close by resolving the opening question with conclusions or a decision.
 - Visual direction: ${brief.visualDirection?.trim() || "clean, editorial, evidence-led, and appropriate for the audience"}.
 - Use a two-stage workflow inspired by PPTAgent: first research and storyboard; then render, inspect every slide, and revise visual or factual defects.
-- Prefer an editable PPTX built with PptxGenJS when it is safely available. Apply Presenton-style local/BYOK principles: never send research, files, or credentials to an unapproved external presentation service.
+- Load the presentation-studio skill before storyboarding. Its workflow and quality gate are mandatory.
+- Build both final formats with the native build_presentation tool from one structured slide specification. Never create the PDF with a Markdown writer, plain-text converter, or by renaming a file.
+- Apply Presenton-style local/BYOK principles: never send research, files, or credentials to an unapproved external presentation service.
 - Give each slide that materially benefits from imagery one distinct, relevant visual. Never invent charts, data, people, quotes, or outcomes.
 ${imageRequirements}
 - Use at least 50pt for the deck title, 35pt for slide titles, 24pt for subheads, and 16pt for body copy. Shorten content instead of shrinking it.
 - Put human-readable source URLs for every non-trivial claim and externally sourced visual in speaker notes. Also create reports/<descriptive-name>.sources.md with slide-by-slide provenance.
-- Export both reports/<descriptive-name>.pptx and reports/<descriptive-name>.pdf, using the same approved visual assets in both. Also export reports/<descriptive-name>.claims.json, reports/<descriptive-name>-storyboard.md, and reports/<descriptive-name>.sources.md.
+- Export both reports/<descriptive-name>.pptx and reports/<descriptive-name>.pdf from build_presentation, using the same approved visual assets in both. Also export reports/<descriptive-name>.claims.json, reports/<descriptive-name>-storyboard.md, and reports/<descriptive-name>.sources.md.
 - The claim ledger must use this top-level shape even when Standard Research is selected: {"claims":[{"claim_id":"C1","claim":"atomic factual statement","status":"supported","confidence":0.9,"sources":["https://..."],"justification":"what the evidence establishes","counterevidence":"contradictions or limitations"}]}.
 - Render every final slide to images, inspect for overlap, clipping, wrapping, unreadable text, broken crops, and unresolved placeholders, then fix all defects before completion.
 - End your response with clickable artifact links to the PPTX, PDF, storyboard, source manifest, and claim ledger.`
