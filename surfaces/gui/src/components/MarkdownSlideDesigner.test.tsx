@@ -86,10 +86,14 @@ Choose the first investment.`);
     expect(preview.dataset.template).toBe("atlas");
     const atlasStyle = preview.getAttribute("style");
     fireEvent.change(screen.getByLabelText("Presentation template"), {
-      target: { value: "midnight" },
+      target: { value: "neon-flow" },
     });
-    expect(preview.dataset.template).toBe("midnight");
+    expect(preview.dataset.template).toBe("neon-flow");
+    expect(preview.dataset.transition).toBe("push");
+    expect(preview.dataset.motif).toBe("chart");
     expect(preview.getAttribute("style")).not.toBe(atlasStyle);
+    expect(screen.getByText(/Animated neon gradient/i)).toBeTruthy();
+    expect(screen.getByLabelText("Presentation template").querySelectorAll("option")).toHaveLength(32);
     expect(screen.getByLabelText("Slide styles").querySelectorAll("button")).toHaveLength(22);
     fireEvent.click(screen.getByRole("button", { name: /Image background/i }));
     expect(preview.className).toContain("layout-image-background");

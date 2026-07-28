@@ -210,6 +210,24 @@ def test_build_presentation_applies_builtin_and_workspace_potx_templates(tmp_pat
     assert len(Presentation(tmp_path / "custom.pptx").slides) == 2
 
 
+def test_animated_gradient_template_writes_native_transition_and_gradient(tmp_path):
+    tool = make_build_presentation_tool(workspace=tmp_path)
+    result = tool(
+        title="Motion and gradient",
+        slides=[{"title": "A chart-ready story", "bullets": ["12%", "24%", "36%"], "layout": "metric-grid"}],
+        pptx_path="motion.pptx",
+        pdf_path="motion.pdf",
+        template_id="neon-flow",
+    )
+    assert result["ok"] is True
+    assert result["template_id"] == "neon-flow"
+    with zipfile.ZipFile(tmp_path / "motion.pptx") as archive:
+        slide_xml = archive.read("ppt/slides/slide2.xml")
+        assert b"<p:transition" in slide_xml
+        assert b"<p:push" in slide_xml
+        assert b"<a:gradFill" in slide_xml
+
+
 def test_quality_gate_rejects_markdown_renamed_as_pdf(tmp_path):
     reports = tmp_path / "reports"
     reports.mkdir()

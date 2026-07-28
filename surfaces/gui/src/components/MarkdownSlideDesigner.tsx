@@ -185,6 +185,8 @@ function SlidePreview({
     "--slide-ink": template.colors[0],
     "--slide-accent": template.colors[1],
     "--slide-bg": template.colors[2],
+    "--slide-gradient-a": template.gradient?.[0] || template.colors[2],
+    "--slide-gradient-b": template.gradient?.[1] || template.colors[2],
   } as CSSProperties;
   const midpoint = Math.ceil(slide.bullets.length / 2);
   const bullets = (items: string[]) => (
@@ -212,6 +214,8 @@ function SlidePreview({
       className={`slide-designer-preview layout-${slide.layout}`}
       data-testid="slide-preview"
       data-template={templateId}
+      data-transition={template.transition || "none"}
+      data-motif={template.motif || "clean"}
       style={previewStyle}
     >
       <span className="slide-designer-preview-kicker">Slide preview</span>
@@ -323,7 +327,14 @@ export function MarkdownSlideDesigner({
             </header>
             <div className="slide-designer-toolbar">
               <label className="research-field"><span>Markdown artifact</span><select aria-label="Markdown artifact" value={path} onChange={(event) => setPath(event.target.value)}>{markdown.map((artifact) => <option key={artifact.path} value={artifact.path}>{artifact.path}</option>)}</select></label>
-              <label className="research-field"><span>Presentation template</span><select aria-label="Presentation template" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>{PRESENTATION_TEMPLATES.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
+              <label className="research-field">
+                <span>Presentation template</span>
+                <select aria-label="Presentation template" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>{PRESENTATION_TEMPLATES.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>
+                <small className="slide-designer-template-note">
+                  {templateById(templateId).description}
+                  {templateById(templateId).transition ? ` · ${templateById(templateId).transition} transition` : ""}
+                </small>
+              </label>
             </div>
             {error && <div className="research-modal-error">{error}</div>}
             {loading && <p className="slide-designer-loading">Reading the Markdown artifact…</p>}

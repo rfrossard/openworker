@@ -36,6 +36,26 @@ _TEMPLATES = {
     "plum": {"background": "FBF5FA", "ink": "321B3A", "muted": "806E83", "accent": "A855A0", "cover": "321B3A"},
     "signal": {"background": "FFF7ED", "ink": "18181B", "muted": "71717A", "accent": "EF4444", "cover": "18181B"},
     "studio": {"background": "F5F7FA", "ink": "20242C", "muted": "687180", "accent": "14B8A6", "cover": "20242C"},
+    "neon-flow": {"background": "0F172A", "ink": "F8FAFC", "muted": "94A3B8", "accent": "22D3EE", "cover": "07111F", "gradient": "312E81", "transition": "push"},
+    "sunrise": {"background": "FFF7ED", "ink": "3B1D2A", "muted": "9A6B5B", "accent": "F97316", "cover": "3B1D2A", "gradient": "FED7AA", "transition": "fade"},
+    "cyber-grid": {"background": "0F172A", "ink": "E0F2FE", "muted": "7DD3FC", "accent": "38BDF8", "cover": "020617", "gradient": "172554", "transition": "wipe"},
+    "prism": {"background": "FAF5FF", "ink": "24123A", "muted": "7E5A91", "accent": "D946EF", "cover": "24123A", "gradient": "DBEAFE", "transition": "split"},
+    "velocity": {"background": "FFF1F2", "ink": "111827", "muted": "7F5B64", "accent": "F43F5E", "cover": "111827", "gradient": "FFE4E6", "transition": "push"},
+    "ember": {"background": "431407", "ink": "FFF7ED", "muted": "FDBA74", "accent": "F97316", "cover": "2A1208", "gradient": "7C2D12", "transition": "cover"},
+    "glacier": {"background": "ECFEFF", "ink": "0C4A6E", "muted": "5E8798", "accent": "06B6D4", "cover": "0C4A6E", "gradient": "CFFAFE", "transition": "fade"},
+    "bloom": {"background": "FFF1F2", "ink": "4A1830", "muted": "98687D", "accent": "EC4899", "cover": "4A1830", "gradient": "FCE7F3", "transition": "split"},
+    "orbit": {"background": "151936", "ink": "F5F3FF", "muted": "A5B4FC", "accent": "818CF8", "cover": "090B20", "gradient": "312E81", "transition": "cover"},
+    "horizon": {"background": "F0F9FF", "ink": "172554", "muted": "64748B", "accent": "0EA5E9", "cover": "172554", "gradient": "DBEAFE", "transition": "wipe"},
+    "aurora-glass": {"background": "ECFDF5", "ink": "10233C", "muted": "667C85", "accent": "14B8A6", "cover": "10233C", "gradient": "E0E7FF", "transition": "fade"},
+    "executive-gradient": {"background": "F8FAFC", "ink": "111827", "muted": "64748B", "accent": "D4A72C", "cover": "111827", "gradient": "E2E8F0", "transition": "fade"},
+    "data-wave": {"background": "F0F9FF", "ink": "082F49", "muted": "5B7484", "accent": "0284C7", "cover": "082F49", "gradient": "F0FDFA", "transition": "push"},
+    "financial-pulse": {"background": "F0FDF4", "ink": "052E16", "muted": "5E7866", "accent": "22C55E", "cover": "052E16", "gradient": "DCFCE7", "transition": "wipe"},
+    "editorial-motion": {"background": "FFFBEB", "ink": "292524", "muted": "78716C", "accent": "E11D48", "cover": "292524", "gradient": "FFE4E6", "transition": "split"},
+    "photo-story": {"background": "374151", "ink": "F9FAFB", "muted": "D1D5DB", "accent": "F59E0B", "cover": "111827", "gradient": "111827", "transition": "fade"},
+    "cinematic-frame": {"background": "18181B", "ink": "FAFAFA", "muted": "A1A1AA", "accent": "EAB308", "cover": "09090B", "gradient": "27272A", "transition": "cover"},
+    "dashboard-pro": {"background": "F8FAFC", "ink": "172033", "muted": "64748B", "accent": "2563EB", "cover": "172033", "gradient": "EFF6FF", "transition": "push"},
+    "science-spectrum": {"background": "F0FDFA", "ink": "134E4A", "muted": "64748B", "accent": "8B5CF6", "cover": "134E4A", "gradient": "F5F3FF", "transition": "wipe"},
+    "impact-report": {"background": "FAFAF9", "ink": "1C1917", "muted": "78716C", "accent": "16A34A", "cover": "1C1917", "gradient": "F0FDF4", "transition": "fade"},
 }
 
 _SCHEMA = {
@@ -285,6 +305,7 @@ def _add_pptx(
     from pptx import Presentation
     from pptx.dml.color import RGBColor
     from pptx.enum.text import PP_ALIGN
+    from pptx.oxml.xmlchemy import OxmlElement
     from pptx.util import Inches, Pt
 
     editable_template = _editable_copy_of_potx(template) if template else None
@@ -325,9 +346,40 @@ def _add_pptx(
         shape.line.color.rgb = muted
         return shape
 
+    def apply_template_canvas(slide, *, cover_slide=False):
+        gradient_hex = style.get("gradient")
+        if gradient_hex:
+            base_hex = style["cover"] if cover_slide else style["background"]
+            canvas = slide.shapes.add_shape(
+                1, 0, 0, Inches(_WIDE_WIDTH), Inches(_WIDE_HEIGHT)
+            )
+            canvas.fill.gradient()
+            canvas.fill.gradient_angle = 320.0
+            stops = canvas.fill.gradient_stops
+            stops[0].color.rgb = RGBColor.from_string(base_hex)
+            stops[-1].color.rgb = RGBColor.from_string(gradient_hex)
+            canvas.line.fill.background()
+        transition_name = style.get("transition")
+        if transition_name:
+            transition = OxmlElement("p:transition")
+            transition.set("spd", "med")
+            effect = OxmlElement(
+                f"p:{'fade' if transition_name == 'cover' else transition_name}"
+            )
+            if transition_name == "push":
+                effect.set("dir", "l")
+            elif transition_name == "wipe":
+                effect.set("dir", "r")
+            elif transition_name == "split":
+                effect.set("orient", "vert")
+                effect.set("dir", "out")
+            transition.append(effect)
+            slide._element.append(transition)
+
     cover = deck.slides.add_slide(blank_layout)
     cover.background.fill.solid()
     cover.background.fill.fore_color.rgb = cover_rgb
+    apply_template_canvas(cover, cover_slide=True)
     textbox(cover, title, 0.8, 1.55, 11.7, 2.0, 40, RGBColor(255, 255, 255), True)
     textbox(cover, subtitle, 0.82, 3.8, 10.8, 1.1, 20, RGBColor(205, 213, 225))
     bar = cover.shapes.add_shape(1, Inches(0.82), Inches(5.75), Inches(1.8), Inches(0.12))
@@ -340,6 +392,7 @@ def _add_pptx(
         slide.background.fill.solid()
         layout = spec["layout"]
         slide.background.fill.fore_color.rgb = cover_rgb if layout in {"section", "conclusion"} else background
+        apply_template_canvas(slide, cover_slide=layout in {"section", "conclusion"})
         if layout in {"section", "conclusion"}:
             textbox(slide, f"{number:02d}", 0.82, 0.72, 1.0, 0.45, 13, accent_rgb, True)
             textbox(slide, spec["title"], 0.82, 2.05, 11.4, 1.7, 42, RGBColor(255, 255, 255), True)
@@ -527,6 +580,18 @@ def _add_pdf(
     background = HexColor(f"#{style['background']}")
     cover = HexColor(f"#{style['cover']}")
 
+    def paint_background(color, *, cover_page=False):
+        canvas.setFillColor(color)
+        canvas.rect(0, 0, width, height, stroke=0, fill=1)
+        gradient_hex = style.get("gradient")
+        if gradient_hex:
+            start_hex = style["cover"] if cover_page else style["background"]
+            canvas.linearGradient(
+                0, height, width, 0,
+                [HexColor(f"#{start_hex}"), HexColor(f"#{gradient_hex}")],
+                extend=True,
+            )
+
     def text(value, x, y, size, color=ink, font="Helvetica", max_width=None):
         canvas.setFillColor(color)
         canvas.setFont(font, size)
@@ -547,8 +612,7 @@ def _add_pdf(
         for offset, line in enumerate(lines[:4]):
             canvas.drawString(x, y - offset * size * 1.25, line)
 
-    canvas.setFillColor(cover)
-    canvas.rect(0, 0, width, height, stroke=0, fill=1)
+    paint_background(cover, cover_page=True)
     text(title, 58, 385, 32, HexColor("#FFFFFF"), "Helvetica-Bold", 840)
     text(subtitle, 60, 275, 16, HexColor("#CDD5E1"), max_width=760)
     canvas.setFillColor(accent_color)
@@ -556,12 +620,10 @@ def _add_pdf(
     canvas.showPage()
 
     for number, spec in enumerate(slides, 1):
-        canvas.setFillColor(background)
-        canvas.rect(0, 0, width, height, stroke=0, fill=1)
+        paint_background(background)
         layout = spec["layout"]
         if layout in {"section", "conclusion"}:
-            canvas.setFillColor(cover)
-            canvas.rect(0, 0, width, height, stroke=0, fill=1)
+            paint_background(cover, cover_page=True)
             text(f"{number:02d}", 60, 465, 12, accent_color, "Helvetica-Bold")
             text(spec["title"], 60, 335, 34, HexColor("#FFFFFF"), "Helvetica-Bold", 830)
             if spec["takeaway"]:

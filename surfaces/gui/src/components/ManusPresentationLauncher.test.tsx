@@ -41,10 +41,10 @@ describe("ManusPresentationLauncher", () => {
     expect(onCreate.mock.calls[0][0]).toContain("Target length: 10 slides");
   });
 
-  it("offers at least ten editable built-in templates", () => {
+  it("offers the expanded editable built-in template catalog", () => {
     render(<ManusPresentationLauncher artifacts={[]} onCreate={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /Manus-style presentation/i }));
     const options = screen.getByLabelText("Editable PowerPoint template").querySelectorAll("option");
-    expect(options.length).toBeGreaterThanOrEqual(10);
+    expect(options.length).toBeGreaterThanOrEqual(32);
   });
 });
