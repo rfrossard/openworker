@@ -588,6 +588,21 @@ button.btn.danger { color: var(--accent); }
 .browser-location { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .browser-location strong { color: var(--ink); font-size: 12.5px; }
 .browser-location span { color: var(--faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-permissions { display: flex; flex-direction: column; gap: 7px; padding-top: 4px; }
+.browser-subhead { color: var(--ink); font-size: 12px; font-weight: 600; }
+.browser-read-toggle { display: flex; align-items: flex-start; gap: 7px; color: var(--muted); font-size: 11.5px; line-height: 1.35; }
+.browser-read-toggle input { margin-top: 2px; }
+.browser-domain-entry { display: flex; gap: 6px; }
+.browser-domain-entry input { min-width: 0; flex: 1; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); padding: 6px 8px; font-size: 11.5px; }
+.browser-domain-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.browser-domain-chip { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); padding: 3px 7px; font-size: 10.5px; cursor: pointer; }
+.browser-history { border-top: 1px solid var(--line); padding-top: 7px; }
+.browser-history summary { color: var(--muted); cursor: pointer; font-size: 11.5px; }
+.browser-history-list { display: flex; flex-direction: column; gap: 7px; padding-top: 7px; }
+.browser-history-item { display: grid; grid-template-columns: 1fr auto; gap: 1px 6px; min-width: 0; }
+.browser-history-item strong { color: var(--ink); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-history-item span { grid-column: 1 / -1; color: var(--faint); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-history-item time { color: var(--faint); font-size: 10px; }
 .browser-error { padding: 8px 9px; border-radius: 8px; color: var(--danger, #b73e3e); background: color-mix(in srgb, var(--danger, #d85858) 9%, transparent); font-size: 11.5px; line-height: 1.4; }
 .artifact-list { display: flex; flex-direction: column; gap: 7px; }
 .artifact-row {

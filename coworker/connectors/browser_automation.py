@@ -20,6 +20,7 @@ import zlib
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Optional
+from urllib.parse import urlsplit
 
 import aisuite as ai
 
@@ -145,6 +146,10 @@ class _BrowserController:
             "screenshot_data_url": "",
             "updated_at": None,
             "controls": [],
+            "always_allow_reads": True,
+            "allowed_domains": [],
+            "history": [],
+            "evidence": [],
         }
 
     def _touch(self, **changes: Any) -> None:
@@ -179,6 +184,68 @@ class _BrowserController:
         png = self._page.screenshot(full_page=False)
         data_url = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
         self._touch(screenshot_data_url=data_url)
+
+    def _record_evidence(self, action: str) -> None:
+        if self._page is None:
+            return
+        url = self._page.url
+        if not url or url == "about:blank":
+            return
+        captured_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        screenshot = str(self._state.get("screenshot_data_url") or "")
+        item = {
+            "action": action,
+            "url": url,
+            "title": self._page.title(),
+            "captured_at": captured_at,
+            "screenshot_sha256": (
+                hashlib.sha256(screenshot.encode("utf-8")).hexdigest()
+                if screenshot
+                else ""
+            ),
+        }
+        history = list(self._state.get("history") or [])
+        if not history or history[-1].get("url") != url:
+            history.append(
+                {
+                    "url": url,
+                    "title": item["title"],
+                    "visited_at": captured_at,
+                }
+            )
+        evidence = list(self._state.get("evidence") or [])
+        evidence.append(item)
+        self._touch(history=history[-100:], evidence=evidence[-100:])
+
+    def set_policy(
+        self, *, always_allow_reads: bool, allowed_domains: list[str]
+    ) -> dict[str, Any]:
+        normalized: list[str] = []
+        for value in allowed_domains:
+            domain = str(value or "").strip().lower().rstrip(".")
+            if "://" in domain:
+                domain = (urlsplit(domain).hostname or "").lower().rstrip(".")
+            if domain and domain not in normalized:
+                normalized.append(domain)
+        with self._lock:
+            self._touch(
+                always_allow_reads=bool(always_allow_reads),
+                allowed_domains=normalized,
+            )
+            return {
+                "ok": True,
+                "always_allow_reads": self._state["always_allow_reads"],
+                "allowed_domains": list(self._state["allowed_domains"]),
+            }
+
+    def _navigation_allowed(self, url: str) -> bool:
+        if self._state.get("always_allow_reads", True):
+            return True
+        hostname = (urlsplit(url).hostname or "").lower().rstrip(".")
+        return any(
+            hostname == domain or hostname.endswith(f".{domain}")
+            for domain in self._state.get("allowed_domains", [])
+        )
 
     def _setup_error(self, exc: Exception) -> dict[str, str]:
         return {
@@ -217,8 +284,7 @@ class _BrowserController:
                 self._touch(open=False, status="error", last_error=str(exc))
                 return None, self._setup_error(exc)
 
-    @staticmethod
-    def _guard_request(route) -> None:
+    def _guard_request(self, route) -> None:
         url = route.request.url
         if url.startswith(("data:", "blob:", "about:")):
             route.continue_()
@@ -226,6 +292,9 @@ class _BrowserController:
         try:
             validate_public_url(url)
         except BrowserPolicyError:
+            route.abort("blockedbyclient")
+            return
+        if route.request.is_navigation_request() and not self._navigation_allowed(url):
             route.abort("blockedbyclient")
             return
         route.continue_()
@@ -312,6 +381,7 @@ class _BrowserController:
                 else:
                     self._refresh_page_state()
                     self._capture_preview()
+                    self._record_evidence(action)
                     self._touch(last_action=action, last_result="ok", last_error="")
                 return out
 
@@ -344,6 +414,18 @@ def browser_close_session(session_id: str = "") -> dict[str, Any]:
     with _BROWSERS_LOCK:
         controller = _BROWSERS.get(session_id or "__default__")
     return controller.close() if controller is not None else {"ok": True}
+
+
+def browser_set_policy(
+    session_id: str = "",
+    *,
+    always_allow_reads: bool = True,
+    allowed_domains: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    return _browser_for(session_id).set_policy(
+        always_allow_reads=always_allow_reads,
+        allowed_domains=list(allowed_domains or []),
+    )
 
 
 def _cap(value: int, default: int = 20000, upper: int = 100000) -> int:
@@ -445,6 +527,15 @@ def make_browser_automation_tools(
             safe_url = validate_public_url(url)
         except BrowserPolicyError as exc:
             return {"error": str(exc)}
+        if not controller._navigation_allowed(safe_url):
+            hostname = urlsplit(safe_url).hostname or safe_url
+            return {
+                "error": (
+                    f"Navigation to {hostname} is not allowed for this session. "
+                    "Add the domain in Secure Browser permissions or allow reads "
+                    "from any public domain."
+                )
+            }
         return controller.call(
             "open_url",
             lambda page: (

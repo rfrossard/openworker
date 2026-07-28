@@ -1176,6 +1176,17 @@ def create_app(manager: SessionManager) -> FastAPI:
     def browser_close_post(session_id: str = "") -> dict[str, Any]:
         return manager.browser_close(session_id)
 
+    @app.post("/v1/browser/policy")
+    def browser_policy_post(body: dict, session_id: str = "") -> dict[str, Any]:
+        values = (body or {}).get("allowed_domains", [])
+        return manager.browser_policy(
+            session_id,
+            always_allow_reads=bool(
+                (body or {}).get("always_allow_reads", True)
+            ),
+            allowed_domains=values if isinstance(values, list) else [],
+        )
+
     # -- web search -------------------------------------------------------------
     @app.get("/v1/web-search")
     def web_search_get() -> dict[str, Any]:

@@ -8,6 +8,7 @@ import {
   getSettings,
   readArtifact,
   revealArtifact,
+  setBrowserPolicy,
   takeBrowserScreenshot,
   type ArtifactContent,
   type ArtifactInfo,
@@ -259,6 +260,7 @@ function BrowserOperator({
   const [state, setState] = useState<BrowserState | null>(null);
   const [busy, setBusy] = useState(false);
   const [previewInterval, setPreviewInterval] = useState(3000);
+  const [domainInput, setDomainInput] = useState("");
   const captureInFlight = useRef(false);
   const browserUsed = toolNames.some((name) => name.startsWith("browser_"));
 
@@ -325,6 +327,24 @@ function BrowserOperator({
       setBusy(false);
     }
   };
+  const updatePolicy = async (alwaysAllow: boolean, domains: string[]) => {
+    setBusy(true);
+    try {
+      await setBrowserPolicy(sessionId, {
+        always_allow_reads: alwaysAllow,
+        allowed_domains: domains,
+      });
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const addDomain = async () => {
+    const domain = domainInput.trim().toLowerCase();
+    if (!domain) return;
+    await updatePolicy(false, [...(state?.allowed_domains || []), domain]);
+    setDomainInput("");
+  };
 
   return (
     <RailSection
@@ -371,6 +391,72 @@ function BrowserOperator({
           This agent can navigate public pages in an isolated browser. Page content is
           untrusted; interactions require your approval. Live preview refreshes every {previewInterval} ms.
         </div>
+        <div className="browser-permissions">
+          <div className="browser-subhead">Navigation permissions</div>
+          <label className="browser-read-toggle">
+            <input
+              type="checkbox"
+              checked={state?.always_allow_reads ?? true}
+              disabled={busy}
+              onChange={(event) =>
+                updatePolicy(event.target.checked, state?.allowed_domains || [])
+              }
+            />
+            <span>Allow reads from any public domain for this session</span>
+          </label>
+          {!state?.always_allow_reads && (
+            <>
+              <div className="browser-domain-entry">
+                <input
+                  value={domainInput}
+                  onChange={(event) => setDomainInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") addDomain();
+                  }}
+                  placeholder="example.com"
+                  aria-label="Allowed browser domain"
+                />
+                <button className="btn secondary" onClick={addDomain} disabled={busy || !domainInput.trim()}>
+                  Add
+                </button>
+              </div>
+              <div className="browser-domain-list">
+                {(state?.allowed_domains || []).map((domain) => (
+                  <button
+                    key={domain}
+                    className="browser-domain-chip"
+                    title={`Remove ${domain}`}
+                    onClick={() =>
+                      updatePolicy(
+                        false,
+                        (state?.allowed_domains || []).filter((item) => item !== domain),
+                      )
+                    }
+                  >
+                    {domain} ×
+                  </button>
+                ))}
+                {!state?.allowed_domains?.length && (
+                  <span className="rail-muted">No domains allowed yet.</span>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        {!!state?.history?.length && (
+          <details className="browser-history">
+            <summary>Navigation evidence ({state.history.length})</summary>
+            <div className="browser-history-list">
+              {state.history.slice(-5).reverse().map((item) => (
+                <div key={`${item.visited_at}-${item.url}`} className="browser-history-item">
+                  <strong>{item.title || "Untitled page"}</strong>
+                  <span title={item.url}>{item.url}</span>
+                  <time>{new Date(item.visited_at).toLocaleTimeString()}</time>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
         {state?.open && (
           <div className="rail-actions">
             <button className="btn secondary" onClick={capture} disabled={busy}>

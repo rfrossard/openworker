@@ -53,6 +53,7 @@ from ..connectors import (
 )
 from ..connectors.browser_automation import (
     browser_close_session,
+    browser_set_policy,
     browser_state,
     browser_take_screenshot,
 )
@@ -1109,6 +1110,19 @@ class SessionManager:
 
     def browser_close(self, session_id: str = "") -> dict[str, Any]:
         return browser_close_session(session_id)
+
+    def browser_policy(
+        self,
+        session_id: str = "",
+        *,
+        always_allow_reads: bool = True,
+        allowed_domains: Optional[list[str]] = None,
+    ) -> dict[str, Any]:
+        return browser_set_policy(
+            session_id,
+            always_allow_reads=always_allow_reads,
+            allowed_domains=allowed_domains,
+        )
 
     def list_artifacts(self, session_id: str) -> list[dict[str, Any]]:
         record = self.session_store.load(session_id)

@@ -653,6 +653,16 @@ export interface BrowserState {
   screenshot_data_url: string;
   updated_at: string | null;
   controls: any[];
+  always_allow_reads: boolean;
+  allowed_domains: string[];
+  history: Array<{ url: string; title: string; visited_at: string }>;
+  evidence: Array<{
+    action: string;
+    url: string;
+    title: string;
+    captured_at: string;
+    screenshot_sha256: string;
+  }>;
 }
 
 export async function getBrowserState(sessionId: string): Promise<BrowserState> {
@@ -670,6 +680,19 @@ export async function takeBrowserScreenshot(sessionId: string): Promise<BrowserS
 export async function closeBrowser(sessionId: string): Promise<{ ok?: boolean; error?: string }> {
   const q = new URLSearchParams({ session_id: sessionId });
   const res = await fetch(`${httpBase()}/v1/browser/close?${q}`, { method: "POST" });
+  return res.json();
+}
+
+export async function setBrowserPolicy(
+  sessionId: string,
+  policy: { always_allow_reads: boolean; allowed_domains: string[] },
+): Promise<{ ok?: boolean; error?: string; always_allow_reads?: boolean; allowed_domains?: string[] }> {
+  const q = new URLSearchParams({ session_id: sessionId });
+  const res = await fetch(`${httpBase()}/v1/browser/policy?${q}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(policy),
+  });
   return res.json();
 }
 

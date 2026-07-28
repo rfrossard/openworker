@@ -185,6 +185,12 @@ def test_browser_rest_routes_actions_to_the_requested_session(tmp_path, monkeypa
         "browser_close",
         lambda session_id="": calls.append(("close", session_id)) or {"ok": True},
     )
+    monkeypatch.setattr(
+        manager,
+        "browser_policy",
+        lambda session_id="", **policy: calls.append(("policy", session_id))
+        or {"ok": True, **policy},
+    )
     client = TestClient(create_app(manager))
 
     assert client.get(
@@ -196,10 +202,21 @@ def test_browser_rest_routes_actions_to_the_requested_session(tmp_path, monkeypa
     assert client.post(
         "/v1/browser/close", params={"session_id": "ops-c"}
     ).status_code == 200
+    policy = client.post(
+        "/v1/browser/policy",
+        params={"session_id": "research-d"},
+        json={
+            "always_allow_reads": False,
+            "allowed_domains": ["example.com"],
+        },
+    ).json()
+    assert policy["always_allow_reads"] is False
+    assert policy["allowed_domains"] == ["example.com"]
     assert calls == [
         ("state", "chat-a"),
         ("screenshot", "code-b"),
         ("close", "ops-c"),
+        ("policy", "research-d"),
     ]
 
 

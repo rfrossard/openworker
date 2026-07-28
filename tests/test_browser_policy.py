@@ -113,3 +113,43 @@ def test_closing_browser_preserves_last_preview():
 
     assert controller.close() == {"ok": True}
     assert controller.state()["screenshot_data_url"].endswith("preview")
+
+
+def test_browser_session_policy_normalizes_domains_and_limits_navigation():
+    from coworker.connectors.browser_automation import _BrowserController
+
+    controller = _BrowserController()
+    result = controller.set_policy(
+        always_allow_reads=False,
+        allowed_domains=["https://Docs.Example.com/path", "example.org", "example.org"],
+    )
+
+    assert result == {
+        "ok": True,
+        "always_allow_reads": False,
+        "allowed_domains": ["docs.example.com", "example.org"],
+    }
+    assert controller._navigation_allowed("https://docs.example.com/guide") is True
+    assert controller._navigation_allowed("https://cdn.docs.example.com/file") is True
+    assert controller._navigation_allowed("https://example.net/") is False
+
+
+def test_browser_history_and_evidence_are_session_scoped():
+    from coworker.connectors.browser_automation import _BrowserController
+
+    class Page:
+        url = "https://example.com/docs"
+
+        @staticmethod
+        def title():
+            return "Example docs"
+
+    controller = _BrowserController()
+    controller._page = Page()
+    controller._touch(screenshot_data_url="data:image/png;base64,evidence")
+    controller._record_evidence("open_url")
+
+    state = controller._state
+    assert state["history"][0]["url"] == "https://example.com/docs"
+    assert state["evidence"][0]["action"] == "open_url"
+    assert len(state["evidence"][0]["screenshot_sha256"]) == 64
