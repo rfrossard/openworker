@@ -605,6 +605,7 @@ button.btn.danger { color: var(--accent); }
 .browser-download-progress-track { height: 6px; overflow: hidden; border-radius: 999px; background: var(--line); }
 .browser-download-progress-track > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 180ms ease; }
 .browser-download-progress-meta { font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.browser-download-cancel { align-self: flex-start; }
 .browser-history { border-top: 1px solid var(--line); padding-top: 7px; }
 .browser-history summary { color: var(--muted); cursor: pointer; font-size: 11.5px; }
 .browser-history-list { display: flex; flex-direction: column; gap: 7px; padding-top: 7px; }

@@ -9,6 +9,7 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -36,6 +37,10 @@ class _QuietLogger:
 
     def error(self, _message: str) -> None:
         pass
+
+
+class _DownloadCancelled(RuntimeError):
+    pass
 
 
 def _youtube_dl_factory(options: dict[str, Any]):
@@ -93,6 +98,7 @@ def _translate_vtt_locally(
     primary_translator: Optional[Callable[[list[str], str], list[str]]] = None,
     progress_callback: Optional[Callable[[dict[str, Any]], None]] = None,
     primary_label: str = "selected chat model",
+    cancel_event: Optional[threading.Event] = None,
 ) -> str:
     cue_blocks, text_starts, texts = _vtt_cues(vtt)
     if not texts:
@@ -104,6 +110,8 @@ def _translate_vtt_locally(
     ) -> list[str]:
         translated: list[str] = []
         for start in range(0, len(texts), 30):
+            if cancel_event is not None and cancel_event.is_set():
+                raise _DownloadCancelled("Download cancelled.")
             batch = texts[start : start + 30]
             values = translator(batch, target)
             if not isinstance(values, list) or len(values) != len(batch):
@@ -216,12 +224,16 @@ def _download_original_caption(
 
 
 def _embed_local_subtitle(
-    media: Path, subtitle: Path, language: str, ffmpeg_path: str
+    media: Path,
+    subtitle: Path,
+    language: str,
+    ffmpeg_path: str,
+    cancel_event: Optional[threading.Event] = None,
 ) -> None:
     temporary = media.with_name(f"{media.stem}.subtitled{media.suffix}")
     codec = "webvtt" if media.suffix.lower() == ".webm" else "mov_text"
     language_code = "por" if language == "pt" else "spa"
-    completed = subprocess.run(
+    process = subprocess.Popen(
         [
             ffmpeg_path,
             "-y",
@@ -243,12 +255,29 @@ def _embed_local_subtitle(
         ],
         capture_output=True,
         text=True,
-        timeout=300,
     )
-    if completed.returncode != 0 or not temporary.is_file():
+    started = time.monotonic()
+    while process.poll() is None:
+        if cancel_event is not None and cancel_event.is_set():
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=3)
+            temporary.unlink(missing_ok=True)
+            raise _DownloadCancelled("Download cancelled.")
+        if time.monotonic() - started > 300:
+            process.kill()
+            process.wait(timeout=3)
+            temporary.unlink(missing_ok=True)
+            raise RuntimeError("FFmpeg timed out while embedding the subtitle.")
+        time.sleep(0.1)
+    _stdout, stderr = process.communicate()
+    if process.returncode != 0 or not temporary.is_file():
         temporary.unlink(missing_ok=True)
         raise RuntimeError(
-            completed.stderr.strip()[-500:] or "FFmpeg could not embed the subtitle."
+            stderr.strip()[-500:] or "FFmpeg could not embed the subtitle."
         )
     temporary.replace(media)
 
@@ -614,6 +643,7 @@ def download_streaming_media(
     ffmpeg_path: Optional[str] = None,
     subtitle_translator: Optional[Callable[[list[str], str], list[str]]] = None,
     progress_callback: Optional[Callable[[dict[str, Any]], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
 ) -> dict[str, Any]:
     with _LOCK:
         selection = dict(_SELECTIONS.get(session_id, {}).get(selection_id, {}))
@@ -679,10 +709,15 @@ def download_streaming_media(
             except Exception:
                 pass
 
+    def ensure_active() -> None:
+        if cancel_event is not None and cancel_event.is_set():
+            raise _DownloadCancelled("Download cancelled.")
+
     if subtitle_language in {"pt", "es"}:
         english_record = dict(selection.get("subtitle_records") or {}).get("en")
         if english_record:
             try:
+                ensure_active()
                 report(
                     stage="captions",
                     label="Downloading original English captions",
@@ -693,6 +728,7 @@ def download_streaming_media(
                     list(selection.get("cookies") or []),
                     str(selection.get("user_agent") or ""),
                 )
+                ensure_active()
                 if subtitle_translator is None:
                     translated_vtt = _translate_vtt_locally(
                         original_vtt, subtitle_language
@@ -710,6 +746,7 @@ def download_streaming_media(
                                 "selected chat model",
                             )
                         ),
+                        cancel_event=cancel_event,
                     )
                 descriptor, raw_path = tempfile.mkstemp(
                     prefix="openworker-subtitle-", suffix=".vtt"
@@ -719,6 +756,8 @@ def download_streaming_media(
                 local_subtitle_path.write_text(translated_vtt, encoding="utf-8")
                 use_local_translation = True
             except Exception as exc:
+                if isinstance(exc, _DownloadCancelled):
+                    return {"cancelled": True, "error": "Download cancelled."}
                 message = str(exc)
                 if "429" in message:
                     return {
@@ -745,6 +784,7 @@ def download_streaming_media(
         reported_paths.add(resolved)
 
     def progress(data: dict[str, Any]) -> None:
+        ensure_active()
         remember_path(data.get("filename"))
         info = data.get("info_dict")
         if isinstance(info, dict):
@@ -762,6 +802,7 @@ def download_streaming_media(
             speed_bytes_per_second=int(data.get("speed") or 0),
             eta_seconds=int(data.get("eta") or 0),
         )
+        ensure_active()
         if downloaded > MAX_MEDIA_BYTES or total > MAX_MEDIA_BYTES:
             raise RuntimeError("The media file exceeds the 1 GB safety limit.")
 
@@ -823,6 +864,7 @@ def download_streaming_media(
             }
         )
     try:
+        ensure_active()
         with _cookie_file(list(selection.get("cookies") or [])) as cookiefile:
             if cookiefile:
                 options["cookiefile"] = cookiefile
@@ -851,6 +893,10 @@ def download_streaming_media(
             if path.resolve() not in before and path.suffix in {".part", ".ytdl"}:
                 path.unlink(missing_ok=True)
         message = str(exc)
+        if isinstance(exc, _DownloadCancelled) or (
+            cancel_event is not None and cancel_event.is_set()
+        ):
+            return {"cancelled": True, "error": "Download cancelled."}
         if "HTTP Error 429" in message and subtitle_language:
             return {
                 "error": (
@@ -880,13 +926,20 @@ def download_streaming_media(
     output = max(candidates, key=lambda path: path.stat().st_mtime)
     if use_local_translation and local_subtitle_path is not None:
         try:
+            ensure_active()
             report(stage="embedding", label="Embedding subtitles", percent=98)
-            _embed_local_subtitle(
+            embed_args = (
                 output,
                 local_subtitle_path,
                 subtitle_language,
                 ffmpeg_path or _ffmpeg_path(),
             )
+            if cancel_event is None:
+                _embed_local_subtitle(*embed_args)
+            else:
+                _embed_local_subtitle(*embed_args, cancel_event)
+        except _DownloadCancelled:
+            return {"cancelled": True, "error": "Download cancelled."}
         except Exception as exc:
             return {"error": f"Could not embed the locally translated subtitle: {exc}"}
         finally:

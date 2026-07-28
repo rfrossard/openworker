@@ -242,6 +242,12 @@ def test_browser_rest_routes_actions_to_the_requested_session(tmp_path, monkeypa
             "subtitle_language": subtitle_language,
         },
     )
+    monkeypatch.setattr(
+        manager,
+        "browser_cancel_streaming_media",
+        lambda session_id: calls.append(("cancel-stream", session_id))
+        or {"ok": True, "cancelled": True},
+    )
     client = TestClient(create_app(manager))
 
     assert client.get(
@@ -284,6 +290,11 @@ def test_browser_rest_routes_actions_to_the_requested_session(tmp_path, monkeypa
         "selection_id": "format-1080p",
         "subtitle_language": "pt",
     }
+    cancelled = client.post(
+        "/v1/browser/media/cancel-stream",
+        params={"session_id": "research-d"},
+    ).json()
+    assert cancelled == {"ok": True, "cancelled": True}
     assert calls == [
         ("state", "chat-a"),
         ("screenshot", "code-b"),
@@ -292,6 +303,7 @@ def test_browser_rest_routes_actions_to_the_requested_session(tmp_path, monkeypa
         ("download", "research-d"),
         ("analyze-stream", "research-d"),
         ("download-stream", "research-d", "pt"),
+        ("cancel-stream", "research-d"),
     ]
 
 

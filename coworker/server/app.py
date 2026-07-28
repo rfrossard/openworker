@@ -1216,6 +1216,12 @@ def create_app(manager: SessionManager) -> FastAPI:
             session_id, selection_id, subtitle_language
         )
 
+    @app.post("/v1/browser/media/cancel-stream")
+    def browser_media_cancel_stream_post(
+        session_id: str = "",
+    ) -> dict[str, Any]:
+        return manager.browser_cancel_streaming_media(session_id)
+
     # -- web search -------------------------------------------------------------
     @app.get("/v1/web-search")
     def web_search_get() -> dict[str, Any]:

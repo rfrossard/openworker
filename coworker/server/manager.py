@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -186,6 +187,8 @@ class SessionManager:
         self.scheduler = Scheduler(
             self.task_store, self._run_scheduled_task, extra_tick=self.resume_due_wakes
         )
+        self._media_download_cancellations: dict[str, threading.Event] = {}
+        self._media_download_lock = threading.RLock()
         # Personas: registry + lifecycle state under this manager's data dir. Installed as the
         # process singleton so agents.get_agent resolves persona ids (incl. third-party) here.
         self.personas = PersonaRegistry(state_path=base / "personas.json")
@@ -1195,19 +1198,32 @@ class SessionManager:
                 progress=progress,
             )
 
-        result = download_streaming_media(
-            session_id,
-            selection_id,
-            self.download_directory(),
-            subtitle_language=subtitle_language,
-            subtitle_translator=self._subtitle_translator(session_id),
-            progress_callback=update_progress,
-        )
+        cancel_event = threading.Event()
+        with self._media_download_lock:
+            previous = self._media_download_cancellations.get(session_id)
+            if previous is not None:
+                previous.set()
+            self._media_download_cancellations[session_id] = cancel_event
+        try:
+            result = download_streaming_media(
+                session_id,
+                selection_id,
+                self.download_directory(),
+                subtitle_language=subtitle_language,
+                subtitle_translator=self._subtitle_translator(session_id),
+                progress_callback=update_progress,
+                cancel_event=cancel_event,
+            )
+        finally:
+            with self._media_download_lock:
+                if self._media_download_cancellations.get(session_id) is cancel_event:
+                    self._media_download_cancellations.pop(session_id, None)
+        cancelled = bool(result.get("cancelled"))
         browser_set_streaming_media(
             session_id,
             media=list(current.get("streaming_media", [])),
-            status="ready" if result.get("ok") else "error",
-            error=str(result.get("error") or ""),
+            status="ready" if result.get("ok") or cancelled else "error",
+            error="" if cancelled else str(result.get("error") or ""),
             progress=(
                 {
                     "stage": "completed",
@@ -1217,6 +1233,12 @@ class SessionManager:
                 }
                 if result.get("ok")
                 else {
+                    "stage": "cancelled",
+                    "label": "Download cancelled",
+                    "percent": 0,
+                }
+                if cancelled
+                else {
                     "stage": "error",
                     "label": "Download failed",
                     "percent": 0,
@@ -1224,6 +1246,23 @@ class SessionManager:
             ),
         )
         return result
+
+    def browser_cancel_streaming_media(self, session_id: str) -> dict[str, Any]:
+        with self._media_download_lock:
+            cancel_event = self._media_download_cancellations.get(session_id)
+            if cancel_event is None:
+                return {"ok": False, "error": "No media download is running."}
+            cancel_event.set()
+        browser_set_streaming_media(
+            session_id,
+            status="downloading",
+            progress={
+                "stage": "cancelling",
+                "label": "Cancelling download",
+                "percent": 0,
+            },
+        )
+        return {"ok": True, "cancelled": True}
 
     def _subtitle_translator(self, session_id: str):
         """Translate caption batches with the model selected in this conversation.

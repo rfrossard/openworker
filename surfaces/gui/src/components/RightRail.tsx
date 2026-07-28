@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import {
   analyzeBrowserStreamingMedia,
+  cancelBrowserStreamingMedia,
   closeBrowser,
   downloadBrowserMedia,
   downloadBrowserStreamingMedia,
@@ -403,6 +404,14 @@ function BrowserOperator({
       setBusy(false);
     }
   };
+  const cancelMediaDownload = async () => {
+    setDownloadMessage("Cancelling download…");
+    const result = await cancelBrowserStreamingMedia(sessionId);
+    if (!result.ok) {
+      setDownloadMessage(result.error || "The download could not be cancelled.");
+    }
+    await refresh();
+  };
   const mediaProgress = state?.streaming_media_progress || {};
   const progressPercent = Math.max(0, Math.min(100, mediaProgress.percent || 0));
   const formatBytes = (bytes?: number) => {
@@ -558,6 +567,15 @@ function BrowserOperator({
                 {mediaProgress.translator && (
                   <div className="rail-muted">Translator: {mediaProgress.translator}</div>
                 )}
+                {state?.streaming_media_status === "downloading" &&
+                  mediaProgress.stage !== "cancelling" && (
+                    <button
+                      className="btn secondary browser-download-cancel"
+                      onClick={cancelMediaDownload}
+                    >
+                      Cancel download
+                    </button>
+                  )}
               </div>
             )}
           </div>

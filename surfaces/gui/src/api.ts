@@ -685,7 +685,7 @@ export interface BrowserState {
   streaming_media_status: "idle" | "analyzing" | "ready" | "downloading" | "error";
   streaming_media_error: string;
   streaming_media_progress: {
-    stage?: "preparing" | "captions" | "translating" | "downloading" | "embedding" | "completed" | "error";
+    stage?: "preparing" | "captions" | "translating" | "downloading" | "embedding" | "cancelling" | "cancelled" | "completed" | "error";
     label?: string;
     percent?: number;
     translator?: string;
@@ -764,6 +764,16 @@ export async function downloadBrowserStreamingMedia(
       selection_id: selectionId,
       subtitle_language: subtitleLanguage,
     }),
+  });
+  return res.json();
+}
+
+export async function cancelBrowserStreamingMedia(
+  sessionId: string,
+): Promise<{ ok?: boolean; cancelled?: boolean; error?: string }> {
+  const q = new URLSearchParams({ session_id: sessionId });
+  const res = await fetch(`${httpBase()}/v1/browser/media/cancel-stream?${q}`, {
+    method: "POST",
   });
   return res.json();
 }

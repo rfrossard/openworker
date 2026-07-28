@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from coworker.connectors import streaming_media
@@ -222,6 +223,49 @@ def test_download_reports_bytes_speed_eta_and_percent(tmp_path, monkeypatch):
             "eta_seconds": 13,
         }
     ]
+
+
+def test_cancelled_download_stops_and_removes_only_temporary_files(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(streaming_media, "validate_public_url", lambda url: url)
+    analyzed = streaming_media.analyze_streaming_media(
+        "session-cancel",
+        "https://example.com/watch",
+        ydl_factory=lambda options: FakeYDL(options, _video_info()),
+    )
+    cancel_event = threading.Event()
+    existing = tmp_path / "keep.mp4"
+    existing.write_bytes(b"keep")
+
+    def cancel_on_progress(_progress):
+        cancel_event.set()
+
+    def partial_download(options):
+        (tmp_path / "unfinished.mp4.part").write_bytes(b"partial")
+        options["progress_hooks"][0](
+            {
+                "status": "downloading",
+                "downloaded_bytes": 1_000,
+                "total_bytes": 10_000,
+            }
+        )
+
+    result = streaming_media.download_streaming_media(
+        "session-cancel",
+        analyzed["formats"][0]["id"],
+        tmp_path,
+        cancel_event=cancel_event,
+        progress_callback=cancel_on_progress,
+        ydl_factory=lambda options: FakeYDL(
+            options, _video_info(), on_download=partial_download
+        ),
+        ffmpeg_path="/safe/ffmpeg",
+    )
+
+    assert result == {"cancelled": True, "error": "Download cancelled."}
+    assert existing.read_bytes() == b"keep"
+    assert not (tmp_path / "unfinished.mp4.part").exists()
 
 
 def test_rejects_unknown_or_stale_selection(tmp_path):
