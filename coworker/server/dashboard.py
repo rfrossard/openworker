@@ -528,6 +528,43 @@ def _account_summary(manager: Any) -> dict[str, Any]:
             }
         result["OpenAI"]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
+    gemini_key, _ = _provider_key(manager, "gemini", "GEMINI_API_KEY")
+    if not gemini_key:
+        gemini_key = str(os.environ.get("GOOGLE_API_KEY") or "").strip()
+    image_usage = {"units": 0, "cost": 0.0, "measurement": "estimated"}
+    try:
+        dashboard = _dashboard_data(manager)
+        image_usage.update(
+            dashboard["aggregates"]["operation_models"].get(
+                "Gemini Nano Banana 2 Lite", {}
+            )
+        )
+    except Exception:
+        # Keep the provider visible if local history is temporarily unavailable,
+        # without turning that condition into a fake balance.
+        pass
+    units = max(0, int(image_usage.get("units") or 0))
+    result["Google · Gemini Nano Banana 2 Lite"] = {
+        "configured": bool(gemini_key),
+        "status": "local_estimate" if gemini_key or units else "not_configured",
+        "balances": [],
+        "scope": "local_sessions",
+        "source": "estimated",
+        "model": "Gemini Nano Banana 2 Lite",
+        "model_id": "gemini-3.1-flash-lite-image",
+        "local_spend": max(0.0, float(image_usage.get("cost") or 0.0)),
+        "units": units,
+        "unit_kind": "image",
+        "message": (
+            "Add a Gemini API key in Settings to generate images."
+            if not gemini_key and not units
+            else "No successful paid image generations are recorded yet."
+            if not units
+            else "Locally recorded estimate; Google does not expose remaining Gemini API balance here."
+        ),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
     return {"accounts": result, "updated_at": datetime.now(timezone.utc).isoformat()}
 
 

@@ -30,6 +30,32 @@ describe("provider balance update time", () => {
     expect(formatAccountUpdatedAt()).toBe("Update time unavailable");
     expect(formatAccountUpdatedAt("invalid")).toBe("Update time unavailable");
   });
+
+  it("renders dynamic locally recorded Gemini image usage separately", () => {
+    render(
+      <AccountCard
+        name="Google · Gemini Nano Banana 2 Lite"
+        account={{
+          configured: true,
+          status: "local_estimate",
+          balances: [],
+          local_spend: 0.0672,
+          units: 2,
+          unit_kind: "image",
+          model: "Gemini Nano Banana 2 Lite",
+          model_id: "gemini-3.1-flash-lite-image",
+          scope: "local_sessions",
+          source: "estimated",
+          message: "Locally recorded estimate.",
+          updated_at: "2026-07-28T10:00:00+00:00",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("USD 0.0672")).toBeTruthy();
+    expect(screen.getByText(/2 images · locally recorded estimate/)).toBeTruthy();
+    expect(screen.getByText(/local estimate/)).toBeTruthy();
+  });
 });
 
 describe("generated media usage", () => {

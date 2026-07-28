@@ -91,6 +91,11 @@ export interface ProviderAccount {
   available?: boolean;
   balances: { currency: string; total: number; granted: number; topped_up: number }[];
   month_spend?: number;
+  local_spend?: number;
+  units?: number;
+  unit_kind?: string;
+  model?: string;
+  model_id?: string;
   currency?: string;
   scope: string;
   source: string;

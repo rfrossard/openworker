@@ -655,12 +655,12 @@ function ModelsTab({ registry }: { registry: Record<string, any> }) {
 function ProvidersTab({ providers, accounts }: { providers: Record<string, any>; accounts: Record<string, ProviderAccount> }) {
   return <div className="space-y-4">
     <section>
-      <h2 className="text-[13px] font-semibold mb-2">Official account balance & usage</h2>
+      <h2 className="text-[13px] font-semibold mb-2">Provider balance & recorded usage</h2>
       <div className="grid md:grid-cols-2 gap-3">
         {Object.entries(accounts).map(([name, account]) => <AccountCard key={name} name={name} account={account} />)}
         {!Object.keys(accounts).length && <div className={`${CARD} p-4 text-[12px] text-muted`}>No configured provider exposes account billing data.</div>}
       </div>
-      <p className="text-[10.5px] text-faint mt-2">Financial data is account-level, not per model. It refreshes every 30 seconds while Usage is open. Credentials stay in the local server.</p>
+      <p className="text-[10.5px] text-faint mt-2">Official balances and locally recorded estimates are labeled separately. This view refreshes every 30 seconds while Usage is open; credentials stay in the local server.</p>
     </section>
     <DataTable
       headers={["Provider", "Models", "Avg Input $/1M", "Avg Output $/1M", "Frontier Model", "Frontier Input", "Frontier Output", "Active"]}
@@ -700,6 +700,12 @@ export function AccountCard({ name, account }: { name: string; account: Provider
     </div> : account.month_spend != null ? <div className="mt-2">
       <div className="text-[22px] font-semibold">{account.currency || "USD"} {account.month_spend.toFixed(2)}</div>
       <div className="text-[10.5px] text-faint">Official spend this month</div>
+    </div> : account.local_spend != null && (account.units || 0) > 0 ? <div className="mt-2">
+      <div className="text-[22px] font-semibold">USD {account.local_spend.toFixed(4)}</div>
+      <div className="text-[10.5px] text-faint">
+        {account.units} {account.unit_kind}{account.units === 1 ? "" : "s"} · locally recorded estimate
+      </div>
+      {account.message && <div className="text-[10.5px] text-muted mt-1">{account.message}</div>}
     </div> : <div className="text-[11.5px] text-muted mt-2">{account.message || "No financial data available."}</div>}
     <div className="text-[10px] text-faint mt-2" title={account.updated_at || undefined}>
       {formatAccountUpdatedAt(account.updated_at)}

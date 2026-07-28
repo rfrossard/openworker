@@ -60,3 +60,57 @@ def test_failed_balance_check_still_reports_last_attempt_timestamp(monkeypatch):
     assert account["status"] == "error"
     assert account["balances"] == []
     assert datetime.fromisoformat(account["updated_at"]).tzinfo is not None
+
+
+def test_configured_gemini_is_visible_without_inventing_a_balance():
+    manager = _Manager({"provider:gemini": {"api_key": "test-key"}})
+
+    account = dashboard._account_summary(manager)["accounts"][
+        "Google · Gemini Nano Banana 2 Lite"
+    ]
+
+    assert account["status"] == "local_estimate"
+    assert account["balances"] == []
+    assert account["local_spend"] == 0
+    assert account["units"] == 0
+    assert "No successful paid image generations" in account["message"]
+
+
+def test_unconfigured_gemini_still_explains_why_usage_is_absent():
+    manager = _Manager({})
+
+    account = dashboard._account_summary(manager)["accounts"][
+        "Google · Gemini Nano Banana 2 Lite"
+    ]
+
+    assert account["configured"] is False
+    assert account["status"] == "not_configured"
+    assert account["balances"] == []
+    assert account["units"] == 0
+    assert "Add a Gemini API key" in account["message"]
+
+
+def test_gemini_card_uses_dynamic_locally_recorded_image_usage(monkeypatch):
+    manager = _Manager({"provider:gemini": {"api_key": "test-key"}})
+    monkeypatch.setattr(
+        dashboard,
+        "_dashboard_data",
+        lambda _manager: {
+            "aggregates": {
+                "operation_models": {
+                    "Gemini Nano Banana 2 Lite": {
+                        "units": 3,
+                        "cost": 0.1008,
+                        "measurement": "estimated",
+                    }
+                }
+            }
+        },
+    )
+
+    account = dashboard._account_summary(manager)["accounts"][
+        "Google · Gemini Nano Banana 2 Lite"
+    ]
+
+    assert account["local_spend"] == 0.1008
+    assert account["units"] == 3
