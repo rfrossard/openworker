@@ -320,6 +320,82 @@ def test_reasoning_streams_persists_and_never_reaches_providers(tmp_path):
     assert all("reasoning" not in m for m in engine._outbound_messages())
 
 
+def test_outbound_repairs_orphaned_tool_call_before_later_user_message(tmp_path):
+    engine = TurnEngine(
+        provider=OneTurnProvider(AssistantTurn(text="done", finish_reason="stop")),
+        registry=ToolRegistry(),
+        permissions=PermissionEngine(workspace_root=tmp_path),
+        model="gpt-5.5",
+        messages=[
+            {"role": "user", "content": "open the page"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_orphan",
+                        "type": "function",
+                        "function": {
+                            "name": "browser_open",
+                            "arguments": '{"url":"https://example.com"}',
+                        },
+                    }
+                ],
+            },
+            {"role": "user", "content": "try another page"},
+        ],
+    )
+
+    outbound = engine._outbound_messages()
+    assert [m["role"] for m in outbound] == [
+        "user",
+        "assistant",
+        "tool",
+        "user",
+    ]
+    assert outbound[2]["tool_call_id"] == "call_orphan"
+    assert "interrupted" in outbound[2]["content"]
+    # Recovery is provider-only; the user's append-only transcript is not rewritten.
+    assert [m["role"] for m in engine.messages] == ["user", "assistant", "user"]
+
+
+def test_outbound_repairs_only_missing_results_in_parallel_group(tmp_path):
+    engine = TurnEngine(
+        provider=OneTurnProvider(AssistantTurn(text="done", finish_reason="stop")),
+        registry=ToolRegistry(),
+        permissions=PermissionEngine(workspace_root=tmp_path),
+        model="gpt-5.5",
+        messages=[
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_done",
+                        "type": "function",
+                        "function": {"name": "first", "arguments": "{}"},
+                    },
+                    {
+                        "id": "call_missing",
+                        "type": "function",
+                        "function": {"name": "second", "arguments": "{}"},
+                    },
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_done",
+                "content": '{"ok":true}',
+            },
+            {"role": "user", "content": "continue"},
+        ],
+    )
+
+    outbound = engine._outbound_messages()
+    results = [m for m in outbound if m["role"] == "tool"]
+    assert [m["tool_call_id"] for m in results] == ["call_done", "call_missing"]
+
+
 def test_stop_during_thinking_keeps_partial_reasoning(tmp_path):
     class EndlessThinkingProvider(ProviderClient):
         def complete(self, **kwargs):  # pragma: no cover

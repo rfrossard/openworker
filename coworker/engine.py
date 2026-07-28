@@ -901,6 +901,13 @@ class TurnEngine:
             for msg in self.messages
             if msg.get("role") != "notice"
         ]
+        # A process crash, an older OpenWorker build, or an interrupted approval can
+        # leave a persisted assistant tool-call without the corresponding tool result.
+        # OpenAI-compatible providers reject the *entire* conversation in that state,
+        # including every later user retry. Repair the provider-only copy at the exact
+        # point where a result is missing. The transcript remains untouched and the
+        # synthetic result can never execute a tool.
+        out = self._repair_orphaned_tool_calls(out)
         # PDF attachments (stored as `file` parts) are adapted to the ACTIVE model right
         # here — never in the persisted history — so a mid-session model switch always
         # re-decides: native PDF models get the real document, the rest get the local
@@ -982,6 +989,57 @@ class TurnEngine:
             out[i] = msg
             break
         return out
+
+    @staticmethod
+    def _repair_orphaned_tool_calls(
+        messages: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Close incomplete historical tool-call groups for provider compatibility.
+
+        A tool result must follow its assistant ``tool_calls`` group before any new
+        user/assistant message. Valid results are retained; only missing IDs receive a
+        synthetic interruption result. This is deliberately send-time-only so recovery
+        does not rewrite the append-only conversation log.
+        """
+        repaired: list[dict[str, Any]] = []
+        pending: list[str] = []
+
+        def close_pending() -> None:
+            for call_id in pending:
+                repaired.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "content": json.dumps(
+                            {
+                                "ok": False,
+                                "error": "interrupted before the tool returned a result",
+                            }
+                        ),
+                    }
+                )
+            pending.clear()
+
+        for message in messages:
+            role = message.get("role")
+            if pending and role != "tool":
+                close_pending()
+
+            repaired.append(message)
+
+            if role == "assistant" and message.get("tool_calls"):
+                pending = [
+                    tc.get("id")
+                    for tc in message["tool_calls"]
+                    if isinstance(tc, dict) and tc.get("id")
+                ]
+            elif role == "tool" and pending:
+                call_id = message.get("tool_call_id")
+                if call_id in pending:
+                    pending.remove(call_id)
+
+        close_pending()
+        return repaired
 
 
 def _assistant_message(turn: AssistantTurn) -> dict[str, Any]:
