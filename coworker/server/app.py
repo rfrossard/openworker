@@ -1187,6 +1187,15 @@ def create_app(manager: SessionManager) -> FastAPI:
             allowed_domains=values if isinstance(values, list) else [],
         )
 
+    @app.post("/v1/browser/media/download")
+    def browser_media_download_post(
+        body: dict, session_id: str = ""
+    ) -> dict[str, Any]:
+        media_id = str((body or {}).get("media_id", "")).strip()
+        if not media_id:
+            return {"error": "media_id is required"}
+        return manager.browser_download_media(session_id, media_id)
+
     # -- web search -------------------------------------------------------------
     @app.get("/v1/web-search")
     def web_search_get() -> dict[str, Any]:

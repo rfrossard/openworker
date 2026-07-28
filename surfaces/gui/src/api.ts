@@ -663,6 +663,15 @@ export interface BrowserState {
     captured_at: string;
     screenshot_sha256: string;
   }>;
+  media: Array<{
+    id: string;
+    kind: "video" | "audio";
+    url: string;
+    mime_type: string;
+    resolution: string;
+    width: number;
+    height: number;
+  }>;
 }
 
 export async function getBrowserState(sessionId: string): Promise<BrowserState> {
@@ -692,6 +701,19 @@ export async function setBrowserPolicy(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(policy),
+  });
+  return res.json();
+}
+
+export async function downloadBrowserMedia(
+  sessionId: string,
+  mediaId: string,
+): Promise<{ ok?: boolean; error?: string; path?: string; bytes?: number; resolution?: string }> {
+  const q = new URLSearchParams({ session_id: sessionId });
+  const res = await fetch(`${httpBase()}/v1/browser/media/download?${q}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ media_id: mediaId }),
   });
   return res.json();
 }

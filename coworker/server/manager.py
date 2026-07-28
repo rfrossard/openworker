@@ -53,10 +53,12 @@ from ..connectors import (
 )
 from ..connectors.browser_automation import (
     browser_close_session,
+    browser_media_source,
     browser_set_policy,
     browser_state,
     browser_take_screenshot,
 )
+from ..connectors.browser_download import download_media
 from ..connectors.parked import ParkedStore
 from ..mcp import (
     MCPManager,
@@ -1122,6 +1124,24 @@ class SessionManager:
             session_id,
             always_allow_reads=always_allow_reads,
             allowed_domains=allowed_domains,
+        )
+
+    def browser_download_media(
+        self, session_id: str, media_id: str
+    ) -> dict[str, Any]:
+        record = self.session_store.load(session_id)
+        workspace = record.workspace if record else self.default_workspace
+        if not workspace:
+            return {"error": "Choose a workspace before downloading media."}
+        selected = browser_media_source(session_id, media_id)
+        if not selected.get("ok"):
+            return selected
+        source = dict(selected["media"])
+        source["page_url"] = selected.get("page_url", "")
+        return download_media(
+            source,
+            workspace,
+            cookies=selected.get("cookies", []),
         )
 
     def list_artifacts(self, session_id: str) -> list[dict[str, Any]]:

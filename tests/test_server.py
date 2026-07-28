@@ -191,6 +191,12 @@ def test_browser_rest_routes_actions_to_the_requested_session(tmp_path, monkeypa
         lambda session_id="", **policy: calls.append(("policy", session_id))
         or {"ok": True, **policy},
     )
+    monkeypatch.setattr(
+        manager,
+        "browser_download_media",
+        lambda session_id, media_id: calls.append(("download", session_id))
+        or {"ok": True, "media_id": media_id},
+    )
     client = TestClient(create_app(manager))
 
     assert client.get(
@@ -212,11 +218,18 @@ def test_browser_rest_routes_actions_to_the_requested_session(tmp_path, monkeypa
     ).json()
     assert policy["always_allow_reads"] is False
     assert policy["allowed_domains"] == ["example.com"]
+    downloaded = client.post(
+        "/v1/browser/media/download",
+        params={"session_id": "research-d"},
+        json={"media_id": "video-0-0"},
+    ).json()
+    assert downloaded == {"ok": True, "media_id": "video-0-0"}
     assert calls == [
         ("state", "chat-a"),
         ("screenshot", "code-b"),
         ("close", "ops-c"),
         ("policy", "research-d"),
+        ("download", "research-d"),
     ]
 
 

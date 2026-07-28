@@ -596,6 +596,9 @@ button.btn.danger { color: var(--accent); }
 .browser-domain-entry input { min-width: 0; flex: 1; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); padding: 6px 8px; font-size: 11.5px; }
 .browser-domain-list { display: flex; flex-wrap: wrap; gap: 5px; }
 .browser-domain-chip { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); padding: 3px 7px; font-size: 10.5px; cursor: pointer; }
+.browser-media { display: flex; flex-direction: column; gap: 7px; border-top: 1px solid var(--line); padding-top: 8px; }
+.browser-media-actions { display: flex; gap: 6px; }
+.browser-media-actions select { min-width: 0; flex: 1; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); padding: 6px 8px; font-size: 11.5px; }
 .browser-history { border-top: 1px solid var(--line); padding-top: 7px; }
 .browser-history summary { color: var(--muted); cursor: pointer; font-size: 11.5px; }
 .browser-history-list { display: flex; flex-direction: column; gap: 7px; padding-top: 7px; }

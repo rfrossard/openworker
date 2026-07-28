@@ -153,3 +153,31 @@ def test_browser_history_and_evidence_are_session_scoped():
     assert state["history"][0]["url"] == "https://example.com/docs"
     assert state["evidence"][0]["action"] == "open_url"
     assert len(state["evidence"][0]["screenshot_sha256"]) == 64
+
+
+def test_snapshot_discovers_direct_media_variants():
+    from coworker.connectors.browser_automation import _snapshot
+
+    class Page:
+        @staticmethod
+        def evaluate(_script):
+            return {
+                "title": "Media",
+                "url": "https://example.com/watch",
+                "text": "Watch",
+                "controls": [],
+                "media": [
+                    {
+                        "id": "video-0-0",
+                        "kind": "video",
+                        "url": "https://cdn.example.com/movie.mp4",
+                        "mime_type": "video/mp4",
+                        "resolution": "1080p",
+                        "width": 1920,
+                        "height": 1080,
+                    }
+                ],
+            }
+
+    result = _snapshot(Page(), 100)
+    assert result["media"][0]["resolution"] == "1080p"

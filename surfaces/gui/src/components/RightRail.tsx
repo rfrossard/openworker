@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import {
   closeBrowser,
+  downloadBrowserMedia,
   getArtifacts,
   getBrowserState,
   getSettings,
@@ -261,6 +262,8 @@ function BrowserOperator({
   const [busy, setBusy] = useState(false);
   const [previewInterval, setPreviewInterval] = useState(3000);
   const [domainInput, setDomainInput] = useState("");
+  const [selectedMediaId, setSelectedMediaId] = useState("");
+  const [downloadMessage, setDownloadMessage] = useState("");
   const captureInFlight = useRef(false);
   const browserUsed = toolNames.some((name) => name.startsWith("browser_"));
 
@@ -344,6 +347,22 @@ function BrowserOperator({
     if (!domain) return;
     await updatePolicy(false, [...(state?.allowed_domains || []), domain]);
     setDomainInput("");
+  };
+  const downloadMedia = async () => {
+    const mediaId = selectedMediaId || state?.media?.[0]?.id;
+    if (!mediaId) return;
+    setBusy(true);
+    setDownloadMessage("Downloading…");
+    try {
+      const result = await downloadBrowserMedia(sessionId, mediaId);
+      setDownloadMessage(
+        result.ok
+          ? `Saved to ${result.path}`
+          : result.error || "The download could not be completed.",
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -443,6 +462,39 @@ function BrowserOperator({
             </>
           )}
         </div>
+        {!!state?.media?.length && (
+          <div className="browser-media">
+            <div className="browser-subhead">Page media</div>
+            <div className="rail-muted">
+              Download a direct audio or video source made available by this page.
+            </div>
+            <div className="browser-media-actions">
+              <select
+                value={selectedMediaId || state.media[0].id}
+                onChange={(event) => {
+                  setSelectedMediaId(event.target.value);
+                  setDownloadMessage("");
+                }}
+                aria-label="Media format and resolution"
+              >
+                {state.media.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.kind === "video" ? "Video" : "Audio"} · {item.resolution}
+                    {item.mime_type ? ` · ${item.mime_type.replace(/^(video|audio)\//, "")}` : ""}
+                  </option>
+                ))}
+              </select>
+              <button className="btn secondary" onClick={downloadMedia} disabled={busy}>
+                Download
+              </button>
+            </div>
+            {downloadMessage && (
+              <div className={downloadMessage.startsWith("Saved") ? "rail-muted" : "browser-error"}>
+                {downloadMessage}
+              </div>
+            )}
+          </div>
+        )}
         {!!state?.history?.length && (
           <details className="browser-history">
             <summary>Navigation evidence ({state.history.length})</summary>

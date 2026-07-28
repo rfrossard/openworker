@@ -150,6 +150,7 @@ class _BrowserController:
             "allowed_domains": [],
             "history": [],
             "evidence": [],
+            "media": [],
         }
 
     def _touch(self, **changes: Any) -> None:
@@ -164,6 +165,7 @@ class _BrowserController:
                 url="",
                 title="",
                 controls=[],
+                media=[],
             )
             return
         try:
@@ -174,6 +176,7 @@ class _BrowserController:
                 url=self._page.url,
                 title=self._page.title(),
                 controls=snap.get("controls", [])[:30],
+                media=snap.get("media", []),
             )
         except Exception as exc:
             self._touch(open=True, status="error", last_error=str(exc))
@@ -246,6 +249,30 @@ class _BrowserController:
             hostname == domain or hostname.endswith(f".{domain}")
             for domain in self._state.get("allowed_domains", [])
         )
+
+    def media_source(self, media_id: str) -> dict[str, Any]:
+        def run() -> dict[str, Any]:
+            with self._lock:
+                match = next(
+                    (
+                        item
+                        for item in self._state.get("media", [])
+                        if item.get("id") == media_id
+                    ),
+                    None,
+                )
+                if not match:
+                    return {"error": "The selected media is no longer available."}
+                return {
+                    "ok": True,
+                    "media": dict(match),
+                    "page_url": self._state.get("url", ""),
+                    "cookies": (
+                        self._context.cookies() if self._context is not None else []
+                    ),
+                }
+
+        return self._submit(run)
 
     def _setup_error(self, exc: Exception) -> dict[str, str]:
         return {
@@ -327,6 +354,7 @@ class _BrowserController:
                     url="",
                     title="",
                     controls=[],
+                    media=[],
                 )
             return {"ok": True}
 
@@ -428,6 +456,10 @@ def browser_set_policy(
     )
 
 
+def browser_media_source(session_id: str, media_id: str) -> dict[str, Any]:
+    return _browser_for(session_id).media_source(media_id)
+
+
 def _cap(value: int, default: int = 20000, upper: int = 100000) -> int:
     try:
         return max(1, min(int(value or default), upper))
@@ -490,11 +522,46 @@ _SNAPSHOT_JS = """
     .filter(visible)
     .slice(0, 120)
     .map(describe);
+  const media = [];
+  const seen = new Set();
+  document.querySelectorAll('video,audio').forEach((element, elementIndex) => {
+    const candidates = [];
+    if (element.currentSrc || element.src) {
+      candidates.push({
+        src: element.currentSrc || element.src,
+        type: element.getAttribute('type') || '',
+        label: element.getAttribute('data-quality') || element.getAttribute('data-res') || ''
+      });
+    }
+    element.querySelectorAll('source').forEach(source => candidates.push({
+      src: source.src,
+      type: source.type || '',
+      label: source.getAttribute('label') || source.getAttribute('data-quality') ||
+        source.getAttribute('data-res') || source.getAttribute('media') || ''
+    }));
+    candidates.forEach((source, sourceIndex) => {
+      if (!source.src || !/^https?:/i.test(source.src) || seen.has(source.src)) return;
+      seen.add(source.src);
+      const kind = element.tagName.toLowerCase() === 'audio' ? 'audio' : 'video';
+      const width = Number(element.videoWidth || element.getAttribute('width') || 0);
+      const height = Number(element.videoHeight || element.getAttribute('height') || 0);
+      media.push({
+        id: `${kind}-${elementIndex}-${sourceIndex}`,
+        kind,
+        url: source.src,
+        mime_type: source.type || '',
+        resolution: source.label || (height ? `${height}p` : (kind === 'audio' ? 'Audio' : 'Original')),
+        width,
+        height
+      });
+    });
+  });
   return {
     title: document.title,
     url: location.href,
     text: document.body ? document.body.innerText : '',
-    controls
+    controls,
+    media
   };
 }
 """
@@ -510,6 +577,7 @@ def _snapshot(page, max_chars: int) -> dict[str, Any]:
         "text": text[:cap],
         "truncated": len(text) > cap,
         "controls": data.get("controls") or [],
+        "media": data.get("media") or [],
     }
 
 
