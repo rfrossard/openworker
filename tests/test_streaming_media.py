@@ -178,6 +178,52 @@ def test_download_uses_server_owned_selection_and_controlled_output(
     assert Path(result["path"]).read_bytes() == b"downloaded"
 
 
+def test_download_reports_bytes_speed_eta_and_percent(tmp_path, monkeypatch):
+    monkeypatch.setattr(streaming_media, "validate_public_url", lambda url: url)
+    analyzed = streaming_media.analyze_streaming_media(
+        "session-progress",
+        "https://example.com/watch",
+        ydl_factory=lambda options: FakeYDL(options, _video_info()),
+    )
+    events = []
+
+    def create_output(options):
+        options["progress_hooks"][0](
+            {
+                "status": "downloading",
+                "downloaded_bytes": 25_000_000,
+                "total_bytes": 50_000_000,
+                "speed": 2_000_000,
+                "eta": 13,
+            }
+        )
+        (tmp_path / "Example_video-1080p.mp4").write_bytes(b"downloaded")
+
+    result = streaming_media.download_streaming_media(
+        "session-progress",
+        analyzed["formats"][0]["id"],
+        tmp_path,
+        progress_callback=events.append,
+        ydl_factory=lambda options: FakeYDL(
+            options, _video_info(), on_download=create_output
+        ),
+        ffmpeg_path="/safe/ffmpeg",
+    )
+
+    assert result["ok"] is True
+    assert events == [
+        {
+            "stage": "downloading",
+            "label": "Downloading media",
+            "percent": 56,
+            "downloaded_bytes": 25_000_000,
+            "total_bytes": 50_000_000,
+            "speed_bytes_per_second": 2_000_000,
+            "eta_seconds": 13,
+        }
+    ]
+
+
 def test_rejects_unknown_or_stale_selection(tmp_path):
     result = streaming_media.download_streaming_media(
         "unknown-session", "user-controlled-format", tmp_path

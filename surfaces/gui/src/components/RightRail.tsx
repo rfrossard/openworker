@@ -403,6 +403,13 @@ function BrowserOperator({
       setBusy(false);
     }
   };
+  const mediaProgress = state?.streaming_media_progress || {};
+  const progressPercent = Math.max(0, Math.min(100, mediaProgress.percent || 0));
+  const formatBytes = (bytes?: number) => {
+    if (!bytes) return "";
+    if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    return `${Math.ceil(bytes / 1024)} KB`;
+  };
 
   return (
     <RailSection
@@ -512,6 +519,45 @@ function BrowserOperator({
                 }
               >
                 {downloadMessage}
+              </div>
+            )}
+            {(state?.streaming_media_status === "downloading" ||
+              mediaProgress.stage === "completed") && (
+              <div className="browser-download-progress" aria-live="polite">
+                <div className="browser-download-progress-head">
+                  <span>{mediaProgress.label || "Preparing download"}</span>
+                  <strong>{progressPercent}%</strong>
+                </div>
+                <div
+                  className="browser-download-progress-track"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progressPercent}
+                >
+                  <span style={{ width: `${progressPercent}%` }} />
+                </div>
+                {mediaProgress.stage === "downloading" && (
+                  <div className="browser-download-progress-meta">
+                    <span>
+                      {formatBytes(mediaProgress.downloaded_bytes)}
+                      {mediaProgress.total_bytes
+                        ? ` of ${formatBytes(mediaProgress.total_bytes)}`
+                        : ""}
+                    </span>
+                    <span>
+                      {mediaProgress.speed_bytes_per_second
+                        ? `${formatBytes(mediaProgress.speed_bytes_per_second)}/s`
+                        : ""}
+                      {mediaProgress.eta_seconds
+                        ? ` · ${mediaProgress.eta_seconds}s remaining`
+                        : ""}
+                    </span>
+                  </div>
+                )}
+                {mediaProgress.translator && (
+                  <div className="rail-muted">Translator: {mediaProgress.translator}</div>
+                )}
               </div>
             )}
           </div>

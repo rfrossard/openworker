@@ -154,6 +154,7 @@ class _BrowserController:
             "streaming_media": [],
             "streaming_media_status": "idle",
             "streaming_media_error": "",
+            "streaming_media_progress": {},
         }
 
     def _touch(self, **changes: Any) -> None:
@@ -303,13 +304,18 @@ class _BrowserController:
         media: Optional[list[dict[str, Any]]] = None,
         status: str,
         error: str = "",
+        progress: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         with self._lock:
-            self._touch(
-                streaming_media=list(media or []),
-                streaming_media_status=status,
-                streaming_media_error=error,
-            )
+            changes: dict[str, Any] = {
+                "streaming_media_status": status,
+                "streaming_media_error": error,
+            }
+            if media is not None:
+                changes["streaming_media"] = list(media)
+            if progress is not None:
+                changes["streaming_media_progress"] = dict(progress)
+            self._touch(**changes)
             return dict(self._state)
 
     def _setup_error(self, exc: Exception) -> dict[str, str]:
@@ -452,6 +458,7 @@ class _BrowserController:
                             streaming_media=[],
                             streaming_media_status="idle",
                             streaming_media_error="",
+                            streaming_media_progress={},
                         )
                     self._capture_preview()
                     self._record_evidence(action)
@@ -515,11 +522,13 @@ def browser_set_streaming_media(
     media: Optional[list[dict[str, Any]]] = None,
     status: str,
     error: str = "",
+    progress: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     return _browser_for(session_id).set_streaming_media(
         media=media,
         status=status,
         error=error,
+        progress=progress,
     )
 
 

@@ -1150,7 +1150,7 @@ class SessionManager:
         context = browser_media_context(session_id)
         if not context.get("ok"):
             return context
-        browser_set_streaming_media(session_id, status="analyzing")
+        browser_set_streaming_media(session_id, status="analyzing", progress={})
         result = analyze_streaming_media(
             session_id,
             str(context["url"]),
@@ -1162,12 +1162,14 @@ class SessionManager:
                 session_id,
                 status="error",
                 error=str(result.get("error") or "Streaming analysis failed."),
+                progress={},
             )
             return result
         browser_set_streaming_media(
             session_id,
             media=list(result["formats"]),
             status="ready",
+            progress={},
         )
         return result
 
@@ -1179,19 +1181,47 @@ class SessionManager:
             session_id,
             media=list(current.get("streaming_media", [])),
             status="downloading",
+            progress={
+                "stage": "preparing",
+                "label": "Preparing download",
+                "percent": 0,
+            },
         )
+
+        def update_progress(progress: dict[str, Any]) -> None:
+            browser_set_streaming_media(
+                session_id,
+                status="downloading",
+                progress=progress,
+            )
+
         result = download_streaming_media(
             session_id,
             selection_id,
             self.download_directory(),
             subtitle_language=subtitle_language,
             subtitle_translator=self._subtitle_translator(session_id),
+            progress_callback=update_progress,
         )
         browser_set_streaming_media(
             session_id,
             media=list(current.get("streaming_media", [])),
             status="ready" if result.get("ok") else "error",
             error=str(result.get("error") or ""),
+            progress=(
+                {
+                    "stage": "completed",
+                    "label": "Download completed",
+                    "percent": 100,
+                    "path": str(result.get("path") or ""),
+                }
+                if result.get("ok")
+                else {
+                    "stage": "error",
+                    "label": "Download failed",
+                    "percent": 0,
+                }
+            ),
         )
         return result
 
@@ -1244,6 +1274,7 @@ class SessionManager:
                 raise RuntimeError("The selected model returned an invalid cue count.")
             return [str(value) for value in values]
 
+        translate.model_name = model  # type: ignore[attr-defined]
         return translate
 
     def list_artifacts(self, session_id: str) -> list[dict[str, Any]]:

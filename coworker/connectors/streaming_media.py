@@ -91,6 +91,8 @@ def _translate_vtt_locally(
     *,
     client: Optional[httpx.Client] = None,
     primary_translator: Optional[Callable[[list[str], str], list[str]]] = None,
+    progress_callback: Optional[Callable[[dict[str, Any]], None]] = None,
+    primary_label: str = "selected chat model",
 ) -> str:
     cue_blocks, text_starts, texts = _vtt_cues(vtt)
     if not texts:
@@ -114,6 +116,15 @@ def _translate_vtt_locally(
     translated: list[str] = []
     if primary_translator is not None:
         try:
+            if progress_callback:
+                progress_callback(
+                    {
+                        "stage": "translating",
+                        "label": f"Translating subtitles with {primary_label}",
+                        "percent": 10,
+                        "translator": primary_label,
+                    }
+                )
             translated = translate_with(primary_translator)
         except Exception:
             translated = []
@@ -127,6 +138,15 @@ def _translate_vtt_locally(
                 raise RuntimeError(
                     "The selected chat model could not translate the subtitles and no "
                     "local Ollama model is available."
+                )
+            if progress_callback:
+                progress_callback(
+                    {
+                        "stage": "translating",
+                        "label": f"Falling back to local Ollama · {model}",
+                        "percent": 10,
+                        "translator": f"Ollama · {model}",
+                    }
                 )
 
             def ollama_translate(batch: list[str], batch_target: str) -> list[str]:
@@ -593,6 +613,7 @@ def download_streaming_media(
     ydl_factory: Callable[[dict[str, Any]], Any] = _youtube_dl_factory,
     ffmpeg_path: Optional[str] = None,
     subtitle_translator: Optional[Callable[[list[str], str], list[str]]] = None,
+    progress_callback: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> dict[str, Any]:
     with _LOCK:
         selection = dict(_SELECTIONS.get(session_id, {}).get(selection_id, {}))
@@ -650,10 +671,23 @@ def download_streaming_media(
     reported_paths: set[Path] = set()
     local_subtitle_path: Optional[Path] = None
     use_local_translation = False
+
+    def report(**changes: Any) -> None:
+        if progress_callback is not None:
+            try:
+                progress_callback(changes)
+            except Exception:
+                pass
+
     if subtitle_language in {"pt", "es"}:
         english_record = dict(selection.get("subtitle_records") or {}).get("en")
         if english_record:
             try:
+                report(
+                    stage="captions",
+                    label="Downloading original English captions",
+                    percent=5,
+                )
                 original_vtt = _download_original_caption(
                     english_record,
                     list(selection.get("cookies") or []),
@@ -668,6 +702,14 @@ def download_streaming_media(
                         original_vtt,
                         subtitle_language,
                         primary_translator=subtitle_translator,
+                        progress_callback=progress_callback,
+                        primary_label=str(
+                            getattr(
+                                subtitle_translator,
+                                "model_name",
+                                "selected chat model",
+                            )
+                        ),
                     )
                 descriptor, raw_path = tempfile.mkstemp(
                     prefix="openworker-subtitle-", suffix=".vtt"
@@ -710,6 +752,16 @@ def download_streaming_media(
             remember_path(info.get("_filename"))
         downloaded = int(data.get("downloaded_bytes") or 0)
         total = int(data.get("total_bytes") or data.get("total_bytes_estimate") or 0)
+        percent = min(97, max(15, int(downloaded * 82 / total) + 15)) if total else 15
+        report(
+            stage="downloading",
+            label="Downloading media",
+            percent=percent,
+            downloaded_bytes=downloaded,
+            total_bytes=total,
+            speed_bytes_per_second=int(data.get("speed") or 0),
+            eta_seconds=int(data.get("eta") or 0),
+        )
         if downloaded > MAX_MEDIA_BYTES or total > MAX_MEDIA_BYTES:
             raise RuntimeError("The media file exceeds the 1 GB safety limit.")
 
@@ -828,6 +880,7 @@ def download_streaming_media(
     output = max(candidates, key=lambda path: path.stat().st_mtime)
     if use_local_translation and local_subtitle_path is not None:
         try:
+            report(stage="embedding", label="Embedding subtitles", percent=98)
             _embed_local_subtitle(
                 output,
                 local_subtitle_path,

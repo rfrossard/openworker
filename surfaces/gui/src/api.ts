@@ -684,6 +684,17 @@ export interface BrowserState {
   }>;
   streaming_media_status: "idle" | "analyzing" | "ready" | "downloading" | "error";
   streaming_media_error: string;
+  streaming_media_progress: {
+    stage?: "preparing" | "captions" | "translating" | "downloading" | "embedding" | "completed" | "error";
+    label?: string;
+    percent?: number;
+    translator?: string;
+    downloaded_bytes?: number;
+    total_bytes?: number;
+    speed_bytes_per_second?: number;
+    eta_seconds?: number;
+    path?: string;
+  };
 }
 
 export async function getBrowserState(sessionId: string): Promise<BrowserState> {
