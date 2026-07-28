@@ -90,53 +90,78 @@ def _translate_vtt_locally(
     language: str,
     *,
     client: Optional[httpx.Client] = None,
+    primary_translator: Optional[Callable[[list[str], str], list[str]]] = None,
 ) -> str:
     cue_blocks, text_starts, texts = _vtt_cues(vtt)
     if not texts:
         raise RuntimeError("The source subtitle contained no timed text.")
-    owned_client = client is None
-    active_client = client or httpx.Client()
     target = "Brazilian Portuguese" if language == "pt" else "Spanish"
-    try:
-        model = _ollama_model(active_client)
-        if not model:
-            raise RuntimeError(
-                "Install or start an Ollama model to translate subtitles locally."
-            )
+
+    def translate_with(
+        translator: Callable[[list[str], str], list[str]]
+    ) -> list[str]:
         translated: list[str] = []
         for start in range(0, len(texts), 30):
             batch = texts[start : start + 30]
-            response = active_client.post(
-                f"{_OLLAMA_URL}/api/chat",
-                json={
-                    "model": model,
-                    "stream": False,
-                    "format": "json",
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": (
-                                f"Translate subtitle text into {target}. Preserve line breaks, "
-                                "speaker labels, simple HTML tags, and meaning. Return only JSON "
-                                'with one key, "translations", containing exactly one string for '
-                                "each input string in the same order."
-                            ),
-                        },
-                        {
-                            "role": "user",
-                            "content": json.dumps(batch, ensure_ascii=False),
-                        },
-                    ],
-                    "options": {"temperature": 0},
-                },
-                timeout=180,
-            )
-            response.raise_for_status()
-            content = response.json().get("message", {}).get("content", "")
-            values = json.loads(content).get("translations", [])
+            values = translator(batch, target)
             if not isinstance(values, list) or len(values) != len(batch):
-                raise RuntimeError("The local translation returned an invalid cue count.")
+                raise RuntimeError("The translation returned an invalid cue count.")
             translated.extend(str(value) for value in values)
+        return translated
+
+    # Prefer the model selected in the chat. Any provider/configuration/response
+    # failure falls through to Ollama, keeping downloads usable offline.
+    translated: list[str] = []
+    if primary_translator is not None:
+        try:
+            translated = translate_with(primary_translator)
+        except Exception:
+            translated = []
+
+    owned_client = client is None
+    active_client = client or httpx.Client()
+    try:
+        if not translated:
+            model = _ollama_model(active_client)
+            if not model:
+                raise RuntimeError(
+                    "The selected chat model could not translate the subtitles and no "
+                    "local Ollama model is available."
+                )
+
+            def ollama_translate(batch: list[str], batch_target: str) -> list[str]:
+                response = active_client.post(
+                    f"{_OLLAMA_URL}/api/chat",
+                    json={
+                        "model": model,
+                        "stream": False,
+                        "format": "json",
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": (
+                                    f"Translate subtitle text into {batch_target}. Preserve "
+                                    "line breaks, speaker labels, simple HTML tags, and "
+                                    "meaning. Return only JSON with one key, "
+                                    '"translations", containing exactly one string for each '
+                                    "input string in the same order."
+                                ),
+                            },
+                            {
+                                "role": "user",
+                                "content": json.dumps(batch, ensure_ascii=False),
+                            },
+                        ],
+                        "options": {"temperature": 0},
+                    },
+                    timeout=180,
+                )
+                response.raise_for_status()
+                content = response.json().get("message", {}).get("content", "")
+                values = json.loads(content).get("translations", [])
+                return values
+
+            translated = translate_with(ollama_translate)
     finally:
         if owned_client:
             active_client.close()
@@ -567,6 +592,7 @@ def download_streaming_media(
     subtitle_language: str = "",
     ydl_factory: Callable[[dict[str, Any]], Any] = _youtube_dl_factory,
     ffmpeg_path: Optional[str] = None,
+    subtitle_translator: Optional[Callable[[list[str], str], list[str]]] = None,
 ) -> dict[str, Any]:
     with _LOCK:
         selection = dict(_SELECTIONS.get(session_id, {}).get(selection_id, {}))
@@ -633,9 +659,16 @@ def download_streaming_media(
                     list(selection.get("cookies") or []),
                     str(selection.get("user_agent") or ""),
                 )
-                translated_vtt = _translate_vtt_locally(
-                    original_vtt, subtitle_language
-                )
+                if subtitle_translator is None:
+                    translated_vtt = _translate_vtt_locally(
+                        original_vtt, subtitle_language
+                    )
+                else:
+                    translated_vtt = _translate_vtt_locally(
+                        original_vtt,
+                        subtitle_language,
+                        primary_translator=subtitle_translator,
+                    )
                 descriptor, raw_path = tempfile.mkstemp(
                     prefix="openworker-subtitle-", suffix=".vtt"
                 )
@@ -650,7 +683,8 @@ def download_streaming_media(
                         "error": (
                             "YouTube temporarily rate-limited even the original caption. "
                             "Wait a few minutes, analyze the page again, and retry; translated "
-                            "captions will then be generated locally with Ollama."
+                            "captions will then use the selected chat model, with local Ollama "
+                            "as fallback."
                         )
                     }
                 return {"error": f"Local subtitle translation failed: {message}"}

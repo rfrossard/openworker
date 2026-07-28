@@ -300,6 +300,89 @@ def test_missing_portuguese_track_uses_youtube_auto_translation(
     assert "Olá" in embedded["subtitle"]
 
 
+def test_selected_chat_model_is_preferred_for_subtitle_translation(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(streaming_media, "validate_public_url", lambda url: url)
+    info = _video_info()
+    info["automatic_captions"] = {
+        "en": [
+            {
+                "ext": "vtt",
+                "url": "https://captions.example/timedtext?lang=en&fmt=vtt",
+            }
+        ]
+    }
+    analyzed = streaming_media.analyze_streaming_media(
+        "session-primary-translator",
+        "https://example.com/watch",
+        ydl_factory=lambda options: FakeYDL(options, info),
+    )
+    monkeypatch.setattr(
+        streaming_media,
+        "_download_original_caption",
+        lambda *_args: "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n",
+    )
+    called = []
+
+    def selected_model(batch, target):
+        called.append((batch, target))
+        return ["Olá pelo modelo selecionado"]
+
+    monkeypatch.setattr(streaming_media, "_embed_local_subtitle", lambda *_args: None)
+
+    def create_output(_options):
+        (tmp_path / "Example_video-1080p.mp4").write_bytes(b"translated")
+
+    result = streaming_media.download_streaming_media(
+        "session-primary-translator",
+        analyzed["formats"][0]["id"],
+        tmp_path,
+        subtitle_language="pt",
+        subtitle_translator=selected_model,
+        ydl_factory=lambda options: FakeYDL(
+            options, info, on_download=create_output
+        ),
+        ffmpeg_path="/safe/ffmpeg",
+    )
+
+    assert result["ok"] is True
+    assert called == [(["Hello"], "Brazilian Portuguese")]
+
+
+def test_ollama_fallback_is_used_when_selected_model_fails(monkeypatch):
+    class FakeClient:
+        def get(self, *_args, **_kwargs):
+            return FakeResponse({"models": [{"name": "qwen3:latest"}]})
+
+        def post(self, *_args, **_kwargs):
+            return FakeResponse(
+                {"message": {"content": '{"translations":["Tradução local"]}'}}
+            )
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    def unavailable_model(_batch, _target):
+        raise RuntimeError("provider unavailable")
+
+    translated = streaming_media._translate_vtt_locally(
+        "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n",
+        "pt",
+        client=FakeClient(),
+        primary_translator=unavailable_model,
+    )
+
+    assert "Tradução local" in translated
+
+
 def test_subtitle_rate_limit_returns_login_and_retry_guidance(
     tmp_path, monkeypatch
 ):

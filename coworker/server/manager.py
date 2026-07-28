@@ -1185,6 +1185,7 @@ class SessionManager:
             selection_id,
             self.download_directory(),
             subtitle_language=subtitle_language,
+            subtitle_translator=self._subtitle_translator(session_id),
         )
         browser_set_streaming_media(
             session_id,
@@ -1193,6 +1194,57 @@ class SessionManager:
             error=str(result.get("error") or ""),
         )
         return result
+
+    def _subtitle_translator(self, session_id: str):
+        """Translate caption batches with the model selected in this conversation.
+
+        The streaming-media layer owns the Ollama fallback, so this callback may raise
+        freely when a paid provider is absent, misconfigured, or temporarily unavailable.
+        """
+        engine = self._engines.get(session_id)
+        record = self.session_store.load(session_id)
+        model = (
+            engine.model
+            if engine is not None
+            else record.model
+            if record is not None
+            else self.model
+        )
+        if not model or model.startswith("ollama:"):
+            return None
+
+        provider = self.provider
+
+        def translate(batch: list[str], target: str) -> list[str]:
+            turn = provider.complete(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            f"Translate subtitle text into {target}. Preserve line breaks, "
+                            "speaker labels, simple HTML tags, and meaning. Return only JSON "
+                            'with one key, "translations", containing exactly one string for '
+                            "each input string in the same order."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(batch, ensure_ascii=False),
+                    },
+                ],
+                temperature=0,
+                max_tokens=4096,
+            )
+            content = str(getattr(turn, "text", None) or "").strip()
+            if content.startswith("```"):
+                content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content)
+            values = json.loads(content).get("translations", [])
+            if not isinstance(values, list) or len(values) != len(batch):
+                raise RuntimeError("The selected model returned an invalid cue count.")
+            return [str(value) for value in values]
+
+        return translate
 
     def list_artifacts(self, session_id: str) -> list[dict[str, Any]]:
         record = self.session_store.load(session_id)

@@ -95,6 +95,33 @@ def test_browser_preview_interval_defaults_persists_and_is_bounded(tmp_path):
     ).json()["browser_preview_interval_ms"] == 60_000
 
 
+def test_subtitle_translator_uses_the_session_selected_model(tmp_path):
+    class TranslationProvider(ProviderClient):
+        def __init__(self):
+            self.model = ""
+
+        def complete(self, *, model, messages, tools=None, **settings):
+            self.model = model
+            return AssistantTurn(
+                text='{"translations":["Olá"]}', finish_reason="stop"
+            )
+
+        def capabilities(self, model):
+            return ModelCapabilities()
+
+    provider = TranslationProvider()
+    manager = SessionManager(
+        workspace=tmp_path,
+        model="anthropic:claude-sonnet-4-6",
+        provider=provider,
+    )
+
+    translator = manager._subtitle_translator("new-chat")
+    assert translator is not None
+    assert translator(["Hello"], "Brazilian Portuguese") == ["Olá"]
+    assert provider.model == "anthropic:claude-sonnet-4-6"
+
+
 def test_disable_persona_archives_its_sessions(tmp_path):
     """Disable = "put this coworker and its history away": the persona's real sessions are
     archived atomically server-side (so its sidebar section disappears with it), internal
