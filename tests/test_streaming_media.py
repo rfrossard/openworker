@@ -256,12 +256,30 @@ def test_missing_portuguese_track_uses_youtube_auto_translation(
         "https://example.com/watch",
         ydl_factory=lambda options: FakeYDL(options, info),
     )
-    captured_info = {}
+    monkeypatch.setattr(
+        streaming_media,
+        "_download_original_caption",
+        lambda *_args: "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n",
+    )
+    monkeypatch.setattr(
+        streaming_media,
+        "_translate_vtt_locally",
+        lambda _vtt, _language: (
+            "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nOlá\n"
+        ),
+    )
+    embedded = {}
 
-    class TranslatingFakeYDL(FakeYDL):
-        def process_ie_result(self, processed, download=False):
-            captured_info.update(processed)
-            return super().process_ie_result(processed, download=download)
+    def embed(media, subtitle, language, _ffmpeg):
+        embedded.update(
+            {
+                "media": media,
+                "subtitle": subtitle.read_text(),
+                "language": language,
+            }
+        )
+
+    monkeypatch.setattr(streaming_media, "_embed_local_subtitle", embed)
 
     def create_output(_options):
         (tmp_path / "Example_video-1080p.mp4").write_bytes(b"translated")
@@ -271,16 +289,15 @@ def test_missing_portuguese_track_uses_youtube_auto_translation(
         analyzed["formats"][0]["id"],
         tmp_path,
         subtitle_language="pt",
-        ydl_factory=lambda options: TranslatingFakeYDL(
+        ydl_factory=lambda options: FakeYDL(
             options, info, on_download=create_output
         ),
         ffmpeg_path="/safe/ffmpeg",
     )
 
     assert result["ok"] is True
-    subtitle = captured_info["subtitles"]["pt"][0]
-    assert subtitle["ext"] == "vtt"
-    assert "tlang=pt-BR" in subtitle["url"]
+    assert embedded["language"] == "pt"
+    assert "Olá" in embedded["subtitle"]
 
 
 def test_subtitle_rate_limit_returns_login_and_retry_guidance(

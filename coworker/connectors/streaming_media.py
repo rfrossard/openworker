@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
+import subprocess
 import tempfile
 import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+import httpx
 
 from .browser_download import MAX_MEDIA_BYTES, MEDIA_EXTENSIONS
 from .browser_policy import BrowserPolicyError, validate_public_url
@@ -20,6 +24,7 @@ _LOCK = threading.RLock()
 _SELECTIONS: dict[str, dict[str, dict[str, Any]]] = {}
 _FORMAT_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _SUBTITLE_LANGUAGES = {"en", "pt", "es"}
+_OLLAMA_URL = "http://127.0.0.1:11434"
 
 
 class _QuietLogger:
@@ -37,6 +42,170 @@ def _youtube_dl_factory(options: dict[str, Any]):
     import yt_dlp
 
     return yt_dlp.YoutubeDL(options)
+
+
+def _ollama_model(client: httpx.Client) -> str:
+    response = client.get(f"{_OLLAMA_URL}/api/tags", timeout=5)
+    response.raise_for_status()
+    names = [
+        str(item.get("name") or "")
+        for item in response.json().get("models", [])
+        if item.get("name")
+    ]
+    for preferred in (
+        "qwen3:latest",
+        "glm-4.7-flash:latest",
+        "gemma4:latest",
+        "gpt-oss:latest",
+    ):
+        if preferred in names:
+            return preferred
+    return names[0] if names else ""
+
+
+def _vtt_cues(vtt: str) -> tuple[list[list[str]], list[int], list[str]]:
+    blocks = re.split(r"\r?\n\r?\n", vtt.strip())
+    header: list[str] = []
+    cue_blocks: list[list[str]] = []
+    text_starts: list[int] = []
+    texts: list[str] = []
+    for index, raw in enumerate(blocks):
+        lines = raw.splitlines()
+        timing = next((i for i, line in enumerate(lines) if "-->" in line), -1)
+        if timing < 0:
+            if index == 0:
+                header = lines
+            continue
+        text_start = timing + 1
+        if text_start >= len(lines):
+            continue
+        cue_blocks.append(lines)
+        text_starts.append(text_start)
+        texts.append("\n".join(lines[text_start:]))
+    return cue_blocks, text_starts, texts
+
+
+def _translate_vtt_locally(
+    vtt: str,
+    language: str,
+    *,
+    client: Optional[httpx.Client] = None,
+) -> str:
+    cue_blocks, text_starts, texts = _vtt_cues(vtt)
+    if not texts:
+        raise RuntimeError("The source subtitle contained no timed text.")
+    owned_client = client is None
+    active_client = client or httpx.Client()
+    target = "Brazilian Portuguese" if language == "pt" else "Spanish"
+    try:
+        model = _ollama_model(active_client)
+        if not model:
+            raise RuntimeError(
+                "Install or start an Ollama model to translate subtitles locally."
+            )
+        translated: list[str] = []
+        for start in range(0, len(texts), 30):
+            batch = texts[start : start + 30]
+            response = active_client.post(
+                f"{_OLLAMA_URL}/api/chat",
+                json={
+                    "model": model,
+                    "stream": False,
+                    "format": "json",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                f"Translate subtitle text into {target}. Preserve line breaks, "
+                                "speaker labels, simple HTML tags, and meaning. Return only JSON "
+                                'with one key, "translations", containing exactly one string for '
+                                "each input string in the same order."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": json.dumps(batch, ensure_ascii=False),
+                        },
+                    ],
+                    "options": {"temperature": 0},
+                },
+                timeout=180,
+            )
+            response.raise_for_status()
+            content = response.json().get("message", {}).get("content", "")
+            values = json.loads(content).get("translations", [])
+            if not isinstance(values, list) or len(values) != len(batch):
+                raise RuntimeError("The local translation returned an invalid cue count.")
+            translated.extend(str(value) for value in values)
+    finally:
+        if owned_client:
+            active_client.close()
+    output = ["WEBVTT"]
+    for lines, text_start, value in zip(
+        cue_blocks, text_starts, translated, strict=True
+    ):
+        output.append("\n".join([*lines[:text_start], value]))
+    return "\n\n".join(output) + "\n"
+
+
+def _download_original_caption(
+    record: dict[str, Any],
+    cookies: list[dict[str, Any]],
+    user_agent: str,
+) -> str:
+    url = validate_public_url(str(record.get("url") or ""))
+    jar = httpx.Cookies()
+    for cookie in cookies:
+        if cookie.get("name") and cookie.get("value"):
+            jar.set(
+                str(cookie["name"]),
+                str(cookie["value"]),
+                domain=str(cookie.get("domain") or "") or None,
+                path=str(cookie.get("path") or "/"),
+            )
+    headers = {"User-Agent": user_agent} if user_agent else {}
+    with httpx.Client(cookies=jar, headers=headers, follow_redirects=True) as client:
+        response = client.get(url, timeout=30)
+        response.raise_for_status()
+        return response.text
+
+
+def _embed_local_subtitle(
+    media: Path, subtitle: Path, language: str, ffmpeg_path: str
+) -> None:
+    temporary = media.with_name(f"{media.stem}.subtitled{media.suffix}")
+    codec = "webvtt" if media.suffix.lower() == ".webm" else "mov_text"
+    language_code = "por" if language == "pt" else "spa"
+    completed = subprocess.run(
+        [
+            ffmpeg_path,
+            "-y",
+            "-i",
+            str(media),
+            "-i",
+            str(subtitle),
+            "-map",
+            "0",
+            "-map",
+            "1:0",
+            "-c",
+            "copy",
+            "-c:s",
+            codec,
+            "-metadata:s:s:0",
+            f"language={language_code}",
+            str(temporary),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if completed.returncode != 0 or not temporary.is_file():
+        temporary.unlink(missing_ok=True)
+        raise RuntimeError(
+            completed.stderr.strip()[-500:] or "FFmpeg could not embed the subtitle."
+        )
+    temporary.replace(media)
 
 
 @contextmanager
@@ -453,6 +622,38 @@ def download_streaming_media(
     destination.mkdir(parents=True, exist_ok=True)
     before = {path.resolve() for path in destination.iterdir()}
     reported_paths: set[Path] = set()
+    local_subtitle_path: Optional[Path] = None
+    use_local_translation = False
+    if subtitle_language in {"pt", "es"}:
+        english_record = dict(selection.get("subtitle_records") or {}).get("en")
+        if english_record:
+            try:
+                original_vtt = _download_original_caption(
+                    english_record,
+                    list(selection.get("cookies") or []),
+                    str(selection.get("user_agent") or ""),
+                )
+                translated_vtt = _translate_vtt_locally(
+                    original_vtt, subtitle_language
+                )
+                descriptor, raw_path = tempfile.mkstemp(
+                    prefix="openworker-subtitle-", suffix=".vtt"
+                )
+                os.close(descriptor)
+                local_subtitle_path = Path(raw_path)
+                local_subtitle_path.write_text(translated_vtt, encoding="utf-8")
+                use_local_translation = True
+            except Exception as exc:
+                message = str(exc)
+                if "429" in message:
+                    return {
+                        "error": (
+                            "YouTube temporarily rate-limited even the original caption. "
+                            "Wait a few minutes, analyze the page again, and retry; translated "
+                            "captions will then be generated locally with Ollama."
+                        )
+                    }
+                return {"error": f"Local subtitle translation failed: {message}"}
 
     def remember_path(value: Any) -> None:
         if not isinstance(value, (str, Path)) or not value:
@@ -519,7 +720,7 @@ def download_streaming_media(
             "User-Agent": user_agent,
             "Accept-Language": "en-US,en;q=0.9",
         }
-    if subtitle_language:
+    if subtitle_language and not use_local_translation:
         options.update(
             {
                 "writesubtitles": True,
@@ -558,6 +759,8 @@ def download_streaming_media(
                         remember_path(item.get("filepath"))
                         remember_path(item.get("_filename"))
     except Exception as exc:
+        if local_subtitle_path is not None:
+            local_subtitle_path.unlink(missing_ok=True)
         for path in destination.iterdir():
             if path.resolve() not in before and path.suffix in {".part", ".ytdl"}:
                 path.unlink(missing_ok=True)
@@ -585,8 +788,22 @@ def download_streaming_media(
     ]
     candidates = created or reported
     if not candidates:
+        if local_subtitle_path is not None:
+            local_subtitle_path.unlink(missing_ok=True)
         return {"error": "The downloader completed without producing a media file."}
     output = max(candidates, key=lambda path: path.stat().st_mtime)
+    if use_local_translation and local_subtitle_path is not None:
+        try:
+            _embed_local_subtitle(
+                output,
+                local_subtitle_path,
+                subtitle_language,
+                ffmpeg_path or _ffmpeg_path(),
+            )
+        except Exception as exc:
+            return {"error": f"Could not embed the locally translated subtitle: {exc}"}
+        finally:
+            local_subtitle_path.unlink(missing_ok=True)
     size = output.stat().st_size
     if size > MAX_MEDIA_BYTES:
         output.unlink(missing_ok=True)
