@@ -30,5 +30,14 @@ mkdir -p "$BACKUP_DIR"
 git tag -a "$TAG" -m "$MESSAGE"
 git bundle create "$BACKUP_DIR/openworker-$TAG.bundle" --all
 
+if git remote get-url origin >/dev/null 2>&1; then
+  BRANCH="$(git branch --show-current)"
+  git push -u origin "$BRANCH"
+  git push origin "$TAG"
+  echo "GitHub: synchronized $BRANCH and $TAG"
+else
+  echo "Warning: no origin remote; checkpoint was not synchronized to GitHub." >&2
+fi
+
 echo "Created $TAG"
 echo "Bundle: $BACKUP_DIR/openworker-$TAG.bundle"

@@ -20,8 +20,20 @@ The working tree must be clean:
 ./scripts/create_local_checkpoint.sh 0.1.8 "Describe the stable change"
 ```
 
-The script creates an annotated `local-v0.1.8` tag and a bundle in the sibling
-`openworker-version-backups` directory. Keep that directory in a backed-up location.
+The script creates an annotated `local-v0.1.8` tag, pushes the current branch and tag to the
+private `origin`, and creates a bundle in the sibling `openworker-version-backups` directory.
+Keep that directory in a backed-up location.
+
+## GitHub remotes and access
+
+- `origin`: the owner's private repository (`rfrossard/openworker`), used for synchronization.
+- `upstream`: the original public project (`andrewyng/openworker`), used only to inspect or
+  fetch upstream releases.
+
+Do not give collaborators write/admin access unless explicitly intended. On the current
+GitHub Free personal plan, GitHub does not offer branch-protection rules for private
+repositories; privacy plus an empty collaborator list is therefore the available access
+boundary. Never replace `origin` with `upstream`.
 
 ## Safe rollback
 
