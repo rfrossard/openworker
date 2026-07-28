@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 from io import BytesIO
 from pathlib import Path
@@ -22,7 +23,8 @@ _SCHEMA = {
         "name": "build_presentation",
         "description": (
             "Build an editable widescreen PPTX and a matching, genuinely paginated PDF "
-            "from a structured slide specification. Local images are embedded in both."
+            "from a structured slide specification. Local images are embedded in both, "
+            "and rendered slide previews plus a contact sheet support visual review."
         ),
         "parameters": {
             "type": "object",
@@ -45,6 +47,11 @@ _SCHEMA = {
                                 "description": "Optional workspace-relative PNG or JPEG.",
                             },
                             "image_caption": {"type": "string"},
+                            "layout": {
+                                "type": "string",
+                                "enum": ["auto", "image-right", "image-left", "statement"],
+                                "description": "Intentional slide composition; auto selects image-right when an image exists.",
+                            },
                             "sources": {
                                 "type": "array",
                                 "items": {"type": "string"},
@@ -144,8 +151,11 @@ def _normalize_slides(root: Path, slides: list[dict[str, Any]]) -> list[dict[str
                 "image": _safe_image(root, str(item.get("image_path") or "")),
                 "image_caption": str(item.get("image_caption") or "").strip()[:220],
                 "sources": sources,
+                "layout": str(item.get("layout") or "auto").strip().lower(),
             }
         )
+        if normalized[-1]["layout"] not in {"auto", "image-right", "image-left", "statement"}:
+            raise ValueError(f"Slide {index} has an unsupported layout.")
     return normalized
 
 
@@ -201,9 +211,21 @@ def _add_pptx(
         if spec["takeaway"]:
             textbox(slide, spec["takeaway"], 0.74, 1.22, 11.7, 0.62, 17, accent_rgb, True)
         image = spec["image"]
+        layout = spec["layout"]
+        if layout == "statement":
+            statement = spec["takeaway"] or (spec["bullets"][0] if spec["bullets"] else spec["title"])
+            textbox(slide, statement, 1.05, 2.15, 11.1, 2.7, 31, ink, True)
+            textbox(slide, str(number), 12.25, 7.0, 0.4, 0.22, 9, muted)
+            if spec["sources"]:
+                try:
+                    slide.notes_slide.notes_text_frame.text = "[Sources]\n" + "\n".join(spec["sources"])
+                except (AttributeError, NotImplementedError):
+                    pass
+            continue
         content_width = 5.55 if image else 11.3
+        body_x = 6.98 if image and layout == "image-left" else 0.76
         body = slide.shapes.add_textbox(
-            Inches(0.76), Inches(2.02), Inches(content_width), Inches(4.55)
+            Inches(body_x), Inches(2.02), Inches(content_width), Inches(4.55)
         )
         frame = body.text_frame
         frame.clear()
@@ -217,16 +239,17 @@ def _add_pptx(
             paragraph.font.color.rgb = ink
             paragraph.space_after = Pt(12)
         if image:
+            image_x = 0.76 if layout == "image-left" else 6.65
             slide.shapes.add_picture(
                 _cover_image(image),
-                Inches(6.65),
+                Inches(image_x),
                 Inches(2.0),
                 width=Inches(5.9),
                 height=Inches(3.75),
             )
             if spec["image_caption"]:
                 caption = textbox(
-                    slide, spec["image_caption"], 6.68, 5.86, 5.8, 0.55, 11, muted
+                    slide, spec["image_caption"], image_x + 0.03, 5.86, 5.8, 0.55, 11, muted
                 )
                 caption.text_frame.paragraphs[0].alignment = PP_ALIGN.LEFT
         textbox(slide, str(number), 12.25, 7.0, 0.4, 0.22, 9, muted)
@@ -294,16 +317,25 @@ def _add_pdf(
         if spec["takeaway"]:
             text(spec["takeaway"], 54, 425, 14, accent_color, "Helvetica-Bold", 840)
         image = spec["image"]
+        layout = spec["layout"]
+        if layout == "statement":
+            statement = spec["takeaway"] or (spec["bullets"][0] if spec["bullets"] else spec["title"])
+            text(statement, 75, 320, 28, ink, "Helvetica-Bold", 810)
+            text(str(number), 895, 25, 8, muted)
+            canvas.showPage()
+            continue
         content_width = 380 if image else 820
+        body_x = 510 if image and layout == "image-left" else 58
         y = 350
         for bullet in spec["bullets"]:
-            text(f"•  {bullet}", 58, y, 13, ink, max_width=content_width)
+            text(f"•  {bullet}", body_x, y, 13, ink, max_width=content_width)
             y -= 52
         if image:
+            image_x = 54 if layout == "image-left" else 500
             prepared = _cover_image(image, 800, 500)
             canvas.drawImage(
                 ImageReader(prepared),
-                500,
+                image_x,
                 135,
                 width=400,
                 height=250,
@@ -312,10 +344,77 @@ def _add_pdf(
                 mask="auto",
             )
             if spec["image_caption"]:
-                text(spec["image_caption"], 502, 105, 9, muted, max_width=390)
+                text(spec["image_caption"], image_x + 2, 105, 9, muted, max_width=390)
         text(str(number), 895, 25, 8, muted)
         canvas.showPage()
     canvas.save()
+
+
+def _available_preview_dir(pdf_target: Path) -> Path:
+    base = pdf_target.with_name(f"{pdf_target.stem}-previews")
+    if not base.exists():
+        return base
+    for index in range(2, 1000):
+        candidate = pdf_target.with_name(f"{pdf_target.stem}-previews-{index}")
+        if not candidate.exists():
+            return candidate
+    raise ValueError("Could not allocate a presentation preview folder.")
+
+
+def _render_previews(pdf_path: Path, destination: Path) -> tuple[list[Path], Path]:
+    import pypdfium2 as pdfium
+    from PIL import Image, ImageDraw
+
+    temporary = Path(tempfile.mkdtemp(prefix=".presentation-previews.", dir=destination.parent))
+    previews: list[Path] = []
+    try:
+        document = pdfium.PdfDocument(str(pdf_path))
+        for index in range(len(document)):
+            page = document[index]
+            rendered = page.render(scale=1.5).to_pil().convert("RGB")
+            path = temporary / f"slide-{index + 1:03d}.png"
+            rendered.save(path, "PNG", optimize=True)
+            previews.append(path)
+            page.close()
+        document.close()
+        if not previews:
+            raise ValueError("The presentation PDF has no renderable pages.")
+
+        thumb_width = 480
+        gap = 24
+        columns = 2
+        thumbs: list[Image.Image] = []
+        for path in previews:
+            with Image.open(path) as image:
+                thumb = image.convert("RGB")
+                thumb.thumbnail((thumb_width, 320))
+                thumbs.append(thumb.copy())
+        cell_height = max(image.height for image in thumbs) + 48
+        rows = (len(thumbs) + columns - 1) // columns
+        sheet = Image.new(
+            "RGB",
+            (columns * thumb_width + (columns + 1) * gap, rows * cell_height + (rows + 1) * gap),
+            "#E8EBF0",
+        )
+        draw = ImageDraw.Draw(sheet)
+        for index, thumb in enumerate(thumbs):
+            column = index % columns
+            row = index // columns
+            x = gap + column * (thumb_width + gap)
+            y = gap + row * cell_height
+            sheet.paste(thumb, (x, y))
+            draw.text((x, y + thumb.height + 10), f"Slide {index + 1}", fill="#1A1F2C")
+        contact_sheet = temporary / "contact-sheet.png"
+        sheet.save(contact_sheet, "PNG", optimize=True)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(temporary, destination)
+        return (
+            [destination / path.name for path in previews],
+            destination / contact_sheet.name,
+        )
+    except Exception:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
 
 
 def make_build_presentation_tool(*, workspace: Path | str):
@@ -368,6 +467,8 @@ def make_build_presentation_tool(*, workspace: Path | str):
                 raise ValueError("PDF renderer produced an invalid file.")
             os.replace(pptx_temp, pptx_target)
             os.replace(pdf_temp, pdf_target)
+            preview_dir = _available_preview_dir(pdf_target)
+            preview_paths, contact_sheet = _render_previews(pdf_target, preview_dir)
         except Exception as exc:
             for temporary in (pptx_temp, pdf_temp):
                 try:
@@ -385,6 +486,9 @@ def make_build_presentation_tool(*, workspace: Path | str):
             "slides": len(normalized) + 1,
             "images_embedded": sum(bool(item["image"]) for item in normalized),
             "formats": ["pptx", "pdf"],
+            "preview_paths": [str(path.relative_to(root)) for path in preview_paths],
+            "contact_sheet_path": str(contact_sheet.relative_to(root)),
+            "visual_review_required": True,
             "operation_usage": {
                 "type": "artifact",
                 "provider": "Local",

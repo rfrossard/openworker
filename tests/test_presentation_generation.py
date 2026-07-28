@@ -30,10 +30,12 @@ def test_build_presentation_creates_real_matching_files_with_image(tmp_path):
                 "bullets": ["Research claims first", "Use a distinct relevant visual"],
                 "image_path": "visual.png",
                 "image_caption": "Test visual",
+                "layout": "image-left",
                 "sources": ["https://example.com/research"],
             },
             {
                 "title": "Quality gates prevent fake deliverables",
+                "layout": "statement",
                 "bullets": ["Validate signatures", "Keep output editable"],
             },
         ],
@@ -44,12 +46,17 @@ def test_build_presentation_creates_real_matching_files_with_image(tmp_path):
     assert result["ok"] is True
     assert result["slides"] == 3
     assert result["images_embedded"] == 1
+    assert len(result["preview_paths"]) == 3
+    assert result["visual_review_required"] is True
     pptx = tmp_path / "reports/deck.pptx"
     pdf = tmp_path / "reports/deck.pdf"
     assert pptx.read_bytes().startswith(b"PK")
     assert pdf.read_bytes().startswith(b"%PDF-")
     assert len(Presentation(pptx).slides) == 3
     assert len(PdfReader(pdf).pages) == 3
+    for path in result["preview_paths"]:
+        assert (tmp_path / path).read_bytes().startswith(b"\x89PNG")
+    assert (tmp_path / result["contact_sheet_path"]).read_bytes().startswith(b"\x89PNG")
     with zipfile.ZipFile(pptx) as archive:
         assert any(name.startswith("ppt/media/") for name in archive.namelist())
 

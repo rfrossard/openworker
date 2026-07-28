@@ -11,6 +11,10 @@ visuals are requested.
 
 ## Workflow
 
+For a Manus-style Presentation artifact, first read
+[manus-harness.md](references/manus-harness.md) and maintain its durable harness manifest
+through every phase.
+
 1. Define in one sentence: “By the end, [audience] should [outcome] because [takeaway].”
 2. Research claims before designing slides. Prefer primary sources, record URLs, and
    preserve disagreement or uncertainty.
@@ -23,8 +27,10 @@ visuals are requested.
    charts, people, quotes, logos, or documentary evidence.
 6. Call `build_presentation` once with the complete structured slide specification,
    workspace-relative image paths, and destinations under `reports/`.
-7. Verify that the returned result says `ok: true`, includes both formats, and reports the
-   expected number of embedded images. Fix the specification and rebuild on failure.
+7. Verify that the returned result says `ok: true`, includes both formats, reports the
+   expected number of embedded images, and returns slide previews plus a contact sheet.
+   Inspect the rendered previews before accepting the deck; do not judge only the slide
+   specification. Fix the specification and rebuild on failure.
 8. Save the storyboard, slide-by-slide source manifest, and factual claim ledger beside
    the PPTX and PDF.
 
@@ -35,6 +41,8 @@ visuals are requested.
 - Use at most six concise bullets; prefer three or four.
 - Put explanation in the presentation narrative, not dense paragraphs.
 - Add `image_path`, `image_caption`, and source URLs when relevant.
+- Select `image-left`, `image-right`, or `statement` layouts when they strengthen the
+  narrative; use `auto` only when no deliberate alternative is warranted.
 - Use one image at most once unless it is an intentional background.
 - Close by resolving the opening question, making a decision, or defining next actions.
 - Keep all audience-facing content in the user’s requested language.
@@ -46,6 +54,7 @@ visuals are requested.
 - `reports/<name>-storyboard.md`: slide purpose, claim, visual, and transition.
 - `reports/<name>.sources.md`: source and image provenance by slide.
 - `reports/<name>.claims.json`: atomic factual claims and supporting URLs.
+- `reports/<name>-previews/`: rendered PNG slides and a contact sheet for visual review.
 
 Never create the PDF with a Markdown writer or plain-text converter. Never mark the task
 complete based only on file extensions.

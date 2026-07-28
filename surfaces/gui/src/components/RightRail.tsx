@@ -28,6 +28,7 @@ import { Markdown, OPEN_ARTIFACT_EVENT } from "./Markdown";
 import { ResearchEvidenceBoard } from "./ResearchEvidenceBoard";
 import { ResearchClaimsBoard } from "./ResearchClaimsBoard";
 import { MarkdownPdfLauncher } from "./MarkdownPdfLauncher";
+import { ManusPresentationLauncher } from "./ManusPresentationLauncher";
 
 type Panel = "progress" | "browser" | "artifacts";
 
@@ -235,6 +236,10 @@ export function RightRail({
                     }
                   />
                   <MarkdownPdfLauncher
+                    artifacts={artifacts}
+                    onCreate={onResearchPrefill}
+                  />
+                  <ManusPresentationLauncher
                     artifacts={artifacts}
                     onCreate={onResearchPrefill}
                   />
