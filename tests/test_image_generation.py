@@ -1,4 +1,3 @@
-import base64
 from types import SimpleNamespace
 
 from coworker.tools.image_generation import make_generate_image_tool
@@ -7,13 +6,13 @@ from coworker.tools.image_generation import make_generate_image_tool
 PNG = b"\x89PNG\r\n\x1a\n" + b"test-payload"
 
 
-class _Images:
+class _Interactions:
     def __init__(self, response=None, error=None):
         self.response = response
         self.error = error
         self.calls = []
 
-    def generate(self, **kwargs):
+    def create(self, **kwargs):
         self.calls.append(kwargs)
         if self.error:
             raise self.error
@@ -21,8 +20,8 @@ class _Images:
 
 
 class _Client:
-    def __init__(self, images):
-        self.images = images
+    def __init__(self, interactions):
+        self.interactions = interactions
 
 
 class _Secrets:
@@ -32,15 +31,15 @@ class _Secrets:
 
 def _response(payload=PNG):
     return SimpleNamespace(
-        data=[SimpleNamespace(b64_json=base64.b64encode(payload).decode())],
+        output_image=SimpleNamespace(data=payload),
         usage=SimpleNamespace(input_tokens=12, output_tokens=34),
     )
 
 
 def test_generate_image_writes_png_atomically_inside_workspace(tmp_path):
-    images = _Images(_response())
+    interactions = _Interactions(_response())
     tool = make_generate_image_tool(
-        _Secrets(), workspace=tmp_path, client=_Client(images)
+        _Secrets(), workspace=tmp_path, client=_Client(interactions)
     )
 
     result = tool(
@@ -54,12 +53,21 @@ def test_generate_image_writes_png_atomically_inside_workspace(tmp_path):
     assert (tmp_path / result["path"]).read_bytes() == PNG
     assert result["operation_usage"]["type"] == "image"
     assert result["operation_usage"]["units"] == 1
-    assert images.calls[0]["model"] == "gpt-image-1.5"
+    assert result["provider"] == "Google"
+    assert result["quality"] == "1K"
+    assert result["operation_usage"]["estimated_cost_usd"] == 0.0336
+    assert interactions.calls[0]["model"] == "gemini-3.1-flash-lite-image"
+    assert interactions.calls[0]["response_format"] == {
+        "type": "image",
+        "mime_type": "image/png",
+        "aspect_ratio": "3:2",
+        "image_size": "1K",
+    }
 
 
 def test_generate_image_rejects_escape_and_invalid_output(tmp_path):
     valid = make_generate_image_tool(
-        _Secrets(), workspace=tmp_path, client=_Client(_Images(_response()))
+        _Secrets(), workspace=tmp_path, client=_Client(_Interactions(_response()))
     )
     assert valid(prompt="x", path="../outside.png")["ok"] is False
     assert valid(prompt="x", path="/tmp/outside.png")["ok"] is False
@@ -67,7 +75,7 @@ def test_generate_image_rejects_escape_and_invalid_output(tmp_path):
     invalid = make_generate_image_tool(
         _Secrets(),
         workspace=tmp_path,
-        client=_Client(_Images(_response(b"not a png"))),
+        client=_Client(_Interactions(_response(b"not a png"))),
     )
     result = invalid(prompt="x", path="reports/assets/bad.png")
     assert result == {"ok": False, "error": "The image provider did not return a PNG."}
@@ -78,7 +86,7 @@ def test_generate_image_redacts_provider_error_details(tmp_path):
     tool = make_generate_image_tool(
         _Secrets(),
         workspace=tmp_path,
-        client=_Client(_Images(error=RuntimeError("Authorization: Bearer secret"))),
+        client=_Client(_Interactions(error=RuntimeError("Authorization: Bearer secret"))),
     )
 
     result = tool(prompt="x", path="reports/assets/fail.png")

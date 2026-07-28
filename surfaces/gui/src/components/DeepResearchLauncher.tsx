@@ -44,7 +44,7 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
       ? `- Do not generate or source decorative images. Use only evidence-backed charts, tables, and diagrams that can be built from verified data.`
       : brief.imageMode === "source"
         ? `- Use sourced visuals only. Prefer primary-source or permissively licensed images, preserve the original URL and license in the source manifest, and never hotlink remote assets in the final files.`
-        : `- Generate original visuals with the native generate_image tool at ${brief.imageQuality || "medium"} quality. Use 1536x1024 for widescreen slides and save each approved result under reports/assets/. Every call is paid and approval-gated; if generation is unavailable or declined, fall back to a sourced visual or an evidence-backed diagram.`;
+        : `- Generate original 1K visuals with the native generate_image tool using Gemini Nano Banana 2 Lite. Use 1536x1024 for widescreen slides and save each approved result under reports/assets/. Every call is paid and approval-gated; if Gemini generation is unavailable or declined, fall back to a sourced visual or an evidence-backed diagram.`;
   const presentationRequirements =
     brief.deliverable === "presentation"
       ? `
@@ -368,19 +368,10 @@ export function DeepResearchLauncher({
                     </div>
                   </fieldset>
                   {imageMode === "generate" && (
-                    <label className="research-field">
-                      <span>Image quality</span>
-                      <select
-                        value={imageQuality}
-                        onChange={(event) =>
-                          setImageQuality(event.target.value as "low" | "medium" | "high")
-                        }
-                      >
-                        <option value="low">Low · faster and lower cost</option>
-                        <option value="medium">Medium · recommended</option>
-                        <option value="high">High · maximum detail and cost</option>
-                      </select>
-                    </label>
+                    <div className="research-field">
+                      <span>Image model</span>
+                      <strong>Nano Banana 2 Lite · 1K</strong>
+                    </div>
                   )}
                 </div>
               )}

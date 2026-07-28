@@ -53,7 +53,7 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("native build_presentation tool");
     expect(prompt).toContain("Never create the PDF with a Markdown writer");
     expect(prompt).toContain("Presenton-style local/BYOK");
-    expect(prompt).toContain("native generate_image tool at high quality");
+    expect(prompt).toContain("Gemini Nano Banana 2 Lite");
     expect(prompt).toContain("reports/assets/");
     expect(prompt).toContain("both reports/<descriptive-name>.pptx and reports/<descriptive-name>.pdf");
     expect(prompt).toContain("speaker notes");

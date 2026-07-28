@@ -18,8 +18,9 @@ visuals are requested.
 4. Choose a coherent visual direction and vary slide composition without changing the
    visual system.
 5. Create or source a distinct relevant image for slides that materially benefit from
-   imagery. Use 1536×1024 for generated widescreen visuals. Never invent charts, people,
-   quotes, logos, or documentary evidence.
+   imagery. Use the native `generate_image` tool, which is configured for Gemini Nano
+   Banana 2 Lite at 1K, and request 1536×1024 for a widescreen aspect ratio. Never invent
+   charts, people, quotes, logos, or documentary evidence.
 6. Call `build_presentation` once with the complete structured slide specification,
    workspace-relative image paths, and destinations under `reports/`.
 7. Verify that the returned result says `ok: true`, includes both formats, and reports the

@@ -12,20 +12,15 @@ from typing import Any, Optional
 import aisuite as ai
 
 
-_MODEL = "gpt-image-1.5"
+_MODEL = "gemini-3.1-flash-lite-image"
 _SIZES = {"1024x1024", "1536x1024", "1024x1536"}
 _QUALITIES = {"low", "medium", "high"}
 _MAX_IMAGE_BYTES = 30 * 1024 * 1024
-_ESTIMATED_IMAGE_COST_USD = {
-    ("low", "1024x1024"): 0.009,
-    ("low", "1024x1536"): 0.013,
-    ("low", "1536x1024"): 0.013,
-    ("medium", "1024x1024"): 0.034,
-    ("medium", "1024x1536"): 0.050,
-    ("medium", "1536x1024"): 0.050,
-    ("high", "1024x1024"): 0.133,
-    ("high", "1024x1536"): 0.200,
-    ("high", "1536x1024"): 0.200,
+_ESTIMATED_IMAGE_COST_USD = 0.0336
+_ASPECT_RATIOS = {
+    "1024x1024": "1:1",
+    "1536x1024": "3:2",
+    "1024x1536": "2:3",
 }
 
 _SCHEMA = {
@@ -34,8 +29,8 @@ _SCHEMA = {
         "name": "generate_image",
         "description": (
             "Generate one original image for an artifact using the user's configured "
-            "OpenAI image API. This is a paid external call and always requires approval. "
-            "The PNG is written atomically inside the current workspace."
+            "Gemini API with Nano Banana 2 Lite. This is a paid external call and always "
+            "requires approval. The PNG is written atomically inside the current workspace."
         ),
         "parameters": {
             "type": "object",
@@ -62,7 +57,10 @@ _SCHEMA = {
                 "quality": {
                     "type": "string",
                     "enum": sorted(_QUALITIES),
-                    "description": "Image quality and cost tier.",
+                    "description": (
+                        "Accepted for compatibility with saved presentation plans. Nano "
+                        "Banana 2 Lite always renders its supported 1K quality."
+                    ),
                 },
             },
             "required": ["prompt", "path"],
@@ -110,34 +108,43 @@ def make_generate_image_tool(
 
         image_client = client
         if image_client is None:
-            profile = secrets.get("provider:openai") or {}
+            profile = secrets.get("provider:gemini") or {}
             api_key = str(
-                profile.get("api_key") or os.environ.get("OPENAI_API_KEY") or ""
+                profile.get("api_key")
+                or os.environ.get("GEMINI_API_KEY")
+                or os.environ.get("GOOGLE_API_KEY")
+                or ""
             ).strip()
             if not api_key:
                 return {
                     "ok": False,
                     "error": (
-                        "OpenAI image generation is not configured. Add an OpenAI API "
-                        "key in Settings or use sourced visuals."
+                        "Gemini image generation is not configured. Add a Gemini API key "
+                        "in Settings or use sourced visuals."
                     ),
                 }
-            from openai import OpenAI
+            from google import genai
 
-            image_client = OpenAI(api_key=api_key)
+            image_client = genai.Client(api_key=api_key)
 
         try:
-            response = image_client.images.generate(
+            response = image_client.interactions.create(
                 model=_MODEL,
-                prompt=clean_prompt,
-                size=size,
-                quality=quality,
-                output_format="png",
-                n=1,
+                input=clean_prompt,
+                response_format={
+                    "type": "image",
+                    "mime_type": "image/png",
+                    "aspect_ratio": _ASPECT_RATIOS[size],
+                    "image_size": "1K",
+                },
             )
-            encoded = str(response.data[0].b64_json or "")
-            payload = base64.b64decode(encoded, validate=True)
-        except (IndexError, AttributeError, binascii.Error, ValueError):
+            encoded = response.output_image.data
+            payload = (
+                bytes(encoded)
+                if isinstance(encoded, (bytes, bytearray))
+                else base64.b64decode(str(encoded or ""), validate=True)
+            )
+        except (AttributeError, binascii.Error, ValueError):
             return {"ok": False, "error": "The image provider returned invalid image data."}
         except Exception as exc:
             # Provider exceptions can include request IDs but must never echo request
@@ -174,19 +181,20 @@ def make_generate_image_tool(
         return {
             "ok": True,
             "path": str(target.relative_to(root)),
-            "provider": "OpenAI",
+            "provider": "Google",
             "model": _MODEL,
             "size": size,
-            "quality": quality,
+            "quality": "1K",
+            "requested_quality": quality,
             "bytes": len(payload),
             "operation_usage": {
                 "type": "image",
-                "provider": "OpenAI",
+                "provider": "Google",
                 "model": _MODEL,
                 "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
                 "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
                 "units": 1,
-                "estimated_cost_usd": _ESTIMATED_IMAGE_COST_USD[(quality, size)],
+                "estimated_cost_usd": _ESTIMATED_IMAGE_COST_USD,
                 "measurement": "estimated",
             },
         }
