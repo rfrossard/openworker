@@ -230,7 +230,12 @@ export function RightRail({
                   <strong>{researchRuns[0].question}</strong>
                 </div>
                 <span>
-                  {researchRuns[0].depth} · {researchRuns[0].source_limit} sources · saved
+                  {researchRuns[0].depth} · {researchRuns[0].artifact_count} artifacts ·{" "}
+                  {researchRuns[0].browser_navigation_count} pages
+                </span>
+                <span>
+                  {researchRuns[0].browser_evidence_count} browser evidence ·{" "}
+                  {researchRuns[0].source_limit} sources planned
                 </span>
               </div>
             )}

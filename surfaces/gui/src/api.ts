@@ -91,7 +91,7 @@ export function getUsageAccounts(): Promise<{
   accounts: Record<string, ProviderAccount>;
   updated_at: string;
 }> {
-  return fetch(`${httpBase()}/v1/dashboard/accounts`).then((r) => r.json());
+  return fetch(`${httpBase()}/v1/dashboard/accounts`, { cache: "no-store" }).then((r) => r.json());
 }
 
 export async function getRecentWorkspaces(): Promise<RecentWorkspace[]> {
@@ -240,6 +240,13 @@ export interface ResearchRun {
   sources_found: number;
   artifact_path?: string | null;
   error?: string | null;
+  artifact_paths_at_start: string[];
+  browser_history_count_at_start: number;
+  browser_evidence_count_at_start: number;
+  artifact_paths: string[];
+  artifact_count: number;
+  browser_navigation_count: number;
+  browser_evidence_count: number;
   created_at: string;
   updated_at: string;
 }

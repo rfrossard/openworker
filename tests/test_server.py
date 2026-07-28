@@ -111,6 +111,44 @@ def test_research_run_rest_is_persistent_and_session_scoped(tmp_path):
     )
 
 
+def test_research_run_computes_new_artifacts_and_browser_activity(
+    tmp_path, monkeypatch
+):
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    artifacts = [{"path": "existing.md"}]
+    browser = {"history": [{"url": "before"}], "evidence": []}
+    monkeypatch.setattr(manager, "list_artifacts", lambda _session: list(artifacts))
+    monkeypatch.setattr(manager, "browser_state", lambda _session: dict(browser))
+    client = TestClient(create_app(manager))
+
+    created = client.post(
+        "/v1/sessions/research-session/research-runs",
+        json={
+            "question": "Track the run",
+            "depth": "quick",
+            "plan": ["Research"],
+        },
+    ).json()["run"]
+    assert created["artifact_count"] == 0
+    assert created["browser_navigation_count"] == 0
+
+    artifacts.append({"path": "reports/result.md"})
+    browser["history"] = [{"url": "before"}, {"url": "after"}]
+    browser["evidence"] = [{"url": "after"}, {"url": "after-2"}]
+    updated = client.get(
+        "/v1/sessions/research-session/research-runs"
+    ).json()["runs"][0]
+
+    assert updated["artifact_paths"] == ["reports/result.md"]
+    assert updated["artifact_count"] == 1
+    assert updated["browser_navigation_count"] == 1
+    assert updated["browser_evidence_count"] == 2
+
+
 def test_browser_preview_interval_defaults_persists_and_is_bounded(tmp_path):
     client = _client(tmp_path, [])
 

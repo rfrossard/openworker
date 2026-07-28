@@ -45,6 +45,9 @@ class ResearchRun:
     sources_found: int = 0
     artifact_path: Optional[str] = None
     error: Optional[str] = None
+    artifact_paths_at_start: list[str] = field(default_factory=list)
+    browser_history_count_at_start: int = 0
+    browser_evidence_count_at_start: int = 0
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
 
@@ -95,6 +98,9 @@ class ResearchRunStore:
         question: str,
         depth: str,
         plan: list[str],
+        artifact_paths_at_start: Optional[list[str]] = None,
+        browser_history_count_at_start: int = 0,
+        browser_evidence_count_at_start: int = 0,
     ) -> ResearchRun:
         depth = depth.strip().lower()
         if depth not in RESEARCH_DEPTHS:
@@ -112,6 +118,9 @@ class ResearchRunStore:
             depth=depth,
             plan=clean_plan,
             source_limit=SOURCE_LIMITS[depth],
+            artifact_paths_at_start=list(artifact_paths_at_start or []),
+            browser_history_count_at_start=max(0, browser_history_count_at_start),
+            browser_evidence_count_at_start=max(0, browser_evidence_count_at_start),
         )
         with self._lock:
             self._runs[run.run_id] = run

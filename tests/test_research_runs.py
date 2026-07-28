@@ -44,3 +44,24 @@ def test_research_runs_are_session_scoped_and_updatable(tmp_path):
     assert updated.status == "researching"
     assert updated.sources_found == 3
     assert [run.question for run in store.list("session-a")] == ["Question A"]
+
+
+def test_research_run_persists_telemetry_baselines(tmp_path):
+    path = tmp_path / "research-runs.json"
+    store = ResearchRunStore(path)
+    created = store.create(
+        session_id="session-a",
+        question="Track this research",
+        depth="standard",
+        plan=["Research"],
+        artifact_paths_at_start=["existing.md"],
+        browser_history_count_at_start=2,
+        browser_evidence_count_at_start=3,
+    )
+
+    restored = ResearchRunStore(path).list("session-a")[0]
+
+    assert restored.run_id == created.run_id
+    assert restored.artifact_paths_at_start == ["existing.md"]
+    assert restored.browser_history_count_at_start == 2
+    assert restored.browser_evidence_count_at_start == 3

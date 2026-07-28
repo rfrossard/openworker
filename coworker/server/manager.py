@@ -1393,19 +1393,57 @@ class SessionManager:
         depth: str,
         plan: list[str],
     ) -> dict[str, Any]:
+        artifacts = self.list_artifacts(session_id)
+        browser = self.browser_state(session_id)
         try:
             run = self.research_runs.create(
                 session_id=session_id,
                 question=question,
                 depth=depth,
                 plan=plan,
+                artifact_paths_at_start=[
+                    str(item.get("path") or "") for item in artifacts
+                ],
+                browser_history_count_at_start=len(browser.get("history") or []),
+                browser_evidence_count_at_start=len(browser.get("evidence") or []),
             )
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
-        return {"ok": True, "run": run.to_dict()}
+        persisted = next(
+            (
+                item
+                for item in self.list_research_runs(session_id)
+                if item["run_id"] == run.run_id
+            ),
+            run.to_dict(),
+        )
+        return {"ok": True, "run": persisted}
 
     def list_research_runs(self, session_id: str) -> list[dict[str, Any]]:
-        return [run.to_dict() for run in self.research_runs.list(session_id)]
+        current_artifacts = self.list_artifacts(session_id)
+        current_paths = [str(item.get("path") or "") for item in current_artifacts]
+        browser = self.browser_state(session_id)
+        history_count = len(browser.get("history") or [])
+        evidence_count = len(browser.get("evidence") or [])
+        result = []
+        for run in self.research_runs.list(session_id):
+            value = run.to_dict()
+            baseline = set(run.artifact_paths_at_start)
+            produced = [path for path in current_paths if path not in baseline]
+            value.update(
+                {
+                    "artifact_paths": produced,
+                    "artifact_count": len(produced),
+                    "browser_navigation_count": max(
+                        0, history_count - run.browser_history_count_at_start
+                    ),
+                    "browser_evidence_count": max(
+                        0, evidence_count - run.browser_evidence_count_at_start
+                    ),
+                }
+            )
+            result.append(value)
+        return result
 
     def update_research_run(
         self, session_id: str, run_id: str, changes: dict[str, Any]

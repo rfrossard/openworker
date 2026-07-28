@@ -44,6 +44,7 @@ export function UsageDashboardView() {
   const [routingEvents, setRoutingEvents] = useState<RoutingEvent[]>(() => loadRoutingEvents());
 
   const loadUsage = () => getUsageDashboard().then(setData).catch(() => {});
+  const loadAccounts = () => getUsageAccounts().then((value) => setAccounts(value.accounts)).catch(() => {});
   const load = () => {
     Promise.all([getUsageDashboard(), getUsageModels(), getUsageAccounts()])
       .then(([d, m, a]) => { setData(d); setModels(m); setAccounts(a.accounts); })
@@ -54,16 +55,25 @@ export function UsageDashboardView() {
     load();
     const refreshRouting = () => setRoutingEvents(loadRoutingEvents());
     const refreshVisible = () => {
-      if (document.visibilityState === "visible") loadUsage();
+      if (document.visibilityState === "visible") {
+        loadUsage();
+        loadAccounts();
+      }
     };
     window.addEventListener("openworker:routing-event", refreshRouting);
-    window.addEventListener("focus", loadUsage);
+    const refreshOnFocus = () => {
+      loadUsage();
+      loadAccounts();
+    };
+    window.addEventListener("focus", refreshOnFocus);
     document.addEventListener("visibilitychange", refreshVisible);
     const timer = setInterval(loadUsage, 5_000);
+    const accountTimer = setInterval(loadAccounts, 30_000);
     return () => {
       clearInterval(timer);
+      clearInterval(accountTimer);
       window.removeEventListener("openworker:routing-event", refreshRouting);
-      window.removeEventListener("focus", loadUsage);
+      window.removeEventListener("focus", refreshOnFocus);
       document.removeEventListener("visibilitychange", refreshVisible);
     };
   }, []);
@@ -612,7 +622,7 @@ function ProvidersTab({ providers, accounts }: { providers: Record<string, any>;
         {Object.entries(accounts).map(([name, account]) => <AccountCard key={name} name={name} account={account} />)}
         {!Object.keys(accounts).length && <div className={`${CARD} p-4 text-[12px] text-muted`}>No configured provider exposes account billing data.</div>}
       </div>
-      <p className="text-[10.5px] text-faint mt-2">Financial data is account-level, not per model. Credentials stay in the local server.</p>
+      <p className="text-[10.5px] text-faint mt-2">Financial data is account-level, not per model. It refreshes every 30 seconds while Usage is open. Credentials stay in the local server.</p>
     </section>
     <DataTable
       headers={["Provider", "Models", "Avg Input $/1M", "Avg Output $/1M", "Frontier Model", "Frontier Input", "Frontier Output", "Active"]}
