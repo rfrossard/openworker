@@ -228,6 +228,39 @@ export async function revealArtifact(
   return res.json();
 }
 
+export interface ResearchRun {
+  run_id: string;
+  session_id: string;
+  question: string;
+  depth: "quick" | "standard" | "deep";
+  plan: string[];
+  status: "planned" | "researching" | "synthesizing" | "completed" | "failed" | "cancelled";
+  source_limit: number;
+  agent_limit: number;
+  sources_found: number;
+  artifact_path?: string | null;
+  error?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getResearchRuns(sessionId: string): Promise<ResearchRun[]> {
+  const res = await fetch(`${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}/research-runs`);
+  return (await res.json()).runs ?? [];
+}
+
+export async function createResearchRun(
+  sessionId: string,
+  input: { question: string; depth: "quick" | "standard" | "deep"; plan: string[] },
+): Promise<{ ok: boolean; run?: ResearchRun; error?: string }> {
+  const res = await fetch(`${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}/research-runs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
 // -- session roots (orphan Cowork: scratch + added folders) -------------------
 export interface RootInfo {
   path: string;

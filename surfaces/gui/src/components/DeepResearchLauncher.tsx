@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { createResearchRun, type ResearchRun } from "../api";
 import { Icon } from "./Icon";
 
 export type ResearchDepth = "quick" | "standard" | "deep";
@@ -23,7 +24,7 @@ const DEPTH_SETTINGS: Record<ResearchDepth, { sources: string; label: string }> 
   deep: { sources: "at least 20 credible sources", label: "Deep" },
 };
 
-export function buildDeepResearchPrompt(brief: ResearchBrief): string {
+export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): string {
   const plan = brief.plan
     .split("\n")
     .map((line) => line.trim())
@@ -34,6 +35,8 @@ export function buildDeepResearchPrompt(brief: ResearchBrief): string {
   return `Create a ${depth.label.toLowerCase()} Deep Research report about:
 
 ${brief.question.trim()}
+
+Research Run: ${runId || "not assigned"}
 
 Editable research plan:
 ${plan}
@@ -53,14 +56,20 @@ Before researching, briefly confirm the interpreted scope in the chat. Ask one c
 }
 
 export function DeepResearchLauncher({
+  sessionId,
   onCreate,
+  onRunCreated,
 }: {
+  sessionId: string;
   onCreate: (prompt: string) => void;
+  onRunCreated?: (run: ResearchRun) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [depth, setDepth] = useState<ResearchDepth>("standard");
   const [plan, setPlan] = useState(DEFAULT_PLAN);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -71,10 +80,29 @@ export function DeepResearchLauncher({
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [open]);
 
-  const create = () => {
-    if (!question.trim()) return;
-    onCreate(buildDeepResearchPrompt({ question, depth, plan }));
-    setOpen(false);
+  const create = async () => {
+    if (!question.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    const brief = { question, depth, plan };
+    try {
+      const result = await createResearchRun(sessionId, {
+        question: question.trim(),
+        depth,
+        plan: plan.split("\n").map((item) => item.trim()).filter(Boolean),
+      });
+      if (!result.ok || !result.run) {
+        setError(result.error || "Could not save the research run.");
+        return;
+      }
+      onRunCreated?.(result.run);
+      onCreate(buildDeepResearchPrompt(brief, result.run.run_id));
+      setOpen(false);
+    } catch {
+      setError("Could not reach the local research service.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -147,10 +175,12 @@ export function DeepResearchLauncher({
                 <small id="research-plan-help">One step per line. Edit, reorder, or add steps.</small>
               </label>
 
+              {error && <div className="research-modal-error">{error}</div>}
+
               <footer className="research-modal-actions">
                 <button className="btn" onClick={() => setOpen(false)}>Cancel</button>
-                <button className="btn primary" disabled={!question.trim()} onClick={create}>
-                  Review in composer
+                <button className="btn primary" disabled={!question.trim() || busy} onClick={create}>
+                  {busy ? "Saving…" : "Review in composer"}
                 </button>
               </footer>
             </section>

@@ -88,6 +88,7 @@ from ..providers import (
 )
 from ..secrets import SecretStore, state_dir
 from ..sessions import SessionRecord
+from ..research_runs import ResearchRunStore
 from ..skills import SkillLoader
 
 _SCOPES = {s.value for s in Scope}
@@ -139,6 +140,7 @@ class SessionManager:
         self.memory_store: MemoryStore = SQLiteMemoryStore(base / "coworker.db")
         self.audit_store = AuditStore(base / "coworker.db")
         self.session_store = ConversationStore(base)
+        self.research_runs = ResearchRunStore(base / "research-runs.json")
         self.session_store.canonicalize_workspaces()  # collapse /tmp vs /private/tmp etc.
         if self.default_workspace:
             self.session_store.touch_workspace(self.default_workspace)
@@ -1382,6 +1384,47 @@ class SessionManager:
                 continue
         out.sort(key=lambda a: a["modified_at"], reverse=True)
         return out[:80]
+
+    def create_research_run(
+        self,
+        session_id: str,
+        *,
+        question: str,
+        depth: str,
+        plan: list[str],
+    ) -> dict[str, Any]:
+        try:
+            run = self.research_runs.create(
+                session_id=session_id,
+                question=question,
+                depth=depth,
+                plan=plan,
+            )
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "run": run.to_dict()}
+
+    def list_research_runs(self, session_id: str) -> list[dict[str, Any]]:
+        return [run.to_dict() for run in self.research_runs.list(session_id)]
+
+    def update_research_run(
+        self, session_id: str, run_id: str, changes: dict[str, Any]
+    ) -> dict[str, Any]:
+        run = next(
+            (
+                item
+                for item in self.research_runs.list(session_id)
+                if item.run_id == run_id
+            ),
+            None,
+        )
+        if run is None:
+            return {"ok": False, "error": "Research run not found."}
+        try:
+            updated = self.research_runs.update(run_id, **changes)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "run": updated.to_dict() if updated else None}
 
     MAX_BINARY_PREVIEW = 25 * 1024 * 1024  # base64-over-JSON gets heavy past this
 

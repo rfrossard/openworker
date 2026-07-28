@@ -74,6 +74,43 @@ def test_agents_and_memory_rest(tmp_path):
     )
 
 
+def test_research_run_rest_is_persistent_and_session_scoped(tmp_path):
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    client = TestClient(create_app(manager))
+
+    created = client.post(
+        "/v1/sessions/research-session/research-runs",
+        json={
+            "question": "What should OpenWorker build next?",
+            "depth": "standard",
+            "plan": ["Review user needs", "Compare alternatives"],
+        },
+    ).json()
+    assert created["ok"] is True
+    run = created["run"]
+    assert run["status"] == "planned"
+    assert run["source_limit"] == 10
+
+    restarted = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    restored_client = TestClient(create_app(restarted))
+    runs = restored_client.get(
+        "/v1/sessions/research-session/research-runs"
+    ).json()["runs"]
+    assert [item["run_id"] for item in runs] == [run["run_id"]]
+    assert (
+        restored_client.get("/v1/sessions/other-session/research-runs").json()["runs"]
+        == []
+    )
+
+
 def test_browser_preview_interval_defaults_persists_and_is_bounded(tmp_path):
     client = _client(tmp_path, [])
 

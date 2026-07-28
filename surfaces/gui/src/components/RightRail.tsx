@@ -9,6 +9,7 @@ import {
   downloadBrowserStreamingMedia,
   getArtifacts,
   getBrowserState,
+  getResearchRuns,
   getSettings,
   readArtifact,
   revealArtifact,
@@ -17,6 +18,7 @@ import {
   type ArtifactContent,
   type ArtifactInfo,
   type BrowserState,
+  type ResearchRun,
 } from "../api";
 import type { TodoItem } from "../types";
 import { AccessSection } from "./AccessSection";
@@ -97,12 +99,15 @@ export function RightRail({
   const [artifacts, setArtifacts] = useState<ArtifactInfo[]>([]);
   const [selected, setSelected] = useState<ArtifactInfo | null>(null);
   const [content, setContent] = useState<ArtifactContent | null>(null);
+  const [researchRuns, setResearchRuns] = useState<ResearchRun[]>([]);
 
   const refreshArtifacts = () => getArtifacts(sessionId).then(setArtifacts).catch(() => setArtifacts([]));
+  const refreshResearchRuns = () => getResearchRuns(sessionId).then(setResearchRuns).catch(() => setResearchRuns([]));
 
   useEffect(() => {
     if (!active) return;
     if (showArtifacts) refreshArtifacts();
+    if (showArtifacts) refreshResearchRuns();
   }, [active, sessionId, refreshKey, showArtifacts]);
 
   // Switching conversations closes any open artifact — it belongs to the previous session's
@@ -210,7 +215,24 @@ export function RightRail({
             }
           >
             {onResearchPrefill && (
-              <DeepResearchLauncher onCreate={onResearchPrefill} />
+              <DeepResearchLauncher
+                sessionId={sessionId}
+                onCreate={onResearchPrefill}
+                onRunCreated={(run) => setResearchRuns((current) => [run, ...current])}
+              />
+            )}
+            {researchRuns[0] && (
+              <div className="research-run-card">
+                <div>
+                  <span className={`research-run-status ${researchRuns[0].status}`}>
+                    {researchRuns[0].status}
+                  </span>
+                  <strong>{researchRuns[0].question}</strong>
+                </div>
+                <span>
+                  {researchRuns[0].depth} · {researchRuns[0].source_limit} sources · saved
+                </span>
+              </div>
             )}
             {artifacts.length === 0 ? (
               <div className="rail-muted">No previewable files yet.</div>

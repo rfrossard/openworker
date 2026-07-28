@@ -665,6 +665,18 @@ button.btn.danger { color: var(--accent); }
 .research-depth-options strong { font-size: 12px; }
 .research-depth-options span { color: var(--muted); font-size: 10.5px; line-height: 1.3; }
 .research-modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
+.research-modal-error { padding: 9px 10px; border-radius: 8px; color: var(--danger, #b73e3e); background: color-mix(in srgb, var(--danger, #d85858) 9%, transparent); font-size: 12px; }
+.research-run-card {
+  display: flex; flex-direction: column; gap: 5px; margin-bottom: 9px; padding: 9px 10px;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--paper);
+}
+.research-run-card > div { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px; }
+.research-run-card strong { overflow: hidden; color: var(--ink); font-size: 11.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.research-run-card > span { color: var(--faint); font-size: 10.5px; text-transform: capitalize; }
+.research-run-status { padding: 2px 5px; border-radius: 5px; color: var(--muted); background: var(--line); font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.research-run-status.researching, .research-run-status.synthesizing { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.research-run-status.completed { color: #2e7d4f; background: color-mix(in srgb, #2e7d4f 12%, transparent); }
+.research-run-status.failed, .research-run-status.cancelled { color: var(--danger, #b73e3e); background: color-mix(in srgb, var(--danger, #d85858) 10%, transparent); }
 @media (max-width: 640px) {
   .research-modal-backdrop { padding: 10px; }
   .research-modal { padding: 18px; }

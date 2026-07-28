@@ -554,6 +554,26 @@ def create_app(manager: SessionManager) -> FastAPI:
             session_id, str(body.get("path", "")), str(body.get("mode", "reveal"))
         )
 
+    @app.get("/v1/sessions/{session_id}/research-runs")
+    def session_research_runs(session_id: str) -> dict[str, Any]:
+        return {"runs": manager.list_research_runs(session_id)}
+
+    @app.post("/v1/sessions/{session_id}/research-runs")
+    def session_create_research_run(session_id: str, body: dict) -> dict[str, Any]:
+        body = body or {}
+        return manager.create_research_run(
+            session_id,
+            question=str(body.get("question", "")),
+            depth=str(body.get("depth", "standard")),
+            plan=list(body.get("plan") or []),
+        )
+
+    @app.patch("/v1/sessions/{session_id}/research-runs/{run_id}")
+    def session_update_research_run(
+        session_id: str, run_id: str, body: dict
+    ) -> dict[str, Any]:
+        return manager.update_research_run(session_id, run_id, body or {})
+
     @app.get("/v1/memory")
     def memory() -> dict[str, Any]:
         return {"memory": manager.list_memory()}
