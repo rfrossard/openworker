@@ -1392,6 +1392,7 @@ class SessionManager:
         question: str,
         depth: str,
         plan: list[str],
+        method: str = "standard",
     ) -> dict[str, Any]:
         artifacts = self.list_artifacts(session_id)
         browser = self.browser_state(session_id)
@@ -1401,6 +1402,7 @@ class SessionManager:
                 question=question,
                 depth=depth,
                 plan=plan,
+                method=method,
                 artifact_paths_at_start=[
                     str(item.get("path") or "") for item in artifacts
                 ],
@@ -1493,7 +1495,7 @@ class SessionManager:
         )
         if run is None:
             return {"ok": False, "error": "Research run not found."}
-        if any(key in changes for key in {"question", "depth", "plan"}):
+        if any(key in changes for key in {"question", "depth", "plan", "method"}):
             if run.status != "planned":
                 return {
                     "ok": False,
@@ -1504,6 +1506,43 @@ class SessionManager:
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": True, "run": updated.to_dict() if updated else None}
+
+    def _import_grounded_claims(
+        self, session_id: str, run: dict[str, Any]
+    ) -> None:
+        """Import the bounded, machine-readable ledger produced beside a grounded report."""
+        if run.get("method") != "grounded_claims":
+            return
+        claim_path = next(
+            (
+                str(path)
+                for path in run.get("artifact_paths", [])
+                if str(path).startswith("reports/")
+                and str(path).endswith(".claims.json")
+            ),
+            "",
+        )
+        if not claim_path:
+            return
+        record = self.session_store.load(session_id)
+        workspace = record.workspace if record else self.default_workspace
+        if not workspace:
+            return
+        root = Path(workspace).expanduser().resolve()
+        target = (root / claim_path).resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            return
+        try:
+            if not target.is_file() or target.stat().st_size > 2 * 1024 * 1024:
+                return
+            payload = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            return
+        claims = payload.get("claims") if isinstance(payload, dict) else None
+        if isinstance(claims, list):
+            self.research_runs.replace_claims(run["run_id"], claims)
 
     _RESEARCH_RUN_PATTERN = re.compile(r"\bResearch Run:\s*(research-[a-f0-9]+)\b")
     _RESEARCH_WRITE_TOOLS = {
@@ -1599,7 +1638,12 @@ class SessionManager:
         elif run.get("artifact_paths"):
             artifacts = list(run["artifact_paths"])
             preferred = next(
-                (path for path in artifacts if path.startswith("reports/")),
+                (
+                    path
+                    for path in artifacts
+                    if path.startswith("reports/")
+                    and path.lower().endswith((".md", ".markdown"))
+                ),
                 artifacts[0],
             )
             changes.update(
@@ -1607,6 +1651,7 @@ class SessionManager:
                 artifact_path=preferred,
                 error=None,
             )
+            self._import_grounded_claims(session_id, run)
         updated = self.research_runs.update(run["run_id"], **changes)
         return updated.to_dict() if updated else None
 

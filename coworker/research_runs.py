@@ -18,6 +18,7 @@ from typing import Any, Optional
 
 
 RESEARCH_DEPTHS = {"quick", "standard", "deep"}
+RESEARCH_METHODS = {"standard", "grounded_claims"}
 RESEARCH_STATUSES = {
     "planned",
     "researching",
@@ -28,6 +29,7 @@ RESEARCH_STATUSES = {
 }
 SOURCE_LIMITS = {"quick": 5, "standard": 10, "deep": 20}
 EVIDENCE_STATUSES = {"collected", "verified", "conflicting", "discarded"}
+CLAIM_STATUSES = {"proposed", "supported", "partial", "conflicting", "unsupported"}
 
 
 def _now() -> str:
@@ -41,6 +43,7 @@ class ResearchRun:
     question: str
     depth: str
     plan: list[str]
+    method: str = "standard"
     status: str = "planned"
     source_limit: int = 10
     agent_limit: int = 1
@@ -51,6 +54,7 @@ class ResearchRun:
     browser_history_count_at_start: int = 0
     browser_evidence_count_at_start: int = 0
     evidence: list[dict[str, Any]] = field(default_factory=list)
+    claims: list[dict[str, Any]] = field(default_factory=list)
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     extra_fields: dict[str, Any] = field(default_factory=dict, repr=False)
@@ -76,6 +80,16 @@ class ResearchRun:
                 for item in known.get("evidence", [])
                 if isinstance(item, dict)
             ]
+        if not isinstance(known.get("claims", []), list):
+            known["claims"] = []
+        else:
+            known["claims"] = [
+                dict(item)
+                for item in known.get("claims", [])
+                if isinstance(item, dict)
+            ]
+        if known.get("method") not in RESEARCH_METHODS:
+            known["method"] = "standard"
         return cls(**known)
 
     def to_dict(self) -> dict[str, Any]:
@@ -122,6 +136,7 @@ class ResearchRunStore:
         question: str,
         depth: str,
         plan: list[str],
+        method: str = "standard",
         artifact_paths_at_start: Optional[list[str]] = None,
         browser_history_count_at_start: int = 0,
         browser_evidence_count_at_start: int = 0,
@@ -135,12 +150,16 @@ class ResearchRunStore:
         clean_plan = [str(item).strip() for item in plan if str(item).strip()]
         if not clean_plan:
             raise ValueError("Research plan must contain at least one step.")
+        method = str(method).strip().lower()
+        if method not in RESEARCH_METHODS:
+            raise ValueError("Research method must be standard or grounded_claims.")
         run = ResearchRun(
             run_id=f"research-{uuid.uuid4().hex[:12]}",
             session_id=session_id,
             question=question,
             depth=depth,
             plan=clean_plan,
+            method=method,
             source_limit=SOURCE_LIMITS[depth],
             artifact_paths_at_start=list(artifact_paths_at_start or []),
             browser_history_count_at_start=max(0, browser_history_count_at_start),
@@ -163,6 +182,7 @@ class ResearchRunStore:
             "question",
             "depth",
             "plan",
+            "method",
             "status",
             "sources_found",
             "artifact_path",
@@ -197,6 +217,12 @@ class ResearchRunStore:
                     if not value:
                         raise ValueError(
                             "Research plan must contain at least one step."
+                        )
+                if key == "method":
+                    value = str(value).strip().lower()
+                    if value not in RESEARCH_METHODS:
+                        raise ValueError(
+                            "Research method must be standard or grounded_claims."
                         )
                 setattr(run, key, value)
                 if key == "depth":
@@ -288,3 +314,58 @@ class ResearchRunStore:
             run.updated_at = _now()
             self._save()
             return dict(item)
+
+    def replace_claims(
+        self, run_id: str, claims: list[dict[str, Any]]
+    ) -> Optional[ResearchRun]:
+        """Validate and atomically replace the claim ledger imported from an artifact."""
+        normalized: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for index, raw in enumerate(claims[:500]):
+            if not isinstance(raw, dict):
+                continue
+            text = str(raw.get("claim") or "").strip()
+            if not text or len(text) > 4000:
+                continue
+            claim_id = str(raw.get("claim_id") or f"C{index + 1}").strip()[:80]
+            if not claim_id or claim_id in seen:
+                continue
+            status = str(raw.get("status") or "proposed").strip().lower()
+            if status not in CLAIM_STATUSES:
+                status = "proposed"
+            sources = raw.get("sources")
+            if not isinstance(sources, list):
+                sources = []
+            normalized_sources = [
+                str(source).strip()[:2048]
+                for source in sources[:20]
+                if str(source).strip().startswith(("https://", "http://"))
+            ]
+            try:
+                confidence = float(raw.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                confidence = 0.0
+            normalized.append(
+                {
+                    "claim_id": claim_id,
+                    "claim": text,
+                    "status": status,
+                    "confidence": max(0.0, min(1.0, confidence)),
+                    "sources": normalized_sources,
+                    "justification": str(raw.get("justification") or "").strip()[
+                        :8000
+                    ],
+                    "counterevidence": str(
+                        raw.get("counterevidence") or ""
+                    ).strip()[:8000],
+                }
+            )
+            seen.add(claim_id)
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is None:
+                return None
+            run.claims = normalized
+            run.updated_at = _now()
+            self._save()
+            return run

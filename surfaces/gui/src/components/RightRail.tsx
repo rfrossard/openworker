@@ -26,6 +26,7 @@ import { DeepResearchLauncher } from "./DeepResearchLauncher";
 import { Icon } from "./Icon";
 import { Markdown, OPEN_ARTIFACT_EVENT } from "./Markdown";
 import { ResearchEvidenceBoard } from "./ResearchEvidenceBoard";
+import { ResearchClaimsBoard } from "./ResearchClaimsBoard";
 
 type Panel = "progress" | "browser" | "artifacts";
 
@@ -254,8 +255,10 @@ export function RightRail({
                       {run.browser_navigation_count} pages
                     </span>
                     <span>
+                      {run.method === "grounded_claims" ? "grounded claims" : "standard"} ·{" "}
                       {run.plan.length} plan steps · {run.source_limit} sources planned
                     </span>
+                    <ResearchClaimsBoard run={run} />
                     <ResearchEvidenceBoard
                       sessionId={sessionId}
                       run={run}

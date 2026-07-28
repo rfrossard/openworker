@@ -202,3 +202,68 @@ def test_invalid_persisted_evidence_collection_is_safely_normalized(tmp_path):
     restored = ResearchRunStore(path).list("session-a")[0]
 
     assert restored.evidence == []
+
+
+def test_grounded_claim_ledger_is_validated_and_persists(tmp_path):
+    path = tmp_path / "research-runs.json"
+    store = ResearchRunStore(path)
+    run = store.create(
+        session_id="session-a",
+        question="Ground this",
+        depth="deep",
+        method="grounded_claims",
+        plan=["Decompose claims", "Verify evidence"],
+    )
+
+    store.replace_claims(
+        run.run_id,
+        [
+            {
+                "claim_id": "C1",
+                "claim": "A primary source reports the measured result.",
+                "status": "supported",
+                "confidence": 1.5,
+                "sources": ["https://example.com/study", "file:///secret"],
+                "justification": "The result appears in the primary table.",
+            },
+            {
+                "claim_id": "C2",
+                "claim": "A disputed interpretation follows from the result.",
+                "status": "not-a-status",
+                "confidence": "invalid",
+                "sources": "invalid",
+            },
+        ],
+    )
+    restored = ResearchRunStore(path).list("session-a")[0]
+
+    assert restored.method == "grounded_claims"
+    assert len(restored.claims) == 2
+    assert restored.claims[0]["confidence"] == 1.0
+    assert restored.claims[0]["sources"] == ["https://example.com/study"]
+    assert restored.claims[1]["status"] == "proposed"
+    assert restored.claims[1]["confidence"] == 0.0
+
+
+def test_old_and_corrupt_claim_state_is_safely_normalized(tmp_path):
+    path = tmp_path / "research-runs.json"
+    path.write_text(
+        """{
+  "version": 1,
+  "runs": [{
+    "run_id": "research-existing",
+    "session_id": "session-a",
+    "question": "Existing",
+    "depth": "quick",
+    "plan": ["Research"],
+    "method": "future-method",
+    "claims": "corrupt"
+  }]
+}""",
+        encoding="utf-8",
+    )
+
+    restored = ResearchRunStore(path).list("session-a")[0]
+
+    assert restored.method == "standard"
+    assert restored.claims == []

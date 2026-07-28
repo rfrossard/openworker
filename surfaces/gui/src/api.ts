@@ -234,6 +234,7 @@ export interface ResearchRun {
   question: string;
   depth: "quick" | "standard" | "deep";
   plan: string[];
+  method?: "standard" | "grounded_claims";
   status: "planned" | "researching" | "synthesizing" | "completed" | "failed" | "cancelled";
   source_limit: number;
   agent_limit: number;
@@ -248,8 +249,19 @@ export interface ResearchRun {
   browser_navigation_count: number;
   browser_evidence_count: number;
   evidence: ResearchEvidence[];
+  claims?: ResearchClaim[];
   created_at: string;
   updated_at: string;
+}
+
+export interface ResearchClaim {
+  claim_id: string;
+  claim: string;
+  status: "proposed" | "supported" | "partial" | "conflicting" | "unsupported";
+  confidence: number;
+  sources: string[];
+  justification: string;
+  counterevidence: string;
 }
 
 export interface ResearchEvidence {
@@ -271,7 +283,12 @@ export async function getResearchRuns(sessionId: string): Promise<ResearchRun[]>
 
 export async function createResearchRun(
   sessionId: string,
-  input: { question: string; depth: "quick" | "standard" | "deep"; plan: string[] },
+  input: {
+    question: string;
+    depth: "quick" | "standard" | "deep";
+    plan: string[];
+    method?: "standard" | "grounded_claims";
+  },
 ): Promise<{ ok: boolean; run?: ResearchRun; error?: string }> {
   const res = await fetch(`${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}/research-runs`, {
     method: "POST",
@@ -284,7 +301,12 @@ export async function createResearchRun(
 export async function updateResearchRun(
   sessionId: string,
   runId: string,
-  input: { question: string; depth: "quick" | "standard" | "deep"; plan: string[] },
+  input: {
+    question: string;
+    depth: "quick" | "standard" | "deep";
+    plan: string[];
+    method?: "standard" | "grounded_claims";
+  },
 ): Promise<{ ok: boolean; run?: ResearchRun; error?: string }> {
   const res = await fetch(
     `${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}/research-runs/${encodeURIComponent(runId)}`,

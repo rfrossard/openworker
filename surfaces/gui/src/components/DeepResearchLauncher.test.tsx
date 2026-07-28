@@ -17,6 +17,21 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("Cite sources inline");
   });
 
+  it("builds an atomic, contradiction-aware grounded claims task", () => {
+    const prompt = buildDeepResearchPrompt({
+      question: "Which intervention has the strongest evidence?",
+      depth: "standard",
+      plan: "Decompose the question\nVerify each claim",
+      method: "grounded_claims",
+    });
+
+    expect(prompt).toContain("independently verifiable atomic claims");
+    expect(prompt).toContain("plausible counterevidence");
+    expect(prompt).toContain("Unsupported claims must not appear as facts");
+    expect(prompt).toContain(".claims.json");
+    expect(prompt).toContain("final entailment check");
+  });
+
   it("persists the run before letting the user review it", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       json: async () => ({
@@ -54,6 +69,10 @@ describe("Deep Research launcher", () => {
     expect(onCreate.mock.calls[0][0]).toContain("Compare secure browser frameworks");
     expect(onCreate.mock.calls[0][0]).toContain("at least 20 credible sources");
     expect(onCreate.mock.calls[0][0]).toContain("research-test123");
+    const request = JSON.parse(
+      (fetchMock.mock.calls[0][1] as RequestInit).body as string,
+    );
+    expect(request.method).toBe("grounded_claims");
     fetchMock.mockRestore();
   });
 

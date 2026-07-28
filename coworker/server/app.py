@@ -566,6 +566,7 @@ def create_app(manager: SessionManager) -> FastAPI:
             question=str(body.get("question", "")),
             depth=str(body.get("depth", "standard")),
             plan=list(body.get("plan") or []),
+            method=str(body.get("method", "standard")),
         )
 
     @app.patch("/v1/sessions/{session_id}/research-runs/{run_id}")

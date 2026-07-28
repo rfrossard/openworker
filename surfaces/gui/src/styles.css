@@ -692,6 +692,21 @@ button.btn.danger { color: var(--accent); }
 .research-evidence-note-editor { display: flex; align-items: flex-end; gap: 5px; }
 .research-evidence-note-editor textarea { flex: 1; min-width: 0; resize: vertical; padding: 5px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit; font-size: 10px; }
 .research-evidence-note-editor .btn { flex: none; padding: 5px 7px; font-size: 9.5px; }
+.research-method-options button { min-height: 64px; }
+.research-claims-board { margin-top: 4px; border-top: 1px solid var(--line); padding-top: 6px; }
+.research-claims-board > summary { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 10.5px; font-weight: 650; cursor: pointer; }
+.research-claims-board > summary span:last-child { color: var(--faint); font-weight: 500; }
+.research-claims-board > p { margin: 7px 0 0; color: var(--faint); font-size: 10px; line-height: 1.4; }
+.research-claim-list { display: flex; flex-direction: column; gap: 7px; padding-top: 7px; }
+.research-claim { padding: 7px; border-left: 3px solid var(--faint); border-radius: 7px; background: var(--panel); }
+.research-claim.supported { border-left-color: #45a36b; }
+.research-claim.partial { border-left-color: #c9952e; }
+.research-claim.conflicting, .research-claim.unsupported { border-left-color: var(--danger, #d85858); }
+.research-claim > div { display: flex; gap: 6px; color: var(--faint); font-size: 9px; }
+.research-claim > div strong { color: var(--ink); font-size: 9.5px; }
+.research-claim p { margin: 5px 0; color: var(--ink); font-size: 10.5px; line-height: 1.35; }
+.research-claim small { display: block; color: var(--faint); font-size: 9px; line-height: 1.35; }
+.research-claim .research-claim-counter { margin-top: 3px; color: var(--danger, #b73e3e); }
 .research-run-status { padding: 2px 5px; border-radius: 5px; color: var(--muted); background: var(--line); font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 .research-run-status.researching, .research-run-status.synthesizing { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .research-run-status.completed { color: #2e7d4f; background: color-mix(in srgb, #2e7d4f 12%, transparent); }

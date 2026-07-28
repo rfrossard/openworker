@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -189,6 +191,63 @@ def test_research_run_lifecycle_follows_turn_and_artifact_creation(
     assert completed["status"] == "completed"
     assert completed["artifact_path"] == "reports/lifecycle.md"
     assert completed["sources_found"] == 1
+
+
+def test_grounded_research_imports_bounded_claim_ledger(tmp_path, monkeypatch):
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    artifacts: list[dict] = []
+    monkeypatch.setattr(manager, "list_artifacts", lambda _session: list(artifacts))
+    monkeypatch.setattr(
+        manager, "browser_state", lambda _session: {"history": [], "evidence": []}
+    )
+    created = manager.create_research_run(
+        "research-session",
+        question="Grounded lifecycle",
+        depth="standard",
+        method="grounded_claims",
+        plan=["Decompose", "Verify", "Synthesize"],
+    )["run"]
+    manager.start_research_run_from_text(
+        "research-session", f"Research Run: {created['run_id']}"
+    )
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "grounded.md").write_text("# Grounded report", encoding="utf-8")
+    (reports / "grounded.claims.json").write_text(
+        json.dumps(
+            {
+                "claims": [
+                    {
+                        "claim_id": "C1",
+                        "claim": "The primary source supports this claim.",
+                        "status": "supported",
+                        "confidence": 0.92,
+                        "sources": ["https://example.com/primary"],
+                        "justification": "Direct measurement.",
+                        "counterevidence": "",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    artifacts.extend(
+        [
+            {"path": "reports/grounded.md"},
+            {"path": "reports/grounded.claims.json"},
+        ]
+    )
+
+    completed = manager.finalize_research_turn("research-session", "completed")
+    restored = manager.research_runs.list("research-session")[0]
+
+    assert completed["status"] == "completed"
+    assert len(restored.claims) == 1
+    assert restored.claims[0]["status"] == "supported"
 
 
 def test_only_planned_research_projects_can_change_their_brief(
