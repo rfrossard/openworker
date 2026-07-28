@@ -1209,7 +1209,12 @@ def create_app(manager: SessionManager) -> FastAPI:
         selection_id = str((body or {}).get("selection_id", "")).strip()
         if not selection_id:
             return {"error": "selection_id is required"}
-        return manager.browser_download_streaming_media(session_id, selection_id)
+        subtitle_language = str(
+            (body or {}).get("subtitle_language", "")
+        ).strip()
+        return manager.browser_download_streaming_media(
+            session_id, selection_id, subtitle_language
+        )
 
     # -- web search -------------------------------------------------------------
     @app.get("/v1/web-search")

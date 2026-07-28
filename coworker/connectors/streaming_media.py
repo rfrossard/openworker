@@ -8,13 +8,14 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from .browser_download import MAX_MEDIA_BYTES
+from .browser_download import MAX_MEDIA_BYTES, MEDIA_EXTENSIONS
 from .browser_policy import BrowserPolicyError, validate_public_url
 
 
 _LOCK = threading.RLock()
 _SELECTIONS: dict[str, dict[str, dict[str, Any]]] = {}
 _FORMAT_ID = re.compile(r"^[A-Za-z0-9._-]+$")
+_SUBTITLE_LANGUAGES = {"en", "pt", "es"}
 
 
 class _QuietLogger:
@@ -54,12 +55,40 @@ def _label(item: dict[str, Any], kind: str) -> str:
     return f"Video · {quality} · {ext or 'Original'}"
 
 
+def _subtitle_choices(info: dict[str, Any]) -> dict[str, str]:
+    """Choose one concrete manual/automatic subtitle track for each UI language."""
+    tracks: list[str] = []
+    for source in ("subtitles", "automatic_captions"):
+        values = info.get(source)
+        if isinstance(values, dict):
+            tracks.extend(str(key) for key in values if str(key) not in tracks)
+    choices: dict[str, str] = {}
+    for language in _SUBTITLE_LANGUAGES:
+        matches = [
+            track
+            for track in tracks
+            if track.lower() == language
+            or track.lower().startswith((f"{language}-", f"{language}_", f"{language}."))
+        ]
+        if matches:
+            choices[language] = min(
+                matches,
+                key=lambda track: (
+                    track.lower() != language,
+                    track.lower().endswith("-orig") is False,
+                    len(track),
+                ),
+            )
+    return choices
+
+
 def _normalized_formats(
     session_id: str, source_url: str, info: dict[str, Any]
 ) -> list[dict[str, Any]]:
     selections: dict[str, dict[str, Any]] = {}
     output: list[dict[str, Any]] = []
     seen: set[tuple[Any, ...]] = set()
+    subtitle_choices = _subtitle_choices(info)
     formats = [
         item
         for item in info.get("formats", [])
@@ -113,6 +142,7 @@ def _normalized_formats(
                 if item.get("height")
                 else "Audio"
             ),
+            "subtitles": subtitle_choices,
         }
         output.append(
             {
@@ -190,6 +220,7 @@ def download_streaming_media(
     selection_id: str,
     destination_directory: str | Path,
     *,
+    subtitle_language: str = "",
     ydl_factory: Callable[[dict[str, Any]], Any] = _youtube_dl_factory,
     ffmpeg_path: Optional[str] = None,
 ) -> dict[str, Any]:
@@ -197,6 +228,23 @@ def download_streaming_media(
         selection = dict(_SELECTIONS.get(session_id, {}).get(selection_id, {}))
     if not selection:
         return {"error": "Analyze the current page again before downloading."}
+    subtitle_language = (subtitle_language or "").strip().lower()
+    if subtitle_language and subtitle_language not in _SUBTITLE_LANGUAGES:
+        return {"error": "Subtitle language must be English, Portuguese, or Spanish."}
+    if subtitle_language and selection.get("kind") != "video":
+        return {"error": "Subtitles can only be embedded in video downloads."}
+    subtitle_track = (
+        dict(selection.get("subtitles") or {}).get(subtitle_language)
+        if subtitle_language
+        else ""
+    )
+    if subtitle_language and not subtitle_track:
+        return {
+            "error": (
+                "The selected subtitle language is not available for this video, "
+                "including automatic captions."
+            )
+        }
     try:
         source_url = validate_public_url(selection["url"])
     except BrowserPolicyError as exc:
@@ -258,6 +306,22 @@ def download_streaming_media(
         "fragment_retries": 3,
         "socket_timeout": 30,
     }
+    if subtitle_language:
+        options.update(
+            {
+                "writesubtitles": True,
+                "writeautomaticsub": True,
+                "subtitleslangs": [subtitle_track],
+                "subtitlesformat": "vtt/best",
+                "embedsubtitles": True,
+                "postprocessors": [
+                    {
+                        "key": "FFmpegEmbedSubtitle",
+                        "already_have_subtitle": False,
+                    }
+                ],
+            }
+        )
     try:
         with ydl_factory(options) as ydl:
             info = ydl.extract_info(source_url, download=True)
@@ -279,12 +343,12 @@ def download_streaming_media(
         for path in destination.iterdir()
         if path.resolve() not in before
         and path.is_file()
-        and path.suffix not in {".part", ".ytdl"}
+        and path.suffix.lower() in MEDIA_EXTENSIONS
     ]
     reported = [
         path
         for path in reported_paths
-        if path.is_file() and path.suffix not in {".part", ".ytdl"}
+        if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS
     ]
     candidates = created or reported
     if not candidates:

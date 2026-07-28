@@ -743,12 +743,16 @@ export async function analyzeBrowserStreamingMedia(
 export async function downloadBrowserStreamingMedia(
   sessionId: string,
   selectionId: string,
+  subtitleLanguage: "" | "en" | "pt" | "es" = "",
 ): Promise<{ ok?: boolean; error?: string; path?: string; bytes?: number; resolution?: string }> {
   const q = new URLSearchParams({ session_id: sessionId });
   const res = await fetch(`${httpBase()}/v1/browser/media/download-stream?${q}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ selection_id: selectionId }),
+    body: JSON.stringify({
+      selection_id: selectionId,
+      subtitle_language: subtitleLanguage,
+    }),
   });
   return res.json();
 }

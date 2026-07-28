@@ -1167,7 +1167,7 @@ class SessionManager:
         return result
 
     def browser_download_streaming_media(
-        self, session_id: str, selection_id: str
+        self, session_id: str, selection_id: str, subtitle_language: str = ""
     ) -> dict[str, Any]:
         current = browser_state(session_id)
         browser_set_streaming_media(
@@ -1176,7 +1176,10 @@ class SessionManager:
             status="downloading",
         )
         result = download_streaming_media(
-            session_id, selection_id, self.download_directory()
+            session_id,
+            selection_id,
+            self.download_directory(),
+            subtitle_language=subtitle_language,
         )
         browser_set_streaming_media(
             session_id,

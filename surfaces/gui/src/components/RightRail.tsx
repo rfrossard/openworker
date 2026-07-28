@@ -265,6 +265,7 @@ function BrowserOperator({
   const [previewInterval, setPreviewInterval] = useState(3000);
   const [domainInput, setDomainInput] = useState("");
   const [selectedMediaId, setSelectedMediaId] = useState("");
+  const [subtitleLanguage, setSubtitleLanguage] = useState<"" | "en" | "pt" | "es">("");
   const [downloadMessage, setDownloadMessage] = useState("");
   const captureInFlight = useRef(false);
   const browserUsed = toolNames.some((name) => name.startsWith("browser_"));
@@ -365,6 +366,8 @@ function BrowserOperator({
         source: "stream" as const,
         label: item.label + (item.filesize ? ` · ~${Math.ceil(item.filesize / 1024 / 1024)} MB` : ""),
       }));
+  const selectedMediaOption =
+    mediaOptions.find((item) => item.id === selectedMediaId) || mediaOptions[0];
   const analyzeStreamingMedia = async () => {
     setBusy(true);
     setDownloadMessage("Analyzing available formats…");
@@ -386,7 +389,11 @@ function BrowserOperator({
       const result =
         option.source === "direct"
           ? await downloadBrowserMedia(sessionId, option.id)
-          : await downloadBrowserStreamingMedia(sessionId, option.id);
+          : await downloadBrowserStreamingMedia(
+              sessionId,
+              option.id,
+              option.label.startsWith("Video") ? subtitleLanguage : "",
+            );
       setDownloadMessage(
         result.ok
           ? `Saved to ${result.path}`
@@ -461,6 +468,21 @@ function BrowserOperator({
                       </option>
                     ))}
                   </select>
+                  {selectedMediaOption?.source === "stream" &&
+                    selectedMediaOption.label.startsWith("Video") && (
+                      <select
+                        value={subtitleLanguage}
+                        onChange={(event) =>
+                          setSubtitleLanguage(event.target.value as "" | "en" | "pt" | "es")
+                        }
+                        aria-label="Embedded subtitle language"
+                      >
+                        <option value="">No subtitles</option>
+                        <option value="en">English subtitles</option>
+                        <option value="pt">Portuguese subtitles</option>
+                        <option value="es">Spanish subtitles</option>
+                      </select>
+                    )}
                   <button className="btn secondary" onClick={downloadMedia} disabled={busy}>
                     Download
                   </button>
