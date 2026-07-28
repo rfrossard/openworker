@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 from types import SimpleNamespace
 
 from coworker.conversations import ConversationStore
@@ -71,3 +72,64 @@ def test_dashboard_labels_legacy_session_estimates(tmp_path):
     assert session["measurement"] == "estimated"
     assert session["input_tokens"] == 100
     assert session["output_tokens"] == 20
+
+
+def test_dashboard_counts_image_generation_once_by_session_day_and_provider(tmp_path):
+    store = ConversationStore(tmp_path / "state")
+    timestamp = datetime.now().astimezone().replace(hour=13, minute=0, second=0).timestamp()
+    store.save(
+        SessionRecord(
+            session_id="image-session",
+            workspace=str(tmp_path),
+            model="deepseek:deepseek-v4-flash",
+            mode="interactive",
+            messages=[
+                {"role": "user", "content": "Create a deck", "ts": timestamp - 2},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "ts": timestamp - 1,
+                    "_usage": {
+                        "input_tokens": 100,
+                        "output_tokens": 20,
+                        "model": "deepseek:deepseek-v4-flash",
+                    },
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "image-1",
+                    "ts": timestamp,
+                    "content": json.dumps(
+                        {
+                            "ok": True,
+                            "operation_usage": {
+                                "type": "image",
+                                "provider": "OpenAI",
+                                "model": "gpt-image-1.5",
+                                "input_tokens": 12,
+                                "output_tokens": 34,
+                                "units": 1,
+                                "estimated_cost_usd": 0.05,
+                                "measurement": "estimated",
+                            },
+                        }
+                    ),
+                },
+            ],
+        )
+    )
+
+    data = _dashboard_data(
+        SimpleNamespace(session_store=store, model="deepseek:deepseek-v4-flash")
+    )
+    session = data["sessions"][0]
+    today = datetime.fromtimestamp(timestamp).astimezone().date().isoformat()
+
+    assert session["model_calls"] == 1
+    assert session["operations"] == {"image": 1}
+    assert data["aggregates"]["operations"]["image"] == {
+        "units": 1,
+        "cost": 0.05,
+    }
+    assert data["aggregates"]["by_provider"]["OpenAI"]["cost"] == 0.05
+    assert data["aggregates"]["daily"][today]["sessions"] == 1

@@ -568,6 +568,11 @@ def create_app(manager: SessionManager) -> FastAPI:
             plan=list(body.get("plan") or []),
             method=str(body.get("method", "standard")),
             deliverable=str(body.get("deliverable", "report")),
+            audience=str(body.get("audience", "")),
+            slide_count=body.get("slide_count", 10),
+            visual_direction=str(body.get("visual_direction", "")),
+            image_mode=str(body.get("image_mode", "generate")),
+            image_quality=str(body.get("image_quality", "medium")),
         )
 
     @app.patch("/v1/sessions/{session_id}/research-runs/{run_id}")

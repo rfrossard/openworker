@@ -1394,6 +1394,11 @@ class SessionManager:
         plan: list[str],
         method: str = "standard",
         deliverable: str = "report",
+        audience: str = "",
+        slide_count: int = 10,
+        visual_direction: str = "",
+        image_mode: str = "generate",
+        image_quality: str = "medium",
     ) -> dict[str, Any]:
         artifacts = self.list_artifacts(session_id)
         browser = self.browser_state(session_id)
@@ -1405,6 +1410,11 @@ class SessionManager:
                 plan=plan,
                 method=method,
                 deliverable=deliverable,
+                audience=audience,
+                slide_count=slide_count,
+                visual_direction=visual_direction,
+                image_mode=image_mode,
+                image_quality=image_quality,
                 artifact_paths_at_start=[
                     str(item.get("path") or "") for item in artifacts
                 ],
@@ -1471,8 +1481,72 @@ class SessionManager:
                 )
                 if restored is not None and restored.claims:
                     value["claims"] = list(restored.claims)
+            value["quality"] = self._research_quality(value)
             result.append(value)
         return result
+
+    @staticmethod
+    def _research_quality(run: dict[str, Any]) -> dict[str, Any]:
+        """Deterministic, non-model quality gate for completed research artifacts."""
+        paths = [str(path) for path in run.get("artifact_paths") or []]
+        if not paths:
+            return {"status": "pending", "issues": [], "checks": 0}
+        issues: list[str] = []
+        checks = 0
+
+        def require(condition: bool, message: str) -> None:
+            nonlocal checks
+            checks += 1
+            if not condition:
+                issues.append(message)
+
+        if run.get("deliverable") == "presentation":
+            require(
+                any(path.lower().endswith(".pptx") for path in paths),
+                "Editable PPTX is missing.",
+            )
+            require(
+                any(path.lower().endswith(".pdf") for path in paths),
+                "Presentation PDF is missing.",
+            )
+            require(
+                any(path.lower().endswith("-storyboard.md") for path in paths),
+                "Storyboard is missing.",
+            )
+            require(
+                any(path.lower().endswith(".sources.md") for path in paths),
+                "Slide source manifest is missing.",
+            )
+            if run.get("image_mode") == "generate":
+                require(
+                    any(
+                        path.lower().startswith("reports/assets/")
+                        and path.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+                        for path in paths
+                    ),
+                    "No generated presentation visual was saved.",
+                )
+        else:
+            require(
+                any(path.lower().endswith((".md", ".markdown")) for path in paths),
+                "Research report is missing.",
+            )
+
+        if run.get("method") == "grounded_claims":
+            claims = list(run.get("claims") or [])
+            require(bool(claims), "Claim ledger is empty.")
+            require(
+                all(
+                    claim.get("status") == "unsupported" or claim.get("sources")
+                    for claim in claims
+                ),
+                "One or more factual claims have no source.",
+            )
+        return {
+            "status": "passed" if not issues else "needs_attention",
+            "issues": issues,
+            "checks": checks,
+        }
 
     def update_research_evidence(
         self,
@@ -1519,7 +1593,18 @@ class SessionManager:
             return {"ok": False, "error": "Research run not found."}
         if any(
             key in changes
-            for key in {"question", "depth", "plan", "method", "deliverable"}
+            for key in {
+                "question",
+                "depth",
+                "plan",
+                "method",
+                "deliverable",
+                "audience",
+                "slide_count",
+                "visual_direction",
+                "image_mode",
+                "image_quality",
+            }
         ):
             if run.status != "planned":
                 return {
@@ -1606,7 +1691,7 @@ class SessionManager:
                 item
                 for item in runs
                 if item.status
-                in {"failed", "researching", "synthesizing"}
+                in {"failed", "partially_completed", "researching", "synthesizing"}
             ),
             None,
         )
@@ -1662,9 +1747,21 @@ class SessionManager:
         if run.get("artifact_paths"):
             self._import_grounded_claims(session_id, run)
         if terminal_status == "error":
-            changes.update(status="failed", error="The model turn failed.")
+            if run.get("artifact_paths"):
+                changes.update(
+                    status="partially_completed",
+                    error="Some research outputs were saved before the model turn failed.",
+                )
+            else:
+                changes.update(status="failed", error="The model turn failed.")
         elif terminal_status == "interrupted":
-            changes.update(status="cancelled", error="Stopped by the user.")
+            if run.get("artifact_paths"):
+                changes.update(
+                    status="partially_completed",
+                    error="Some research outputs were saved before the run was stopped.",
+                )
+            else:
+                changes.update(status="cancelled", error="Stopped by the user.")
         elif run.get("artifact_paths"):
             artifacts = list(run["artifact_paths"])
             preferred = next(
@@ -1685,11 +1782,19 @@ class SessionManager:
                 ),
                 artifacts[0],
             )
-            changes.update(
-                status="completed",
-                artifact_path=preferred,
-                error=None,
-            )
+            quality = dict(run.get("quality") or {})
+            if quality.get("status") == "needs_attention":
+                changes.update(
+                    status="partially_completed",
+                    artifact_path=preferred,
+                    error="Research outputs need quality review.",
+                )
+            else:
+                changes.update(
+                    status="completed",
+                    artifact_path=preferred,
+                    error=None,
+                )
         updated = self.research_runs.update(run["run_id"], **changes)
         return updated.to_dict() if updated else None
 

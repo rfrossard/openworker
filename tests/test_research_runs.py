@@ -14,6 +14,11 @@ def test_research_run_persists_across_store_restart(tmp_path):
         depth="deep",
         plan=["Find primary evaluations", "Compare cost and quality"],
         deliverable="presentation",
+        audience="Executive leadership",
+        slide_count=12,
+        visual_direction="Editorial",
+        image_mode="generate",
+        image_quality="high",
     )
 
     restored = ResearchRunStore(path).list("session-a")
@@ -23,6 +28,11 @@ def test_research_run_persists_across_store_restart(tmp_path):
     assert restored[0].status == "planned"
     assert restored[0].source_limit == 20
     assert restored[0].deliverable == "presentation"
+    assert restored[0].audience == "Executive leadership"
+    assert restored[0].slide_count == 12
+    assert restored[0].visual_direction == "Editorial"
+    assert restored[0].image_mode == "generate"
+    assert restored[0].image_quality == "high"
     assert restored[0].plan == [
         "Find primary evaluations",
         "Compare cost and quality",
@@ -120,6 +130,32 @@ def test_unknown_research_fields_survive_round_trip(tmp_path):
     payload = json.loads(path.read_text(encoding="utf-8"))
 
     assert payload["runs"][0]["future_field"] == {"keep": True}
+
+
+def test_old_research_state_gets_safe_presentation_defaults(tmp_path):
+    path = tmp_path / "research-runs.json"
+    path.write_text(
+        """{
+  "version": 1,
+  "runs": [{
+    "run_id": "research-existing",
+    "session_id": "session-a",
+    "question": "Existing",
+    "depth": "quick",
+    "plan": ["Research"],
+    "deliverable": "presentation",
+    "slide_count": "invalid",
+    "image_mode": "future-mode"
+  }]
+}""",
+        encoding="utf-8",
+    )
+
+    restored = ResearchRunStore(path).list("session-a")[0]
+
+    assert restored.slide_count == 10
+    assert restored.image_mode == "generate"
+    assert restored.image_quality == "medium"
 
 
 def test_research_evidence_is_deduplicated_and_persists(tmp_path):

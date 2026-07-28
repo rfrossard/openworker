@@ -237,7 +237,12 @@ export interface ResearchRun {
   plan: string[];
   method?: "standard" | "grounded_claims";
   deliverable?: "report" | "presentation";
-  status: "planned" | "researching" | "synthesizing" | "completed" | "failed" | "cancelled";
+  audience?: string;
+  slide_count?: number;
+  visual_direction?: string;
+  image_mode?: "generate" | "source" | "none";
+  image_quality?: "low" | "medium" | "high";
+  status: "planned" | "researching" | "synthesizing" | "partially_completed" | "completed" | "failed" | "cancelled";
   source_limit: number;
   agent_limit: number;
   sources_found: number;
@@ -252,6 +257,11 @@ export interface ResearchRun {
   browser_evidence_count: number;
   evidence: ResearchEvidence[];
   claims?: ResearchClaim[];
+  quality?: {
+    status: "pending" | "passed" | "needs_attention";
+    issues: string[];
+    checks: number;
+  };
   created_at: string;
   updated_at: string;
 }
@@ -291,6 +301,11 @@ export async function createResearchRun(
     plan: string[];
     method?: "standard" | "grounded_claims";
     deliverable?: "report" | "presentation";
+    audience?: string;
+    slide_count?: number;
+    visual_direction?: string;
+    image_mode?: "generate" | "source" | "none";
+    image_quality?: "low" | "medium" | "high";
   },
 ): Promise<{ ok: boolean; run?: ResearchRun; error?: string }> {
   const res = await fetch(`${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}/research-runs`, {
@@ -310,6 +325,11 @@ export async function updateResearchRun(
     plan: string[];
     method?: "standard" | "grounded_claims";
     deliverable?: "report" | "presentation";
+    audience?: string;
+    slide_count?: number;
+    visual_direction?: string;
+    image_mode?: "generate" | "source" | "none";
+    image_quality?: "low" | "medium" | "high";
   },
 ): Promise<{ ok: boolean; run?: ResearchRun; error?: string }> {
   const res = await fetch(

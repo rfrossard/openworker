@@ -20,10 +20,13 @@ from typing import Any, Optional
 RESEARCH_DEPTHS = {"quick", "standard", "deep"}
 RESEARCH_METHODS = {"standard", "grounded_claims"}
 RESEARCH_DELIVERABLES = {"report", "presentation"}
+RESEARCH_IMAGE_MODES = {"generate", "source", "none"}
+RESEARCH_IMAGE_QUALITIES = {"low", "medium", "high"}
 RESEARCH_STATUSES = {
     "planned",
     "researching",
     "synthesizing",
+    "partially_completed",
     "completed",
     "failed",
     "cancelled",
@@ -46,6 +49,11 @@ class ResearchRun:
     plan: list[str]
     method: str = "standard"
     deliverable: str = "report"
+    audience: str = ""
+    slide_count: int = 10
+    visual_direction: str = ""
+    image_mode: str = "generate"
+    image_quality: str = "medium"
     status: str = "planned"
     source_limit: int = 10
     agent_limit: int = 1
@@ -94,6 +102,20 @@ class ResearchRun:
             known["method"] = "standard"
         if known.get("deliverable") not in RESEARCH_DELIVERABLES:
             known["deliverable"] = "report"
+        known["audience"] = str(known.get("audience") or "").strip()[:500]
+        try:
+            known["slide_count"] = max(
+                5, min(30, int(known.get("slide_count") or 10))
+            )
+        except (TypeError, ValueError):
+            known["slide_count"] = 10
+        known["visual_direction"] = str(
+            known.get("visual_direction") or ""
+        ).strip()[:1000]
+        if known.get("image_mode") not in RESEARCH_IMAGE_MODES:
+            known["image_mode"] = "generate"
+        if known.get("image_quality") not in RESEARCH_IMAGE_QUALITIES:
+            known["image_quality"] = "medium"
         return cls(**known)
 
     def to_dict(self) -> dict[str, Any]:
@@ -142,6 +164,11 @@ class ResearchRunStore:
         plan: list[str],
         method: str = "standard",
         deliverable: str = "report",
+        audience: str = "",
+        slide_count: int = 10,
+        visual_direction: str = "",
+        image_mode: str = "generate",
+        image_quality: str = "medium",
         artifact_paths_at_start: Optional[list[str]] = None,
         browser_history_count_at_start: int = 0,
         browser_evidence_count_at_start: int = 0,
@@ -161,6 +188,18 @@ class ResearchRunStore:
         deliverable = str(deliverable).strip().lower()
         if deliverable not in RESEARCH_DELIVERABLES:
             raise ValueError("Research deliverable must be report or presentation.")
+        audience = str(audience or "").strip()[:500]
+        visual_direction = str(visual_direction or "").strip()[:1000]
+        try:
+            slide_count = max(5, min(30, int(slide_count)))
+        except (TypeError, ValueError):
+            raise ValueError("Slide count must be a number from 5 to 30.")
+        image_mode = str(image_mode or "").strip().lower()
+        if image_mode not in RESEARCH_IMAGE_MODES:
+            raise ValueError("Image mode must be generate, source, or none.")
+        image_quality = str(image_quality or "").strip().lower()
+        if image_quality not in RESEARCH_IMAGE_QUALITIES:
+            raise ValueError("Image quality must be low, medium, or high.")
         run = ResearchRun(
             run_id=f"research-{uuid.uuid4().hex[:12]}",
             session_id=session_id,
@@ -169,6 +208,11 @@ class ResearchRunStore:
             plan=clean_plan,
             method=method,
             deliverable=deliverable,
+            audience=audience,
+            slide_count=slide_count,
+            visual_direction=visual_direction,
+            image_mode=image_mode,
+            image_quality=image_quality,
             source_limit=SOURCE_LIMITS[depth],
             artifact_paths_at_start=list(artifact_paths_at_start or []),
             browser_history_count_at_start=max(0, browser_history_count_at_start),
@@ -193,6 +237,11 @@ class ResearchRunStore:
             "plan",
             "method",
             "deliverable",
+            "audience",
+            "slide_count",
+            "visual_direction",
+            "image_mode",
+            "image_quality",
             "status",
             "sources_found",
             "artifact_path",
@@ -239,6 +288,25 @@ class ResearchRunStore:
                     if value not in RESEARCH_DELIVERABLES:
                         raise ValueError(
                             "Research deliverable must be report or presentation."
+                        )
+                if key == "audience":
+                    value = str(value or "").strip()[:500]
+                if key == "slide_count":
+                    try:
+                        value = max(5, min(30, int(value)))
+                    except (TypeError, ValueError):
+                        raise ValueError("Slide count must be a number from 5 to 30.")
+                if key == "visual_direction":
+                    value = str(value or "").strip()[:1000]
+                if key == "image_mode":
+                    value = str(value or "").strip().lower()
+                    if value not in RESEARCH_IMAGE_MODES:
+                        raise ValueError("Image mode must be generate, source, or none.")
+                if key == "image_quality":
+                    value = str(value or "").strip().lower()
+                    if value not in RESEARCH_IMAGE_QUALITIES:
+                        raise ValueError(
+                            "Image quality must be low, medium, or high."
                         )
                 setattr(run, key, value)
                 if key == "depth":

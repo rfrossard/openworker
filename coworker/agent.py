@@ -33,6 +33,7 @@ from .overrides import RiskOverrideStore
 from .secrets import SecretStore, state_dir
 from .skills import SkillLoader, skill_catalog_text, skill_tools
 from .tools import ToolRegistry
+from .tools.image_generation import make_generate_image_tool
 from .tools.ask import ask_user_tool
 from .tools.directories import request_directory_tool
 from .tools.plan import propose_plan_tool
@@ -230,6 +231,12 @@ def build_engine(
     # Web search + fetch: research tools for every agent (keyless DuckDuckGo default).
     registry.register(make_web_search_tool(secrets))
     registry.register(make_web_fetch_tool())
+    if ws is not None:
+        # Native Artifact Studio capability. It remains approval-gated even when the
+        # surrounding turn is otherwise unattended because it can incur external cost.
+        registry.register(
+            make_generate_image_tool(secrets, workspace=ws)
+        )
     # ask_user: the universal human-in-the-loop Q&A primitive (every agent; engine-intercepted).
     if question_asker is not None:
         registry.register(ask_user_tool())

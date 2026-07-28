@@ -247,7 +247,7 @@ export function RightRail({
                   <div className="research-run-card" key={run.run_id}>
                     <div>
                       <span className={`research-run-status ${run.status}`}>
-                        {run.status}
+                        {run.status === "partially_completed" ? "partial" : run.status}
                       </span>
                       <strong title={run.question}>{run.question}</strong>
                       {run.status === "planned" && (
@@ -268,6 +268,22 @@ export function RightRail({
                       {run.method === "grounded_claims" ? "grounded claims" : "standard"} ·{" "}
                       {run.plan.length} plan steps · {run.source_limit} sources planned
                     </span>
+                    {run.quality?.status === "passed" && (
+                      <span className="research-quality passed">
+                        Quality gate passed · {run.quality.checks} checks
+                      </span>
+                    )}
+                    {run.quality?.status === "needs_attention" && (
+                      <details className="research-quality needs-attention">
+                        <summary>
+                          Quality review · {run.quality.issues.length} issue
+                          {run.quality.issues.length === 1 ? "" : "s"}
+                        </summary>
+                        <ul>
+                          {run.quality.issues.map((issue) => <li key={issue}>{issue}</li>)}
+                        </ul>
+                      </details>
+                    )}
                     <ResearchClaimsBoard run={run} />
                     <ResearchEvidenceBoard
                       sessionId={sessionId}

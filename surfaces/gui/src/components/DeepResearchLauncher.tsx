@@ -14,6 +14,8 @@ interface ResearchBrief {
   audience?: string;
   slideCount?: number;
   visualDirection?: string;
+  imageMode?: "generate" | "source" | "none";
+  imageQuality?: "low" | "medium" | "high";
 }
 
 const DEFAULT_PLAN = [
@@ -37,6 +39,12 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
     .map((line, index) => `${index + 1}. ${line.replace(/^\d+[.)]\s*/, "")}`)
     .join("\n");
   const depth = DEPTH_SETTINGS[brief.depth];
+  const imageRequirements =
+    brief.imageMode === "none"
+      ? `- Do not generate or source decorative images. Use only evidence-backed charts, tables, and diagrams that can be built from verified data.`
+      : brief.imageMode === "source"
+        ? `- Use sourced visuals only. Prefer primary-source or permissively licensed images, preserve the original URL and license in the source manifest, and never hotlink remote assets in the final files.`
+        : `- Generate original visuals with the native generate_image tool at ${brief.imageQuality || "medium"} quality. Use 1536x1024 for widescreen slides and save each approved result under reports/assets/. Every call is paid and approval-gated; if generation is unavailable or declined, fall back to a sourced visual or an evidence-backed diagram.`;
   const presentationRequirements =
     brief.deliverable === "presentation"
       ? `
@@ -47,13 +55,14 @@ Research Presentation deliverable:
 - Visual direction: ${brief.visualDirection?.trim() || "clean, editorial, evidence-led, and appropriate for the audience"}.
 - Use a two-stage workflow inspired by PPTAgent: first research and storyboard; then render, inspect every slide, and revise visual or factual defects.
 - Prefer an editable PPTX built with PptxGenJS when it is safely available. Apply Presenton-style local/BYOK principles: never send research, files, or credentials to an unapproved external presentation service.
-- Generate or source a distinct, relevant visual for slides that materially benefit from one. Use the selected chat model's image capability when available; otherwise use an approved configured image provider or safe image search. Never invent charts, data, people, quotes, or outcomes.
+- Give each slide that materially benefits from imagery one distinct, relevant visual. Never invent charts, data, people, quotes, or outcomes.
+${imageRequirements}
 - Use at least 50pt for the deck title, 35pt for slide titles, 24pt for subheads, and 16pt for body copy. Shorten content instead of shrinking it.
 - Put human-readable source URLs for every non-trivial claim and externally sourced visual in speaker notes. Also create reports/<descriptive-name>.sources.md with slide-by-slide provenance.
-- Export reports/<descriptive-name>.pptx plus reports/<descriptive-name>.claims.json. Also keep reports/<descriptive-name>-storyboard.md so the reasoning and narrative remain reviewable.
+- Export both reports/<descriptive-name>.pptx and reports/<descriptive-name>.pdf, using the same approved visual assets in both. Also export reports/<descriptive-name>.claims.json, reports/<descriptive-name>-storyboard.md, and reports/<descriptive-name>.sources.md.
 - The claim ledger must use this top-level shape even when Standard Research is selected: {"claims":[{"claim_id":"C1","claim":"atomic factual statement","status":"supported","confidence":0.9,"sources":["https://..."],"justification":"what the evidence establishes","counterevidence":"contradictions or limitations"}]}.
 - Render every final slide to images, inspect for overlap, clipping, wrapping, unreadable text, broken crops, and unresolved placeholders, then fix all defects before completion.
-- End your response with clickable artifact links to the PPTX, storyboard, source manifest, and claim ledger.`
+- End your response with clickable artifact links to the PPTX, PDF, storyboard, source manifest, and claim ledger.`
       : `
 - Create the report as reports/<descriptive-name>.md and a machine-readable ledger beside it as reports/<descriptive-name>.claims.json.
 - Structure the Markdown report as: Executive Summary, Question Decomposition, Method, Claim Ledger, Findings by Claim, Contradictions and Open Questions, Limitations, Conclusions, Recommended Next Steps, and Sources.
@@ -117,6 +126,8 @@ export function DeepResearchLauncher({
   const [audience, setAudience] = useState("");
   const [slideCount, setSlideCount] = useState(10);
   const [visualDirection, setVisualDirection] = useState("");
+  const [imageMode, setImageMode] = useState<"generate" | "source" | "none">("generate");
+  const [imageQuality, setImageQuality] = useState<"low" | "medium" | "high">("medium");
   const [plan, setPlan] = useState(DEFAULT_PLAN);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -127,6 +138,11 @@ export function DeepResearchLauncher({
     setDepth(editingRun.depth);
     setMethod(editingRun.method || "standard");
     setDeliverable(editingRun.deliverable || "report");
+    setAudience(editingRun.audience || "");
+    setSlideCount(editingRun.slide_count || 10);
+    setVisualDirection(editingRun.visual_direction || "");
+    setImageMode(editingRun.image_mode || "generate");
+    setImageQuality(editingRun.image_quality || "medium");
     setPlan(editingRun.plan.join("\n"));
     setError("");
     setOpen(true);
@@ -157,6 +173,8 @@ export function DeepResearchLauncher({
       audience,
       slideCount,
       visualDirection,
+      imageMode,
+      imageQuality,
     };
     try {
       const input = {
@@ -165,6 +183,11 @@ export function DeepResearchLauncher({
         plan: plan.split("\n").map((item) => item.trim()).filter(Boolean),
         method,
         deliverable,
+        audience: audience.trim(),
+        slide_count: slideCount,
+        visual_direction: visualDirection.trim(),
+        image_mode: imageMode,
+        image_quality: imageQuality,
       };
       const result = editingRun
         ? await updateResearchRun(sessionId, editingRun.run_id, input)
@@ -197,6 +220,8 @@ export function DeepResearchLauncher({
             setAudience("");
             setSlideCount(10);
             setVisualDirection("");
+            setImageMode("generate");
+            setImageQuality("medium");
             setPlan(DEFAULT_PLAN);
             setError("");
           }
@@ -311,6 +336,50 @@ export function DeepResearchLauncher({
                       placeholder="Editorial, cinematic, minimal, company colors…"
                     />
                   </label>
+                  <fieldset className="research-field research-visual-direction">
+                    <legend>Presentation visuals</legend>
+                    <div className="research-depth-options research-image-options">
+                      <button
+                        type="button"
+                        className={imageMode === "generate" ? "selected" : ""}
+                        onClick={() => setImageMode("generate")}
+                      >
+                        <strong>Generate images</strong>
+                        <span>Original, approval-gated visuals</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={imageMode === "source" ? "selected" : ""}
+                        onClick={() => setImageMode("source")}
+                      >
+                        <strong>Source visuals</strong>
+                        <span>Web images with provenance</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={imageMode === "none" ? "selected" : ""}
+                        onClick={() => setImageMode("none")}
+                      >
+                        <strong>No images</strong>
+                        <span>Charts, tables, and diagrams only</span>
+                      </button>
+                    </div>
+                  </fieldset>
+                  {imageMode === "generate" && (
+                    <label className="research-field">
+                      <span>Image quality</span>
+                      <select
+                        value={imageQuality}
+                        onChange={(event) =>
+                          setImageQuality(event.target.value as "low" | "medium" | "high")
+                        }
+                      >
+                        <option value="low">Low · faster and lower cost</option>
+                        <option value="medium">Medium · recommended</option>
+                        <option value="high">High · maximum detail and cost</option>
+                      </select>
+                    </label>
+                  )}
                 </div>
               )}
 

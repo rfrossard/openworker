@@ -267,8 +267,9 @@ def test_presentation_research_prefers_pptx_as_primary_artifact(
         "research-session",
         question="Presentation",
         depth="standard",
-        method="grounded_claims",
+        method="standard",
         deliverable="presentation",
+        image_mode="source",
         plan=["Research", "Storyboard", "Render"],
     )["run"]
     manager.start_research_run_from_text(
@@ -278,6 +279,7 @@ def test_presentation_research_prefers_pptx_as_primary_artifact(
         [
             {"path": "reports/deck-storyboard.md"},
             {"path": "reports/deck.pptx"},
+            {"path": "reports/deck.pdf"},
             {"path": "reports/deck.sources.md"},
         ]
     )
@@ -487,9 +489,53 @@ def test_failed_grounded_research_keeps_completed_claim_ledger(tmp_path, monkeyp
     failed = manager.finalize_research_turn("research-session", "error")
     restored = manager.research_runs.list("research-session")[0]
 
-    assert failed["status"] == "failed"
+    assert failed["status"] == "partially_completed"
     assert len(restored.claims) == 1
     assert restored.claims[0]["claim_id"] == "C1"
+
+
+def test_presentation_quality_gate_reports_missing_pdf_sources_and_visuals(
+    tmp_path, monkeypatch
+):
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    artifacts: list[dict] = []
+    monkeypatch.setattr(manager, "list_artifacts", lambda _session: artifacts)
+    monkeypatch.setattr(
+        manager, "browser_state", lambda _session: {"history": [], "evidence": []}
+    )
+    created = manager.create_research_run(
+        "research-session",
+        question="Quality gate",
+        depth="quick",
+        method="standard",
+        deliverable="presentation",
+        image_mode="generate",
+        plan=["Research", "Render"],
+    )["run"]
+    manager.start_research_run_from_text(
+        "research-session", f"Research Run: {created['run_id']}"
+    )
+    artifacts.extend(
+        [
+            {"path": "reports/deck.pptx"},
+            {"path": "reports/deck-storyboard.md"},
+        ]
+    )
+
+    completed = manager.finalize_research_turn("research-session", "completed")
+    quality = manager.list_research_runs("research-session")[0]["quality"]
+
+    assert completed["status"] == "partially_completed"
+    assert quality["status"] == "needs_attention"
+    assert quality["issues"] == [
+        "Presentation PDF is missing.",
+        "Slide source manifest is missing.",
+        "No generated presentation visual was saved.",
+    ]
 
 
 def test_listing_old_failed_research_recovers_existing_claim_artifact(

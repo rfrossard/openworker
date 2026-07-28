@@ -42,6 +42,8 @@ describe("Deep Research launcher", () => {
       audience: "Executive leadership",
       slideCount: 12,
       visualDirection: "Editorial with bold photography",
+      imageMode: "generate",
+      imageQuality: "high",
     });
 
     expect(prompt).toContain("Target 12 slides");
@@ -49,7 +51,9 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("two-stage workflow inspired by PPTAgent");
     expect(prompt).toContain("PptxGenJS");
     expect(prompt).toContain("Presenton-style local/BYOK");
-    expect(prompt).toContain("Generate or source a distinct, relevant visual");
+    expect(prompt).toContain("native generate_image tool at high quality");
+    expect(prompt).toContain("reports/assets/");
+    expect(prompt).toContain("both reports/<descriptive-name>.pptx and reports/<descriptive-name>.pdf");
     expect(prompt).toContain("speaker notes");
     expect(prompt).toContain("inspect for overlap");
   });
@@ -96,6 +100,8 @@ describe("Deep Research launcher", () => {
     );
     expect(request.method).toBe("grounded_claims");
     expect(request.deliverable).toBe("report");
+    expect(request.image_mode).toBe("generate");
+    expect(request.image_quality).toBe("medium");
     fetchMock.mockRestore();
   });
 

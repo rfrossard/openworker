@@ -283,19 +283,61 @@ def _session_usage_events(
     return events
 
 
+def _operation_usage_events(
+    messages: list[dict[str, Any]], fallback_date: str
+) -> list[dict[str, Any]]:
+    """Usage emitted by paid non-chat tools, such as native image generation."""
+    events: list[dict[str, Any]] = []
+    for message in messages:
+        if message.get("role") != "tool":
+            continue
+        content = message.get("content")
+        if not isinstance(content, str):
+            continue
+        try:
+            payload = json.loads(content)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        usage = payload.get("operation_usage") if isinstance(payload, dict) else None
+        if not isinstance(usage, dict):
+            continue
+        operation_type = str(usage.get("type") or "").strip().lower()
+        model = str(usage.get("model") or "").strip()
+        provider = str(usage.get("provider") or "Unknown").strip() or "Unknown"
+        if operation_type not in {"image", "audio", "browser", "artifact"} or not model:
+            continue
+        events.append(
+            {
+                "model": model,
+                "provider": provider,
+                "input_tokens": max(0, int(usage.get("input_tokens") or 0)),
+                "output_tokens": max(0, int(usage.get("output_tokens") or 0)),
+                "cost": max(0.0, float(usage.get("estimated_cost_usd") or 0.0)),
+                "date": _message_date(message, fallback_date),
+                "exact": usage.get("measurement") == "reported",
+                "operation_type": operation_type,
+                "units": max(1, int(usage.get("units") or 1)),
+            }
+        )
+    return events
+
+
 def _dashboard_data(manager: Any) -> dict[str, Any]:
     sessions = []
     by_provider: dict[str, dict[str, Any]] = {}
     by_model: dict[str, dict[str, Any]] = {}
     daily: dict[str, dict[str, Any]] = {}
     daily_session_ids: dict[str, set[str]] = defaultdict(set)
+    operation_totals: dict[str, dict[str, Any]] = {}
     total_input = total_output = 0
 
     for record in manager.session_store.list():
         messages = _read_messages(manager.session_store, record.session_id)
         fallback_model = record.model or manager.model or "unknown"
         fallback_date = (record.updated_at or "")[:10] or "Unknown"
-        events = _session_usage_events(messages, fallback_model, fallback_date)
+        model_events = _session_usage_events(messages, fallback_model, fallback_date)
+        operation_events = _operation_usage_events(messages, fallback_date)
+        events = [*model_events, *operation_events]
         input_tokens = sum(event["input_tokens"] for event in events)
         output_tokens = sum(event["output_tokens"] for event in events)
         cost = sum(event["cost"] for event in events)
@@ -317,7 +359,16 @@ def _dashboard_data(manager: Any) -> dict[str, Any]:
             "input_tokens": input_tokens, "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens, "cost_usd": cost,
             "datetime": record.updated_at or "",
-            "measurement": measurement, "model_calls": len(events),
+            "measurement": measurement,
+            "model_calls": len(model_events),
+            "operations": {
+                kind: sum(
+                    event.get("units", 0)
+                    for event in operation_events
+                    if event.get("operation_type") == kind
+                )
+                for kind in {event["operation_type"] for event in operation_events}
+            },
         })
         session_providers: set[str] = set()
         session_models: set[str] = set()
@@ -334,6 +385,13 @@ def _dashboard_data(manager: Any) -> dict[str, Any]:
             daily_session_ids[date].add(record.session_id)
             session_providers.add(provider_name)
             session_models.add(model_name)
+            operation_type = event.get("operation_type")
+            if operation_type:
+                operation = operation_totals.setdefault(
+                    operation_type, {"units": 0, "cost": 0.0}
+                )
+                operation["units"] += event.get("units", 0)
+                operation["cost"] += event["cost"]
         for provider_name in session_providers:
             by_provider[provider_name]["sessions"] += 1
         for model_name in session_models:
@@ -351,6 +409,7 @@ def _dashboard_data(manager: Any) -> dict[str, Any]:
             "total_output_tokens": total_output,
             "session_count": len(sessions),
             "by_provider": by_provider, "by_model": by_model,
+            "operations": operation_totals,
             "daily": dict(sorted(daily.items())),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         },

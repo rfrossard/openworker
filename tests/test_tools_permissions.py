@@ -9,6 +9,7 @@ import pytest
 import aisuite as ai
 from coworker.permissions import Decision, Mode, PermissionEngine
 from coworker.tools import ToolRegistry
+from coworker.tools.image_generation import make_generate_image_tool
 
 
 def _registry(root: Path) -> ToolRegistry:
@@ -149,3 +150,26 @@ def test_auto_mode_allows_but_path_scopes(tmp_path):
     )
     assert ok.allowed
     assert not escape.allowed
+
+
+def test_paid_image_generation_always_requires_per_call_approval(tmp_path):
+    class Secrets:
+        def get(self, _key):
+            return {}
+
+    tool = make_generate_image_tool(Secrets(), workspace=tmp_path)
+    for mode in (Mode.INTERACTIVE, Mode.AUTO, Mode.CUSTOM):
+        eng = PermissionEngine(
+            workspace_root=tmp_path,
+            mode=mode,
+            auto_allow_tools={"generate_image"},
+        )
+        eng.allow_tool_for_session("generate_image")
+        decision = eng.evaluate(
+            "generate_image",
+            {"prompt": "A diagram", "path": "reports/assets/diagram.png"},
+            tool.__aisuite_tool_metadata__,
+        )
+        assert not decision.allowed
+        assert decision.needs_user
+        assert "paid generation" in decision.reason

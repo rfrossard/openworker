@@ -722,6 +722,11 @@ button.btn.danger { color: var(--accent); }
 .research-run-status.researching, .research-run-status.synthesizing { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .research-run-status.completed { color: #2e7d4f; background: color-mix(in srgb, #2e7d4f 12%, transparent); }
 .research-run-status.failed, .research-run-status.cancelled { color: var(--danger, #b73e3e); background: color-mix(in srgb, var(--danger, #d85858) 10%, transparent); }
+.research-run-status.partially_completed { color: #a56c11; background: color-mix(in srgb, #c9952e 14%, transparent); }
+.research-quality { color: var(--faint); font-size: 10px; line-height: 1.4; text-transform: none; }
+.research-quality.passed { color: #2e7d4f; }
+.research-quality summary { cursor: pointer; color: #a56c11; }
+.research-quality ul { margin: 5px 0 0 17px; padding: 0; }
 @media (max-width: 640px) {
   .research-modal-backdrop { padding: 10px; }
   .research-modal { padding: 18px; }

@@ -36,6 +36,9 @@ class Mode(str, Enum):
 # Modes whose enforcement is read-only. DISCUSS and PLAN share the same gate; they differ
 # only in intent — PLAN additionally drives the agent toward a propose_plan approval.
 READ_ONLY_MODES = frozenset({Mode.DISCUSS, Mode.PLAN})
+# Paid, open-ended generation must preserve per-call cost consent even in Auto mode
+# and after a generic "allow this tool" decision.
+ALWAYS_APPROVAL_TOOLS = frozenset({"generate_image"})
 
 
 @dataclass
@@ -131,6 +134,9 @@ class PermissionEngine:
         # Non-consequential tools always run.
         if not consequential:
             return Decision(True, "low risk")
+
+        if tool_name in ALWAYS_APPROVAL_TOOLS:
+            return Decision(False, "paid generation requires approval", needs_user=True)
 
         # Full access.
         if self.mode is Mode.AUTO:
