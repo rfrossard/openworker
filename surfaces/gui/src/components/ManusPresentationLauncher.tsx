@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import type { ArtifactInfo } from "../api";
-import { PRESENTATION_TEMPLATES, templateById } from "../presentationTemplates";
+import { PRESENTATION_TEMPLATE_GROUPS, templateById, templatesInGroup } from "../presentationTemplates";
 import { Icon } from "./Icon";
 
 export interface ManusPresentationOptions {
@@ -200,10 +200,14 @@ export function ManusPresentationLauncher({
                     }
                   }}
                 >
-                  {PRESENTATION_TEMPLATES.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name} — {template.description}
-                    </option>
+                  {PRESENTATION_TEMPLATE_GROUPS.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {templatesInGroup(group.ids).map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name} — {template.description}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                   {potxArtifacts.length > 0 && <option value="custom">Custom POTX from artifacts</option>}
                 </select>

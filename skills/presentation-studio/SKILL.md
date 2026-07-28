@@ -19,8 +19,9 @@ through every phase.
 2. Research claims before designing slides. Prefer primary sources, record URLs, and
    preserve disagreement or uncertainty.
 3. Write a storyboard with one narrative job and one evidence-backed takeaway per slide.
-4. Choose a coherent visual direction and vary slide composition without changing the
-   visual system.
+4. Read [art-direction.md](references/art-direction.md). Choose a coherent visual
+   direction, establish a typographic scale, and plan a varied but purposeful sequence
+   of slide silhouettes without changing the visual system.
    Apply the template selected in Artifact Studio. Built-in templates are editable design
    tokens; a workspace `.potx` takes precedence and its masters, layouts, theme, and
    placeholders must remain intact. Read [template-catalog.md](references/template-catalog.md).
@@ -37,7 +38,8 @@ through every phase.
 7. Verify that the returned result says `ok: true`, includes both formats, reports the
    expected number of embedded images, and returns slide previews plus a contact sheet.
    Inspect the rendered previews before accepting the deck; do not judge only the slide
-   specification. Fix the specification and rebuild on failure.
+   specification. Run the rendered-deck taste audit in `art-direction.md`, record the
+   findings, and fix the specification before rebuilding on failure.
    When visuals were requested, require `visual_plan_complete: true`. Never approve a
    deck with `images_embedded: 0` or mark image relevance “not applicable.”
 8. Save the storyboard, slide-by-slide source manifest, and factual claim ledger beside
@@ -45,8 +47,9 @@ through every phase.
 
 ## Slide specification
 
-- Keep the title slide minimal.
+- Keep the title slide minimal and use a 50–64 pt title.
 - Give every content slide a specific takeaway title.
+- Keep slide titles at 35–44 pt, key messages at 24–30 pt, and body copy at 16–22 pt.
 - Use at most six concise bullets; prefer three or four.
 - Put explanation in the presentation narrative, not dense paragraphs.
 - Add `image_path`, `image_caption`, and source URLs when relevant.
@@ -55,7 +58,9 @@ through every phase.
 - Pass the approved visual count as `minimum_images` so rendering fails if assets are
   missing instead of quietly producing an incomplete deck.
 - Select `image-left`, `image-right`, or `statement` layouts when they strengthen the
-  narrative; use `auto` only when no deliberate alternative is warranted.
+   narrative; use `auto` only when no deliberate alternative is warranted.
+- Never repeat one layout more than twice consecutively. Keep card grids below 20% of
+  the deck and alternate text-led, visual-led, data-led, and transition silhouettes.
 - Use one image at most once unless it is an intentional background.
 - Close by resolving the opening question, making a decision, or defining next actions.
 - Keep all audience-facing content in the user’s requested language.

@@ -1,4 +1,4 @@
 interface:
   display_name: "Presentation Studio"
-  short_description: "Create image-rich, validated PPTX and PDF decks"
-  default_prompt: "Use $presentation-studio to create a researched, image-rich presentation with a validated PPTX and matching slide-formatted PDF."
+  short_description: "Create art-directed, validated PPTX and PDF decks"
+  default_prompt: "Use $presentation-studio to create a coherent, art-directed presentation with a validated PPTX and matching slide-formatted PDF."

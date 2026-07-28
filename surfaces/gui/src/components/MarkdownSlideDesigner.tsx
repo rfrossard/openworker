@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { readArtifact, type ArtifactInfo } from "../api";
-import { PRESENTATION_TEMPLATES, templateById } from "../presentationTemplates";
+import { PRESENTATION_TEMPLATE_GROUPS, templateById, templatesInGroup } from "../presentationTemplates";
 import { Icon } from "./Icon";
 
 export type SlideLayout =
@@ -41,29 +41,29 @@ export interface ParsedMarkdownDeck {
   slides: MarkdownSlide[];
 }
 
-const LAYOUTS: { id: SlideLayout; label: string; description: string }[] = [
-  { id: "auto", label: "Standard", description: "Clear title and supporting points" },
-  { id: "statement", label: "Statement", description: "One memorable idea" },
-  { id: "image-left", label: "Image left", description: "Visual first, text second" },
-  { id: "image-right", label: "Image right", description: "Text first, visual second" },
-  { id: "two-column", label: "Two columns", description: "Compare or group ideas" },
-  { id: "quote", label: "Quote", description: "Feature a quotation or key message" },
-  { id: "section", label: "Section", description: "Introduce a new chapter" },
-  { id: "title-only", label: "Title only", description: "Minimal transition or opening" },
-  { id: "big-number", label: "Big number", description: "Lead with one important metric" },
-  { id: "checklist", label: "Checklist", description: "Actions or completion criteria" },
-  { id: "timeline", label: "Timeline", description: "Events in chronological order" },
-  { id: "process", label: "Process", description: "A connected sequence of steps" },
-  { id: "comparison", label: "Comparison", description: "Side-by-side alternatives" },
-  { id: "pros-cons", label: "Pros and cons", description: "Balanced benefits and tradeoffs" },
-  { id: "three-columns", label: "Three columns", description: "Three parallel themes" },
-  { id: "four-cards", label: "Four cards", description: "Four concise ideas or features" },
-  { id: "metric-grid", label: "Metric grid", description: "Multiple headline indicators" },
-  { id: "image-background", label: "Image background", description: "Full-bleed visual with overlay" },
-  { id: "image-top", label: "Image top", description: "Wide visual above the message" },
-  { id: "image-bottom", label: "Image bottom", description: "Message above a wide visual" },
-  { id: "agenda", label: "Agenda", description: "Numbered presentation roadmap" },
-  { id: "conclusion", label: "Conclusion", description: "Decision and final call to action" },
+const LAYOUTS: { id: SlideLayout; label: string; description: string; category: string }[] = [
+  { id: "auto", label: "Standard", description: "Clear title and supporting points", category: "Core" },
+  { id: "statement", label: "Statement", description: "One memorable idea", category: "Core" },
+  { id: "title-only", label: "Title only", description: "Minimal transition or opening", category: "Core" },
+  { id: "section", label: "Section", description: "Introduce a new chapter", category: "Core" },
+  { id: "conclusion", label: "Conclusion", description: "Decision and final call to action", category: "Core" },
+  { id: "image-left", label: "Image left", description: "Visual first, text second", category: "Visual" },
+  { id: "image-right", label: "Image right", description: "Text first, visual second", category: "Visual" },
+  { id: "image-background", label: "Image background", description: "Full-bleed visual with overlay", category: "Visual" },
+  { id: "image-top", label: "Image top", description: "Wide visual above the message", category: "Visual" },
+  { id: "image-bottom", label: "Image bottom", description: "Message above a wide visual", category: "Visual" },
+  { id: "quote", label: "Quote", description: "Feature a quotation or key message", category: "Visual" },
+  { id: "two-column", label: "Two columns", description: "Compare or group ideas", category: "Narrative" },
+  { id: "timeline", label: "Timeline", description: "Events in chronological order", category: "Narrative" },
+  { id: "process", label: "Process", description: "A connected sequence of steps", category: "Narrative" },
+  { id: "agenda", label: "Agenda", description: "Numbered presentation roadmap", category: "Narrative" },
+  { id: "comparison", label: "Comparison", description: "Side-by-side alternatives", category: "Narrative" },
+  { id: "pros-cons", label: "Pros and cons", description: "Balanced benefits and tradeoffs", category: "Narrative" },
+  { id: "big-number", label: "Big number", description: "Lead with one important metric", category: "Data" },
+  { id: "metric-grid", label: "Metric grid", description: "Multiple headline indicators", category: "Data" },
+  { id: "three-columns", label: "Three columns", description: "Three parallel themes", category: "Data" },
+  { id: "four-cards", label: "Four cards", description: "Four concise ideas or features", category: "Data" },
+  { id: "checklist", label: "Checklist", description: "Actions or completion criteria", category: "Data" },
 ];
 
 const IMAGE_LAYOUTS: SlideLayout[] = [
@@ -331,7 +331,9 @@ export function MarkdownSlideDesigner({
               <label className="research-field"><span>Markdown artifact</span><select aria-label="Markdown artifact" value={path} onChange={(event) => setPath(event.target.value)}>{markdown.map((artifact) => <option key={artifact.path} value={artifact.path}>{artifact.path}</option>)}</select></label>
               <label className="research-field">
                 <span>Presentation template</span>
-                <select aria-label="Presentation template" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>{PRESENTATION_TEMPLATES.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>
+                <select aria-label="Presentation template" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
+                  {PRESENTATION_TEMPLATE_GROUPS.map((group) => <optgroup key={group.label} label={group.label}>{templatesInGroup(group.ids).map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</optgroup>)}
+                </select>
                 <small className="slide-designer-template-note">
                   {templateById(templateId).description}
                   {templateById(templateId).transition ? ` · ${templateById(templateId).transition} transition` : ""}
@@ -356,7 +358,7 @@ export function MarkdownSlideDesigner({
                 <aside className="slide-designer-layouts" aria-label="Slide styles">
                   <strong>Choose a style</strong>
                   <span>The preview updates immediately.</span>
-                  {LAYOUTS.map((layout) => <button key={layout.id} className={slide.layout === layout.id ? "selected" : ""} aria-pressed={slide.layout === layout.id} onClick={() => updateSlide({ layout: layout.id })}><strong>{layout.label}</strong><small>{layout.description}</small></button>)}
+                  {LAYOUTS.map((layout, index) => <div className="slide-designer-layout-option" key={layout.id}>{index === 0 || LAYOUTS[index - 1].category !== layout.category ? <h4>{layout.category}</h4> : null}<button className={slide.layout === layout.id ? "selected" : ""} aria-pressed={slide.layout === layout.id} onClick={() => updateSlide({ layout: layout.id })}><strong>{layout.label}</strong><small>{layout.description}</small></button></div>)}
                 </aside>
               </div>
             )}

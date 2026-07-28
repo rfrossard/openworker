@@ -9,20 +9,19 @@ to avoid Docker, a second application, or an external presentation service.
 All built-in templates use editable PowerPoint text, shapes, pictures, speaker notes,
 and theme-like design tokens. They never flatten the slide into a background image.
 
-| ID | Name | Best for |
+The selector is ordered by communication style:
+
+| Group | Templates | Best for |
 |---|---|---|
-| `atlas` | Atlas | Executive storytelling |
-| `aurora` | Aurora | Technology and innovation |
-| `boardroom` | Boardroom | Strategy and finance |
-| `editorial` | Editorial | Magazine-style narratives |
-| `forest` | Forest | Sustainability and natural systems |
-| `midnight` | Midnight | Cinematic dark presentations |
-| `monochrome` | Monochrome | Minimal clarity |
-| `ocean` | Ocean | Research and science |
-| `paper` | Paper | Academic evidence reviews |
-| `plum` | Plum | Culture and creative work |
-| `signal` | Signal | Launches and recommendations |
-| `studio` | Studio | Product and design reviews |
+| Essential | Atlas, Monochrome, Boardroom, Paper, Studio, Ocean | Executive, academic, operational |
+| Editorial & cultural | Editorial, Storytelling Lab, Personal Brand, Museum Editorial, Cultural Heritage, Social Workshop, Eco Sketchbook, Plum | Narrative, workshops, culture, brand |
+| Photographic | Science Studio, Digital Pulse, Environmental Fieldwork, Nature Balance, Agricultural Motion, Botanical Noir, Photo Story, Cinematic Frame, Horizon, Impact Report, Sunrise, Bloom | Human, environmental, documentary |
+| Data & evidence | Dashboard Pro, Data Wave, Financial Pulse, Growth Momentum, Cyan Infographic, Science Spectrum, Glacier, Executive Gradient, Cyber Grid | Metrics, comparisons, research |
+| Expressive | Aurora, Neon Flow, Prism, Velocity, Ember, Orbit, Aurora Glass, Editorial Motion, Signal, Forest, Midnight | Launches, future vision, memorable concepts |
+
+Read [art-direction.md](art-direction.md) before choosing a group. Start with Essential
+unless the communication job clearly benefits from a stronger editorial, photographic,
+data-led, or expressive treatment.
 
 Pass the selected ID as `template_id` to `build_presentation`. The user may refine it
 with the visual-direction brief and an explicit `accent_color`.

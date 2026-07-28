@@ -250,6 +250,36 @@ def test_reference_inspired_templates_use_distinct_cover_compositions(tmp_path):
         assert len(presentation.slides[0].shapes._spTree.xpath(".//p:pic")) == 1
 
 
+def test_presentation_typography_uses_readable_hierarchy(tmp_path):
+    tool = make_build_presentation_tool(workspace=tmp_path)
+    result = tool(
+        title="A concise presentation title",
+        subtitle="One supporting line",
+        slides=[{"title": "A takeaway title", "takeaway": "A readable key message", "layout": "statement"}],
+        pptx_path="typography.pptx",
+        pdf_path="typography.pdf",
+        template_id="atlas",
+    )
+    assert result["ok"] is True
+    presentation = Presentation(tmp_path / "typography.pptx")
+    cover_sizes = [
+        paragraph.font.size.pt
+        for shape in presentation.slides[0].shapes
+        if getattr(shape, "has_text_frame", False)
+        for paragraph in shape.text_frame.paragraphs
+        if paragraph.font.size
+    ]
+    content_sizes = [
+        paragraph.font.size.pt
+        for shape in presentation.slides[1].shapes
+        if getattr(shape, "has_text_frame", False)
+        for paragraph in shape.text_frame.paragraphs
+        if paragraph.font.size
+    ]
+    assert max(cover_sizes) >= 50
+    assert max(content_sizes) >= 35
+
+
 def test_quality_gate_rejects_markdown_renamed_as_pdf(tmp_path):
     reports = tmp_path / "reports"
     reports.mkdir()
@@ -278,4 +308,14 @@ def test_presentation_studio_skill_has_no_placeholders():
     skill = loader.get("presentation-studio")
     assert skill is not None
     assert "build_presentation" in skill.instructions
+    assert "art-direction.md" in skill.instructions
     assert "TODO" not in skill.instructions
+    art_direction = (
+        __import__("pathlib").Path(__file__).resolve().parents[1]
+        / "skills"
+        / "presentation-studio"
+        / "references"
+        / "art-direction.md"
+    ).read_text(encoding="utf-8")
+    assert "Never repeat the same layout more than twice consecutively." in art_direction
+    assert "Deck title: 50–64 pt" in art_direction

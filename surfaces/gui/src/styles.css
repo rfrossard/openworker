@@ -806,6 +806,9 @@ button.btn.danger { color: var(--accent); }
 .slide-designer-layouts { display: flex; flex-direction: column; gap: 6px; }
 .slide-designer-layouts > strong { font-size: 12px; }
 .slide-designer-layouts > span { margin-bottom: 3px; color: var(--faint); font-size: 10px; }
+.slide-designer-layout-option { display: flex; flex-direction: column; gap: 6px; }
+.slide-designer-layout-option h4 { margin: 10px 2px 1px; color: var(--faint); font-size: 9px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
+.slide-designer-layout-option button { width: 100%; }
 .slide-designer-layouts button { display: flex; flex-direction: column; gap: 2px; padding: 8px 9px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); cursor: pointer; }
 .slide-designer-layouts button.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); }
 .slide-designer-layouts button strong { font-size: 11px; }

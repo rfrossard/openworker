@@ -61,6 +61,33 @@ export const PRESENTATION_TEMPLATES: PresentationTemplate[] = [
   { id: "museum-editorial", name: "Museum Editorial", description: "Refined cultural layouts with archival framing", colors: ["#F2E7D2", "#9D6B2F", "#15110E"], gradient: ["#15110E", "#30221B"], transition: "fade", motif: "image", composition: "heritage" },
 ];
 
+export const PRESENTATION_TEMPLATE_GROUPS = [
+  {
+    label: "Essential",
+    ids: ["atlas", "monochrome", "boardroom", "paper", "studio", "ocean"],
+  },
+  {
+    label: "Editorial & cultural",
+    ids: ["editorial", "storytelling-lab", "personal-brand", "museum-editorial", "cultural-heritage", "social-workshop", "eco-sketchbook", "plum"],
+  },
+  {
+    label: "Photographic",
+    ids: ["science-studio", "digital-pulse", "environmental-fieldwork", "nature-balance", "agricultural-motion", "botanical-noir", "photo-story", "cinematic-frame", "horizon", "impact-report", "sunrise", "bloom"],
+  },
+  {
+    label: "Data & evidence",
+    ids: ["dashboard-pro", "data-wave", "financial-pulse", "home-investment", "growth-momentum", "cyan-infographic", "science-spectrum", "glacier", "executive-gradient", "cyber-grid"],
+  },
+  {
+    label: "Expressive",
+    ids: ["aurora", "neon-flow", "prism", "velocity", "ember", "orbit", "aurora-glass", "editorial-motion", "signal", "forest", "midnight"],
+  },
+] as const;
+
+export function templatesInGroup(ids: readonly string[]): PresentationTemplate[] {
+  return ids.map((id) => templateById(id));
+}
+
 export function templateById(id: string): PresentationTemplate {
   return PRESENTATION_TEMPLATES.find((template) => template.id === id) ?? PRESENTATION_TEMPLATES[0];
 }

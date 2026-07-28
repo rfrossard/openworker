@@ -402,21 +402,21 @@ def _add_pptx(
     cover.background.fill.fore_color.rgb = cover_rgb
     apply_template_canvas(cover, cover_slide=True)
     composition = style.get("composition", "standard")
-    title_box = (0.8, 1.55, 11.7, 2.0, 40)
+    title_box = (0.8, 1.45, 11.7, 2.2, 52)
     subtitle_box = (0.82, 3.8, 10.8, 1.1, 20)
     if composition in {"photo-right", "editorial"}:
         visual = cover.shapes.add_shape(1, Inches(7.0), 0, Inches(6.34), Inches(7.5))
         visual.fill.solid()
         visual.fill.fore_color.rgb = accent_rgb
         visual.line.fill.background()
-        title_box = (0.72, 1.7, 5.8, 2.7, 38)
+        title_box = (0.72, 1.5, 5.8, 3.0, 50)
         subtitle_box = (0.76, 4.7, 5.6, 1.0, 17)
     elif composition == "photo-left":
         visual = cover.shapes.add_shape(1, 0, 0, Inches(6.25), Inches(7.5))
         visual.fill.solid()
         visual.fill.fore_color.rgb = accent_rgb
         visual.line.fill.background()
-        title_box = (6.75, 1.7, 5.8, 2.7, 38)
+        title_box = (6.75, 1.5, 5.8, 3.0, 50)
         subtitle_box = (6.78, 4.7, 5.6, 1.0, 17)
     elif composition == "collage":
         for x, y, w, h, color in (
@@ -427,37 +427,37 @@ def _add_pptx(
             visual.fill.solid()
             visual.fill.fore_color.rgb = color
             visual.line.fill.background()
-        title_box = (0.72, 3.85, 6.3, 2.0, 38)
+        title_box = (0.72, 3.65, 6.3, 2.35, 50)
         subtitle_box = (0.76, 6.0, 5.8, 0.7, 16)
     elif composition == "torn-photo":
         visual = cover.shapes.add_shape(1, 0, 0, Inches(13.34), Inches(4.25))
         visual.fill.solid()
         visual.fill.fore_color.rgb = accent_rgb
         visual.line.fill.background()
-        title_box = (0.72, 4.55, 7.4, 1.4, 34)
+        title_box = (0.72, 4.35, 7.4, 1.8, 50)
         subtitle_box = (8.45, 5.0, 4.0, 1.0, 16)
     elif composition == "minimal-frame":
         visual = cover.shapes.add_shape(1, Inches(7.45), Inches(0.75), Inches(4.8), Inches(2.85))
         visual.fill.solid()
         visual.fill.fore_color.rgb = accent_rgb
         visual.line.color.rgb = cover_ink
-        title_box = (0.78, 4.0, 8.9, 1.8, 39)
+        title_box = (0.78, 3.82, 8.9, 2.1, 50)
         subtitle_box = (8.95, 5.55, 3.4, 0.85, 15)
     elif composition == "infographic":
         rail = cover.shapes.add_shape(1, 0, 0, Inches(1.75), Inches(7.5))
         rail.fill.solid()
         rail.fill.fore_color.rgb = accent_rgb
         rail.line.fill.background()
-        title_box = (2.25, 1.6, 9.8, 2.2, 40)
+        title_box = (2.25, 1.45, 9.8, 2.45, 52)
         subtitle_box = (2.28, 4.15, 8.8, 0.9, 18)
     elif composition == "botanical":
-        title_box = (3.0, 1.75, 7.35, 2.0, 39)
+        title_box = (3.0, 1.55, 7.35, 2.4, 50)
         subtitle_box = (3.02, 4.0, 7.2, 0.9, 18)
     elif composition == "heritage":
-        title_box = (0.72, 1.25, 7.0, 2.8, 39)
+        title_box = (0.72, 1.05, 7.0, 3.1, 50)
         subtitle_box = (0.76, 5.55, 4.2, 0.9, 16)
     elif composition == "full-bleed":
-        title_box = (0.52, 0.72, 9.8, 2.2, 46)
+        title_box = (0.52, 0.62, 9.8, 2.5, 56)
         subtitle_box = (9.25, 6.15, 3.3, 0.7, 15)
     if cover_image:
         image_frame = {
@@ -507,9 +507,9 @@ def _add_pptx(
             bar.fill.fore_color.rgb = accent_rgb
             bar.line.fill.background()
             continue
-        textbox(slide, spec["title"], 0.72, 0.45, 11.8, 0.7, 28, ink, True)
+        textbox(slide, spec["title"], 0.72, 0.38, 11.8, 0.9, 35, ink, True)
         if spec["takeaway"]:
-            textbox(slide, spec["takeaway"], 0.74, 1.22, 11.7, 0.62, 17, accent_rgb, True)
+            textbox(slide, spec["takeaway"], 0.74, 1.4, 11.7, 0.55, 17, accent_rgb, True)
         image = spec["image"]
         if layout == "statement":
             statement = spec["takeaway"] or (spec["bullets"][0] if spec["bullets"] else spec["title"])
@@ -580,7 +580,7 @@ def _add_pptx(
                     overlay.fill.fore_color.rgb = cover_rgb
                     overlay.fill.transparency = 30
                     overlay.line.fill.background()
-                    textbox(slide, spec["title"], 0.85, 0.75, 10.8, 1.2, 34, RGBColor(255, 255, 255), True)
+                    textbox(slide, spec["title"], 0.85, 0.75, 10.8, 1.2, 35, RGBColor(255, 255, 255), True)
                     textbox(slide, spec["takeaway"], 0.88, 5.4, 9.7, 0.9, 21, RGBColor(255, 255, 255), True)
                 else:
                     image_y = 1.65 if layout == "image-top" else 4.15
@@ -796,7 +796,7 @@ def _add_pdf(
             canvas.rect(72, 120, 120, 7, stroke=0, fill=1)
             canvas.showPage()
             continue
-        text(spec["title"], 52, 485, 24, ink, "Helvetica-Bold", 850)
+        text(spec["title"], 52, 478, 35, ink, "Helvetica-Bold", 850)
         if spec["takeaway"]:
             text(spec["takeaway"], 54, 425, 14, accent_color, "Helvetica-Bold", 840)
         image = spec["image"]
