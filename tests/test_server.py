@@ -149,6 +149,77 @@ def test_research_run_computes_new_artifacts_and_browser_activity(
     assert updated["browser_evidence_count"] == 2
 
 
+def test_research_run_lifecycle_follows_turn_and_artifact_creation(
+    tmp_path, monkeypatch
+):
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    artifacts: list[dict] = []
+    browser = {"history": [], "evidence": []}
+    monkeypatch.setattr(manager, "list_artifacts", lambda _session: list(artifacts))
+    monkeypatch.setattr(manager, "browser_state", lambda _session: dict(browser))
+    created = manager.create_research_run(
+        "research-session",
+        question="Lifecycle",
+        depth="standard",
+        plan=["Research", "Write"],
+    )["run"]
+
+    started = manager.start_research_run_from_text(
+        "research-session", f"Research Run: {created['run_id']}"
+    )
+    assert started["status"] == "researching"
+
+    manager.note_research_tool(
+        "research-session",
+        "write_file",
+        {"path": "reports/lifecycle.md"},
+    )
+    assert manager.research_runs.list("research-session")[0].status == "synthesizing"
+
+    artifacts.append({"path": "reports/lifecycle.md"})
+    browser["history"] = [{"url": "https://example.com"}]
+    completed = manager.finalize_research_turn(
+        "research-session", "completed"
+    )
+
+    assert completed["status"] == "completed"
+    assert completed["artifact_path"] == "reports/lifecycle.md"
+    assert completed["sources_found"] == 1
+
+
+def test_research_run_failure_can_be_retried(tmp_path, monkeypatch):
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    monkeypatch.setattr(manager, "list_artifacts", lambda _session: [])
+    monkeypatch.setattr(
+        manager, "browser_state", lambda _session: {"history": [], "evidence": []}
+    )
+    created = manager.create_research_run(
+        "research-session",
+        question="Retry",
+        depth="quick",
+        plan=["Research"],
+    )["run"]
+    manager.start_research_run_from_text(
+        "research-session", f"Research Run: {created['run_id']}"
+    )
+
+    failed = manager.finalize_research_turn("research-session", "error")
+    assert failed["status"] == "failed"
+    assert failed["error"]
+
+    resumed = manager.resume_research_run("research-session")
+    assert resumed["status"] == "researching"
+    assert resumed["error"] is None
+
+
 def test_browser_preview_interval_defaults_persists_and_is_bounded(tmp_path):
     client = _client(tmp_path, [])
 

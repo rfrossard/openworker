@@ -1464,6 +1464,111 @@ class SessionManager:
             return {"ok": False, "error": str(exc)}
         return {"ok": True, "run": updated.to_dict() if updated else None}
 
+    _RESEARCH_RUN_PATTERN = re.compile(r"\bResearch Run:\s*(research-[a-f0-9]+)\b")
+    _RESEARCH_WRITE_TOOLS = {
+        "write_file",
+        "apply_patch",
+        "apply_unified_diff",
+        "replace_in_file",
+    }
+
+    def start_research_run_from_text(
+        self, session_id: str, text: str
+    ) -> Optional[dict[str, Any]]:
+        match = self._RESEARCH_RUN_PATTERN.search(text or "")
+        if not match:
+            return None
+        run_id = match.group(1)
+        run = next(
+            (
+                item
+                for item in self.research_runs.list(session_id)
+                if item.run_id == run_id
+            ),
+            None,
+        )
+        if run is None:
+            return None
+        updated = self.research_runs.update(
+            run_id, status="researching", error=None
+        )
+        return updated.to_dict() if updated else None
+
+    def resume_research_run(self, session_id: str) -> Optional[dict[str, Any]]:
+        runs = self.research_runs.list(session_id)
+        run = next(
+            (
+                item
+                for item in runs
+                if item.status
+                in {"failed", "researching", "synthesizing"}
+            ),
+            None,
+        )
+        if run is None:
+            return None
+        updated = self.research_runs.update(
+            run.run_id, status="researching", error=None
+        )
+        return updated.to_dict() if updated else None
+
+    def note_research_tool(
+        self, session_id: str, tool_name: str, arguments: dict[str, Any]
+    ) -> None:
+        if tool_name not in self._RESEARCH_WRITE_TOOLS:
+            return
+        path = str(arguments.get("path") or arguments.get("file") or "").lower()
+        if not (
+            path.startswith("reports/")
+            or path.endswith((".md", ".markdown", ".pdf", ".docx", ".pptx"))
+        ):
+            return
+        run = next(
+            (
+                item
+                for item in self.research_runs.list(session_id)
+                if item.status == "researching"
+            ),
+            None,
+        )
+        if run is not None:
+            self.research_runs.update(run.run_id, status="synthesizing")
+
+    def finalize_research_turn(
+        self, session_id: str, terminal_status: str
+    ) -> Optional[dict[str, Any]]:
+        runs = self.list_research_runs(session_id)
+        run = next(
+            (
+                item
+                for item in runs
+                if item["status"] in {"researching", "synthesizing"}
+            ),
+            None,
+        )
+        if run is None:
+            return None
+        changes: dict[str, Any] = {
+            "sources_found": int(run.get("browser_navigation_count") or 0)
+        }
+        if terminal_status == "error":
+            changes.update(status="failed", error="The model turn failed.")
+        elif terminal_status == "interrupted":
+            changes.update(status="cancelled", error="Stopped by the user.")
+        elif run.get("artifact_paths"):
+            artifacts = list(run["artifact_paths"])
+            preferred = next(
+                (path for path in artifacts if path.startswith("reports/")),
+                artifacts[0],
+            )
+            changes.update(
+                status="completed",
+                artifact_path=preferred,
+                error=None,
+            )
+        updated = self.research_runs.update(run["run_id"], **changes)
+        return updated.to_dict() if updated else None
+
     MAX_BINARY_PREVIEW = 25 * 1024 * 1024  # base64-over-JSON gets heavy past this
 
     def _artifact_target(

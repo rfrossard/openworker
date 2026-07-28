@@ -1678,9 +1678,18 @@ def create_app(manager: SessionManager) -> FastAPI:
             manager.mark_running(
                 session_id
             )  # busy → self-wakes steer instead of colliding
+            terminal_status = "completed"
             try:
                 events = engine.retry() if retry else engine.run(content)
                 async for event in events:
+                    if event.type.value == "tool_proposed":
+                        manager.note_research_tool(
+                            session_id,
+                            str(event.data.get("name") or ""),
+                            dict(event.data.get("arguments") or {}),
+                        )
+                    elif event.type.value in {"error", "interrupted"}:
+                        terminal_status = event.type.value
                     # Broadcast to every socket viewing this session (this socket included — it's a
                     # registered client), so a second view of the same session stays in sync too.
                     await manager.broadcast_session(
@@ -1691,6 +1700,7 @@ def create_app(manager: SessionManager) -> FastAPI:
             finally:
                 manager.mark_idle(session_id)
                 manager.save(session_id, engine)
+                manager.finalize_research_turn(session_id, terminal_status)
                 await manager.broadcast_session(
                     session_id, {"type": "turn_done", "data": {}}
                 )
@@ -1732,6 +1742,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                     # Re-run after a provider error (engine guards on the error-notice
                     # tail, so a stray frame is a no-op that still ends with turn_done).
                     if not manager.is_running(session_id):
+                        manager.resume_research_run(session_id)
                         asyncio.create_task(run_turn(None, retry=True))
                 elif kind == "set_mode":
                     try:
@@ -1748,6 +1759,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                     # Session.userMessage), later ones may switch it (notice persisted).
                     await _apply_model(message.get("model"))
                     if text or attachments:
+                        manager.start_research_run_from_text(session_id, text)
                         content = build_user_content(text, attachments)
                         asyncio.create_task(run_turn(content))
         except WebSocketDisconnect:
