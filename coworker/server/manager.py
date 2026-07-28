@@ -1135,10 +1135,6 @@ class SessionManager:
     def browser_download_media(
         self, session_id: str, media_id: str
     ) -> dict[str, Any]:
-        record = self.session_store.load(session_id)
-        workspace = record.workspace if record else self.default_workspace
-        if not workspace:
-            return {"error": "Choose a workspace before downloading media."}
         selected = browser_media_source(session_id, media_id)
         if not selected.get("ok"):
             return selected
@@ -1146,7 +1142,7 @@ class SessionManager:
         source["page_url"] = selected.get("page_url", "")
         return download_media(
             source,
-            workspace,
+            self.download_directory(),
             cookies=selected.get("cookies", []),
         )
 
@@ -1173,17 +1169,15 @@ class SessionManager:
     def browser_download_streaming_media(
         self, session_id: str, selection_id: str
     ) -> dict[str, Any]:
-        record = self.session_store.load(session_id)
-        workspace = record.workspace if record else self.default_workspace
-        if not workspace:
-            return {"error": "Choose a workspace before downloading media."}
         current = browser_state(session_id)
         browser_set_streaming_media(
             session_id,
             media=list(current.get("streaming_media", [])),
             status="downloading",
         )
-        result = download_streaming_media(session_id, selection_id, workspace)
+        result = download_streaming_media(
+            session_id, selection_id, self.download_directory()
+        )
         browser_set_streaming_media(
             session_id,
             media=list(current.get("streaming_media", [])),
@@ -1791,6 +1785,7 @@ class SessionManager:
             "nav_layout": self._nav_layout(),
             "sessions_peek": self.sessions_peek(),
             "browser_preview_interval_ms": self.browser_preview_interval_ms(),
+            "download_directory": str(self.download_directory()),
             "scratch_base": self._prefs.get("scratch_base")
             or self.DEFAULT_SCRATCH_BASE,
             # Real on-disk secrets location, so the UI shows the OS-native path instead of a
@@ -1875,6 +1870,31 @@ class SessionManager:
             "ok": True,
             "browser_preview_interval_ms": self.browser_preview_interval_ms(),
         }
+
+    def download_directory(self) -> Path:
+        """Folder used for browser audio/video downloads; defaults to the OS user Downloads."""
+        configured = str(self._prefs.get("download_directory") or "").strip()
+        return (
+            Path(configured).expanduser()
+            if configured
+            else Path.home() / "Downloads"
+        ).resolve()
+
+    def set_download_directory(self, path: str) -> dict[str, Any]:
+        value = (path or "").strip()
+        if not value:
+            return {"ok": False, "error": "Choose a download folder."}
+        directory = Path(value).expanduser()
+        try:
+            directory = directory.resolve()
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return {"ok": False, "error": f"Could not use that folder: {exc}"}
+        if not directory.is_dir():
+            return {"ok": False, "error": "The selected download location is not a folder."}
+        self._prefs["download_directory"] = str(directory)
+        self._save_prefs()
+        return {"ok": True, "download_directory": str(directory)}
 
     # -- PDF attachments / token savings (owner ask, 2026-07-17) ----------------
     DEFAULT_PDF_MAX_PAGES = 20

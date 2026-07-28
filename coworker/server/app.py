@@ -1300,6 +1300,12 @@ def create_app(manager: SessionManager) -> FastAPI:
             (body or {}).get("browser_preview_interval_ms", 3000)
         )
 
+    @app.post("/v1/settings/download-directory")
+    def settings_set_download_directory(body: dict) -> dict[str, Any]:
+        return manager.set_download_directory(
+            str((body or {}).get("download_directory", ""))
+        )
+
     @app.post("/v1/settings/pdf")
     def settings_set_pdf(body: dict) -> dict[str, Any]:
         # Token savings (owner ask, 2026-07-17): fallback mode for models without native

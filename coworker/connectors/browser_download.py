@@ -63,12 +63,12 @@ def _unused_path(directory: Path, filename: str) -> Path:
 
 def download_media(
     source: dict[str, Any],
-    workspace: str | Path,
+    destination_directory: str | Path,
     *,
     cookies: Optional[list[dict[str, Any]]] = None,
     client: Optional[httpx.Client] = None,
 ) -> dict[str, Any]:
-    """Download one discovered direct media URL into a controlled workspace folder."""
+    """Download one discovered direct media URL into a controlled user-selected folder."""
 
     url = str(source.get("url") or "")
     try:
@@ -127,7 +127,7 @@ def download_media(
                 if length > MAX_MEDIA_BYTES:
                     return {"error": "The media file is larger than the 1 GB safety limit."}
 
-                destination = Path(workspace).expanduser().resolve() / "OpenWorker Downloads"
+                destination = Path(destination_directory).expanduser().resolve()
                 destination.mkdir(parents=True, exist_ok=True)
                 output = _unused_path(
                     destination,

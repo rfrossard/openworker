@@ -159,6 +159,35 @@ def test_scratch_base_setting_persists_and_drives_provisioning(tmp_path, monkeyp
     assert Path(scratch) == (base / "sess-xyz").resolve() and Path(scratch).is_dir()
 
 
+def test_download_directory_defaults_to_user_downloads_and_persists(
+    tmp_path, monkeypatch
+):
+    from fastapi.testclient import TestClient
+
+    from coworker.server.app import create_app
+    from coworker.server.manager import SessionManager
+
+    monkeypatch.setenv("COWORKER_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
+    data_dir = tmp_path / "data"
+    client = TestClient(create_app(SessionManager(data_dir=data_dir)))
+
+    assert client.get("/v1/settings").json()["download_directory"] == str(
+        (tmp_path / "home" / "Downloads").resolve()
+    )
+    selected = tmp_path / "Media downloads"
+    response = client.post(
+        "/v1/settings/download-directory",
+        json={"download_directory": str(selected)},
+    ).json()
+    assert response == {"ok": True, "download_directory": str(selected.resolve())}
+    assert selected.is_dir()
+    assert (
+        SessionManager(data_dir=data_dir).get_settings()["download_directory"]
+        == str(selected.resolve())
+    )
+
+
 def test_ollama_models_gated_on_liveness(tmp_path, monkeypatch):
     """`ollama:*` entries show only while a local Ollama answers — keyless must not mean
     always-present (a stray ollama:<junk> pref would otherwise render forever)."""

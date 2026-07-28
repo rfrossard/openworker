@@ -3,6 +3,7 @@ import {
   getSettings,
   setOnboarded,
   setBrowserPreviewInterval,
+  setDownloadDirectory,
   setPdfSettings,
   setScratchBase,
   setSessionsPeek,
@@ -720,6 +721,8 @@ function FilesCard() {
   const [settings, setSettings] = useState<ModelSettings | null>(null);
   const [scratchDraft, setScratchDraft] = useState("");
   const [scratchMsg, setScratchMsg] = useState<string | null>(null);
+  const [downloadDraft, setDownloadDraft] = useState("");
+  const [downloadMsg, setDownloadMsg] = useState<string | null>(null);
   const desktop = isTauri();
 
   const refresh = () =>
@@ -727,6 +730,7 @@ function FilesCard() {
       .then((s) => {
         setSettings(s);
         setScratchDraft((d) => d || s.scratch_base || "");
+        setDownloadDraft((d) => d || s.download_directory || "");
       })
       .catch(() => setSettings(null));
   useEffect(() => {
@@ -746,6 +750,21 @@ function FilesCard() {
   const browseScratch = async () => {
     const picked = await pickFolder();
     if (picked) setScratchDraft(picked);
+  };
+  const saveDownloads = async () => {
+    setDownloadMsg(null);
+    const res = await setDownloadDirectory(downloadDraft.trim());
+    if (res.ok && res.download_directory) {
+      setDownloadDraft(res.download_directory);
+      setDownloadMsg("Saved. New browser downloads will use this folder.");
+      refresh();
+    } else {
+      setDownloadMsg(res.error || "Could not use that folder.");
+    }
+  };
+  const browseDownloads = async () => {
+    const picked = await pickFolder();
+    if (picked) setDownloadDraft(picked);
   };
 
   if (!settings) return null;
@@ -778,6 +797,35 @@ function FilesCard() {
         folder; you can grant access to more folders inside any conversation.
       </div>
       {scratchMsg && <div className="text-[12.5px] text-muted mt-2.5">{scratchMsg}</div>}
+      <div className="border-t border-line mt-4 pt-4">
+        <div className={FIELD_LABEL}>Browser downloads</div>
+        <div className="flex items-center gap-2 mt-2.5">
+          <input
+            className={INPUT}
+            type="text"
+            placeholder="~/Downloads"
+            value={downloadDraft}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(e) => setDownloadDraft(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && saveDownloads()}
+            aria-label="Browser download folder"
+          />
+          {desktop && (
+            <button className={BTN_BORDERED} onClick={browseDownloads} title="Pick a download folder">
+              Browse
+            </button>
+          )}
+          <button className={BTN_ACCENT} onClick={saveDownloads} disabled={!downloadDraft.trim()}>
+            Save
+          </button>
+        </div>
+        <div className={FIELD_HELP}>
+          Audio and video downloaded from Secure Browser are saved here. The default is your
+          system Downloads folder.
+        </div>
+        {downloadMsg && <div className="text-[12.5px] text-muted mt-2.5">{downloadMsg}</div>}
+      </div>
     </div>
   );
 }

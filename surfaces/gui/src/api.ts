@@ -785,6 +785,7 @@ export interface ModelSettings {
   pdf_max_pages?: number; // default 20, 1–100
   pdf_max_mb?: number; // default 10, 1–10
   browser_preview_interval_ms?: number; // default 3000, bounded to 500–60000
+  download_directory: string; // browser audio/video downloads; defaults to the user's Downloads folder
 }
 
 export interface PdfSettings {
@@ -812,6 +813,17 @@ export async function setBrowserPreviewInterval(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ browser_preview_interval_ms: milliseconds }),
+  });
+  return res.json();
+}
+
+export async function setDownloadDirectory(
+  path: string,
+): Promise<{ ok: boolean; download_directory?: string; error?: string }> {
+  const res = await fetch(`${httpBase()}/v1/settings/download-directory`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ download_directory: path }),
   });
   return res.json();
 }

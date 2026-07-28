@@ -30,9 +30,9 @@ def test_downloads_discovered_media_to_workspace_without_overwriting(
     second = browser_download.download_media(source, tmp_path, client=client)
 
     assert first["ok"] is True
-    assert first["path"].endswith("OpenWorker Downloads/movie-1080p.mp4")
-    assert second["path"].endswith("OpenWorker Downloads/movie-1080p-2.mp4")
-    assert (tmp_path / "OpenWorker Downloads" / "movie-1080p.mp4").read_bytes() == b"video-bytes"
+    assert first["path"].endswith("movie-1080p.mp4")
+    assert second["path"].endswith("movie-1080p-2.mp4")
+    assert (tmp_path / "movie-1080p.mp4").read_bytes() == b"video-bytes"
 
 
 def test_rejects_non_media_response(tmp_path, monkeypatch):
@@ -55,7 +55,7 @@ def test_rejects_non_media_response(tmp_path, monkeypatch):
     )
 
     assert result["error"] == "The selected source did not return an audio or video file."
-    assert not (tmp_path / "OpenWorker Downloads").exists()
+    assert not list(tmp_path.iterdir())
 
 
 def test_validates_every_media_redirect(tmp_path, monkeypatch):

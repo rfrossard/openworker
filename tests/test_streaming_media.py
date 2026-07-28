@@ -130,7 +130,7 @@ def test_download_uses_server_owned_selection_and_controlled_output(
     )
 
     assert result["ok"] is True
-    assert result["path"].endswith("OpenWorker Downloads/Example_video-1080p.mp4")
+    assert result["path"].endswith("Example_video-1080p.mp4")
     assert Path(result["path"]).read_bytes() == b"downloaded"
 
 
@@ -151,8 +151,7 @@ def test_download_recognizes_an_existing_file_reported_by_downloader(
         ydl_factory=lambda options: FakeYDL(options, _video_info()),
     )
     selection = analyzed["formats"][1]
-    destination = tmp_path / "OpenWorker Downloads"
-    destination.mkdir()
+    destination = tmp_path
     existing = destination / "Example_video-360p.mp4"
     existing.write_bytes(b"already downloaded")
 

@@ -188,7 +188,7 @@ def _ffmpeg_path() -> str:
 def download_streaming_media(
     session_id: str,
     selection_id: str,
-    workspace: str | Path,
+    destination_directory: str | Path,
     *,
     ydl_factory: Callable[[dict[str, Any]], Any] = _youtube_dl_factory,
     ffmpeg_path: Optional[str] = None,
@@ -202,7 +202,7 @@ def download_streaming_media(
     except BrowserPolicyError as exc:
         return {"error": str(exc)}
 
-    destination = Path(workspace).expanduser().resolve() / "OpenWorker Downloads"
+    destination = Path(destination_directory).expanduser().resolve()
     destination.mkdir(parents=True, exist_ok=True)
     before = {path.resolve() for path in destination.iterdir()}
     reported_paths: set[Path] = set()
