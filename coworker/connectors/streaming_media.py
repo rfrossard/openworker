@@ -6,7 +6,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -26,6 +28,9 @@ _SELECTIONS: dict[str, dict[str, dict[str, Any]]] = {}
 _FORMAT_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _SUBTITLE_LANGUAGES = {"en", "pt", "es"}
 _OLLAMA_URL = "http://127.0.0.1:11434"
+_WHISPER_MODEL_URL = (
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+)
 
 
 class _QuietLogger:
@@ -41,6 +46,185 @@ class _QuietLogger:
 
 class _DownloadCancelled(RuntimeError):
     pass
+
+
+def _run_cancelable(
+    command: list[str],
+    *,
+    cancel_event: Optional[threading.Event] = None,
+    timeout: int = 300,
+) -> tuple[str, str]:
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    started = time.monotonic()
+    while process.poll() is None:
+        if cancel_event is not None and cancel_event.is_set():
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=3)
+            raise _DownloadCancelled("Download cancelled.")
+        if time.monotonic() - started > timeout:
+            process.kill()
+            process.wait(timeout=3)
+            raise RuntimeError("The local media process timed out.")
+        time.sleep(0.1)
+    stdout, stderr = process.communicate()
+    if process.returncode != 0:
+        raise RuntimeError(stderr.strip()[-800:] or "The local media process failed.")
+    return stdout, stderr
+
+
+def _whisper_cli_path() -> str:
+    configured = os.environ.get("OPENWORKER_WHISPER_CLI", "").strip()
+    candidates = [
+        configured,
+        shutil.which("whisper-cli") or "",
+        "/opt/homebrew/bin/whisper-cli",
+        "/usr/local/bin/whisper-cli",
+    ]
+    return next((path for path in candidates if path and Path(path).is_file()), "")
+
+
+def _whisper_model_path() -> Path:
+    configured = os.environ.get("OPENWORKER_WHISPER_MODEL", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "OpenWorker" / "whisper" / "ggml-base.bin"
+    return Path.home() / ".cache" / "OpenWorker" / "whisper" / "ggml-base.bin"
+
+
+def _ensure_whisper_model(
+    progress_callback: Optional[Callable[[dict[str, Any]], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
+) -> Path:
+    model = _whisper_model_path()
+    if model.is_file() and model.stat().st_size > 100_000_000:
+        return model
+    model.parent.mkdir(parents=True, exist_ok=True)
+    temporary = model.with_suffix(".download")
+    try:
+        with httpx.stream(
+            "GET", _WHISPER_MODEL_URL, follow_redirects=True, timeout=300
+        ) as response:
+            response.raise_for_status()
+            total = int(response.headers.get("content-length") or 0)
+            downloaded = 0
+            with temporary.open("wb") as handle:
+                for chunk in response.iter_bytes():
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise _DownloadCancelled("Download cancelled.")
+                    handle.write(chunk)
+                    downloaded += len(chunk)
+                    if progress_callback:
+                        progress_callback(
+                            {
+                                "stage": "transcribing",
+                                "label": "Downloading local Whisper model",
+                                "percent": (
+                                    min(85, 60 + int(downloaded * 25 / total))
+                                    if total
+                                    else 60
+                                ),
+                                "downloaded_bytes": downloaded,
+                                "total_bytes": total,
+                            }
+                        )
+        temporary.replace(model)
+        return model
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _transcribe_media_to_vtt(
+    media: Path,
+    ffmpeg_path: str,
+    *,
+    progress_callback: Optional[Callable[[dict[str, Any]], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
+) -> Path:
+    whisper_cli = _whisper_cli_path()
+    if not whisper_cli:
+        raise RuntimeError(
+            "Local transcription requires whisper.cpp. Install it with "
+            "`brew install whisper-cpp`."
+        )
+    model = _ensure_whisper_model(progress_callback, cancel_event)
+    temp_dir = Path(tempfile.mkdtemp(prefix="openworker-whisper-"))
+    wav = temp_dir / "audio.wav"
+    output_prefix = temp_dir / "captions"
+    try:
+        if progress_callback:
+            progress_callback(
+                {
+                    "stage": "transcribing",
+                    "label": "Extracting audio for local transcription",
+                    "percent": 60,
+                }
+            )
+        _run_cancelable(
+            [
+                ffmpeg_path,
+                "-y",
+                "-i",
+                str(media),
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-c:a",
+                "pcm_s16le",
+                str(wav),
+            ],
+            cancel_event=cancel_event,
+            timeout=300,
+        )
+        if progress_callback:
+            progress_callback(
+                {
+                    "stage": "transcribing",
+                    "label": "Transcribing audio locally with Whisper",
+                    "percent": 75,
+                    "translator": "Local Whisper · base multilingual",
+                }
+            )
+        _run_cancelable(
+            [
+                whisper_cli,
+                "-m",
+                str(model),
+                "-f",
+                str(wav),
+                "-l",
+                "auto",
+                "-ovtt",
+                "-of",
+                str(output_prefix),
+                "-np",
+            ],
+            cancel_event=cancel_event,
+            timeout=1800,
+        )
+        generated = output_prefix.with_suffix(".vtt")
+        if not generated.is_file():
+            raise RuntimeError("Whisper completed without producing captions.")
+        descriptor, raw_path = tempfile.mkstemp(
+            prefix="openworker-transcript-", suffix=".vtt"
+        )
+        os.close(descriptor)
+        result = Path(raw_path)
+        shutil.copyfile(generated, result)
+        return result
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def _youtube_dl_factory(options: dict[str, Any]):
@@ -701,6 +885,7 @@ def download_streaming_media(
     reported_paths: set[Path] = set()
     local_subtitle_path: Optional[Path] = None
     use_local_translation = False
+    transcribe_after_download = False
 
     def report(**changes: Any) -> None:
         if progress_callback is not None:
@@ -713,7 +898,7 @@ def download_streaming_media(
         if cancel_event is not None and cancel_event.is_set():
             raise _DownloadCancelled("Download cancelled.")
 
-    if subtitle_language in {"pt", "es"}:
+    if subtitle_language:
         english_record = dict(selection.get("subtitle_records") or {}).get("en")
         if english_record:
             try:
@@ -729,10 +914,10 @@ def download_streaming_media(
                     str(selection.get("user_agent") or ""),
                 )
                 ensure_active()
-                if subtitle_translator is None:
-                    translated_vtt = _translate_vtt_locally(
-                        original_vtt, subtitle_language
-                    )
+                if subtitle_language == "en":
+                    translated_vtt = original_vtt
+                elif subtitle_translator is None:
+                    translated_vtt = _translate_vtt_locally(original_vtt, subtitle_language)
                 else:
                     translated_vtt = _translate_vtt_locally(
                         original_vtt,
@@ -760,15 +945,17 @@ def download_streaming_media(
                     return {"cancelled": True, "error": "Download cancelled."}
                 message = str(exc)
                 if "429" in message:
-                    return {
-                        "error": (
-                            "YouTube temporarily rate-limited even the original caption. "
-                            "Wait a few minutes, analyze the page again, and retry; translated "
-                            "captions will then use the selected chat model, with local Ollama "
-                            "as fallback."
-                        )
-                    }
-                return {"error": f"Local subtitle translation failed: {message}"}
+                    transcribe_after_download = True
+                    report(
+                        stage="downloading",
+                        label=(
+                            "Captions are rate-limited; downloading media for "
+                            "local transcription"
+                        ),
+                        percent=8,
+                    )
+                else:
+                    return {"error": f"Local subtitle translation failed: {message}"}
 
     def remember_path(value: Any) -> None:
         if not isinstance(value, (str, Path)) or not value:
@@ -847,7 +1034,11 @@ def download_streaming_media(
             "User-Agent": user_agent,
             "Accept-Language": "en-US,en;q=0.9",
         }
-    if subtitle_language and not use_local_translation:
+    if (
+        subtitle_language
+        and not use_local_translation
+        and not transcribe_after_download
+    ):
         options.update(
             {
                 "writesubtitles": True,
@@ -924,6 +1115,52 @@ def download_streaming_media(
             local_subtitle_path.unlink(missing_ok=True)
         return {"error": "The downloader completed without producing a media file."}
     output = max(candidates, key=lambda path: path.stat().st_mtime)
+    if transcribe_after_download:
+        try:
+            ensure_active()
+            local_subtitle_path = _transcribe_media_to_vtt(
+                output,
+                ffmpeg_path or _ffmpeg_path(),
+                progress_callback=progress_callback,
+                cancel_event=cancel_event,
+            )
+            if subtitle_language in {"pt", "es"}:
+                original_vtt = local_subtitle_path.read_text(encoding="utf-8")
+                if subtitle_translator is None:
+                    translated_vtt = _translate_vtt_locally(
+                        original_vtt, subtitle_language
+                    )
+                else:
+                    translated_vtt = _translate_vtt_locally(
+                        original_vtt,
+                        subtitle_language,
+                        primary_translator=subtitle_translator,
+                        progress_callback=progress_callback,
+                        primary_label=str(
+                            getattr(
+                                subtitle_translator,
+                                "model_name",
+                                "selected chat model",
+                            )
+                        ),
+                        cancel_event=cancel_event,
+                    )
+                local_subtitle_path.write_text(translated_vtt, encoding="utf-8")
+            use_local_translation = True
+        except _DownloadCancelled:
+            if local_subtitle_path is not None:
+                local_subtitle_path.unlink(missing_ok=True)
+            return {"cancelled": True, "error": "Download cancelled."}
+        except Exception as exc:
+            if local_subtitle_path is not None:
+                local_subtitle_path.unlink(missing_ok=True)
+            return {
+                "error": (
+                    "The video was downloaded, but local subtitle transcription "
+                    f"failed: {exc}"
+                ),
+                "path": str(output),
+            }
     if use_local_translation and local_subtitle_path is not None:
         try:
             ensure_active()

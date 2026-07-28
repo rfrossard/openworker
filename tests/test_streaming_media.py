@@ -440,6 +440,78 @@ def test_selected_chat_model_is_preferred_for_subtitle_translation(
     assert called == [(["Hello"], "Brazilian Portuguese")]
 
 
+def test_caption_rate_limit_falls_back_to_local_whisper_transcription(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(streaming_media, "validate_public_url", lambda url: url)
+    info = _video_info()
+    info["automatic_captions"]["en"] = [
+        {
+            "ext": "vtt",
+            "url": "https://captions.example/timedtext?lang=en&fmt=vtt",
+        }
+    ]
+    analyzed = streaming_media.analyze_streaming_media(
+        "session-whisper-fallback",
+        "https://example.com/watch",
+        ydl_factory=lambda options: FakeYDL(options, info),
+    )
+
+    def rate_limited(*_args):
+        raise RuntimeError("HTTP Error 429: Too Many Requests")
+
+    monkeypatch.setattr(
+        streaming_media, "_download_original_caption", rate_limited
+    )
+    transcribed = []
+
+    def transcribe(media, _ffmpeg, **_kwargs):
+        transcribed.append(media)
+        subtitle = tmp_path / "local-whisper.vtt"
+        subtitle.write_text(
+            "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n",
+            encoding="utf-8",
+        )
+        return subtitle
+
+    monkeypatch.setattr(streaming_media, "_transcribe_media_to_vtt", transcribe)
+    embedded = {}
+
+    def embed(media, subtitle, language, _ffmpeg):
+        embedded.update(
+            {
+                "media": media,
+                "subtitle": subtitle.read_text(encoding="utf-8"),
+                "language": language,
+            }
+        )
+
+    monkeypatch.setattr(streaming_media, "_embed_local_subtitle", embed)
+    stages = []
+
+    def create_output(options):
+        assert "writesubtitles" not in options
+        (tmp_path / "Example_video-1080p-en.mp4").write_bytes(b"video")
+
+    result = streaming_media.download_streaming_media(
+        "session-whisper-fallback",
+        analyzed["formats"][0]["id"],
+        tmp_path,
+        subtitle_language="en",
+        ydl_factory=lambda options: FakeYDL(
+            options, info, on_download=create_output
+        ),
+        ffmpeg_path="/safe/ffmpeg",
+        progress_callback=lambda update: stages.append(update.get("stage")),
+    )
+
+    assert result["ok"] is True
+    assert transcribed
+    assert embedded["language"] == "en"
+    assert "Hello" in embedded["subtitle"]
+    assert "downloading" in stages
+
+
 def test_ollama_fallback_is_used_when_selected_model_fails(monkeypatch):
     class FakeClient:
         def get(self, *_args, **_kwargs):

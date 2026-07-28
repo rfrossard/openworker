@@ -685,7 +685,7 @@ export interface BrowserState {
   streaming_media_status: "idle" | "analyzing" | "ready" | "downloading" | "error";
   streaming_media_error: string;
   streaming_media_progress: {
-    stage?: "preparing" | "captions" | "translating" | "downloading" | "embedding" | "cancelling" | "cancelled" | "completed" | "error";
+    stage?: "preparing" | "captions" | "translating" | "downloading" | "transcribing" | "embedding" | "cancelling" | "cancelled" | "completed" | "error";
     label?: string;
     percent?: number;
     translator?: string;
