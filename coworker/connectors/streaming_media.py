@@ -205,12 +205,37 @@ def download_streaming_media(
     destination = Path(workspace).expanduser().resolve() / "OpenWorker Downloads"
     destination.mkdir(parents=True, exist_ok=True)
     before = {path.resolve() for path in destination.iterdir()}
+    reported_paths: set[Path] = set()
+
+    def remember_path(value: Any) -> None:
+        if not isinstance(value, (str, Path)) or not value:
+            return
+        candidate = Path(value).expanduser()
+        if not candidate.is_absolute():
+            candidate = destination / candidate
+        try:
+            resolved = candidate.resolve()
+            resolved.relative_to(destination)
+        except (OSError, ValueError):
+            return
+        reported_paths.add(resolved)
 
     def progress(data: dict[str, Any]) -> None:
+        remember_path(data.get("filename"))
+        info = data.get("info_dict")
+        if isinstance(info, dict):
+            remember_path(info.get("filepath"))
+            remember_path(info.get("_filename"))
         downloaded = int(data.get("downloaded_bytes") or 0)
         total = int(data.get("total_bytes") or data.get("total_bytes_estimate") or 0)
         if downloaded > MAX_MEDIA_BYTES or total > MAX_MEDIA_BYTES:
             raise RuntimeError("The media file exceeds the 1 GB safety limit.")
+
+    def postprocessor(data: dict[str, Any]) -> None:
+        info = data.get("info_dict")
+        if isinstance(info, dict):
+            remember_path(info.get("filepath"))
+            remember_path(info.get("_filename"))
 
     options = {
         "quiet": True,
@@ -228,13 +253,21 @@ def download_streaming_media(
         "merge_output_format": "mp4",
         "ffmpeg_location": ffmpeg_path or _ffmpeg_path(),
         "progress_hooks": [progress],
+        "postprocessor_hooks": [postprocessor],
         "extractor_retries": 2,
         "fragment_retries": 3,
         "socket_timeout": 30,
     }
     try:
         with ydl_factory(options) as ydl:
-            ydl.extract_info(source_url, download=True)
+            info = ydl.extract_info(source_url, download=True)
+            if isinstance(info, dict):
+                remember_path(info.get("filepath"))
+                remember_path(info.get("_filename"))
+                for item in info.get("requested_downloads") or []:
+                    if isinstance(item, dict):
+                        remember_path(item.get("filepath"))
+                        remember_path(item.get("_filename"))
     except Exception as exc:
         for path in destination.iterdir():
             if path.resolve() not in before and path.suffix in {".part", ".ytdl"}:
@@ -248,9 +281,15 @@ def download_streaming_media(
         and path.is_file()
         and path.suffix not in {".part", ".ytdl"}
     ]
-    if not created:
+    reported = [
+        path
+        for path in reported_paths
+        if path.is_file() and path.suffix not in {".part", ".ytdl"}
+    ]
+    candidates = created or reported
+    if not candidates:
         return {"error": "The downloader completed without producing a media file."}
-    output = max(created, key=lambda path: path.stat().st_mtime)
+    output = max(candidates, key=lambda path: path.stat().st_mtime)
     size = output.stat().st_size
     if size > MAX_MEDIA_BYTES:
         output.unlink(missing_ok=True)

@@ -139,3 +139,41 @@ def test_rejects_unknown_or_stale_selection(tmp_path):
         "unknown-session", "user-controlled-format", tmp_path
     )
     assert result["error"] == "Analyze the current page again before downloading."
+
+
+def test_download_recognizes_an_existing_file_reported_by_downloader(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(streaming_media, "validate_public_url", lambda url: url)
+    analyzed = streaming_media.analyze_streaming_media(
+        "session-existing",
+        "https://example.com/watch",
+        ydl_factory=lambda options: FakeYDL(options, _video_info()),
+    )
+    selection = analyzed["formats"][1]
+    destination = tmp_path / "OpenWorker Downloads"
+    destination.mkdir()
+    existing = destination / "Example_video-360p.mp4"
+    existing.write_bytes(b"already downloaded")
+
+    def report_existing(options):
+        options["progress_hooks"][0](
+            {
+                "status": "finished",
+                "filename": str(existing),
+                "downloaded_bytes": existing.stat().st_size,
+            }
+        )
+
+    result = streaming_media.download_streaming_media(
+        "session-existing",
+        selection["id"],
+        tmp_path,
+        ydl_factory=lambda options: FakeYDL(
+            options, _video_info(), on_download=report_existing
+        ),
+        ffmpeg_path="/safe/ffmpeg",
+    )
+
+    assert result["ok"] is True
+    assert result["path"] == str(existing)
