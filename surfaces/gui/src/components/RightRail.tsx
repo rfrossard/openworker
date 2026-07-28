@@ -405,6 +405,48 @@ function BrowserOperator({
             {!state.open && <div className="rail-muted">Last browser preview</div>}
           </>
         )}
+        {(state?.open || !!state?.media?.length) && (
+          <div className="browser-media">
+            <div className="browser-subhead">Page media</div>
+            {!!state?.media?.length ? (
+              <>
+                <div className="rail-muted">
+                  Choose an available audio or video source and resolution.
+                </div>
+                <div className="browser-media-actions">
+                  <select
+                    value={selectedMediaId || state.media[0].id}
+                    onChange={(event) => {
+                      setSelectedMediaId(event.target.value);
+                      setDownloadMessage("");
+                    }}
+                    aria-label="Media format and resolution"
+                  >
+                    {state.media.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.kind === "video" ? "Video" : "Audio"} · {item.resolution}
+                        {item.mime_type ? ` · ${item.mime_type.replace(/^(video|audio)\//, "")}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button className="btn secondary" onClick={downloadMedia} disabled={busy}>
+                    Download
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="rail-muted">
+                No direct downloadable media was detected. The page may be using a
+                protected or streaming source.
+              </div>
+            )}
+            {downloadMessage && (
+              <div className={downloadMessage.startsWith("Saved") ? "rail-muted" : "browser-error"}>
+                {downloadMessage}
+              </div>
+            )}
+          </div>
+        )}
         {state?.last_error && <div className="browser-error">{state.last_error}</div>}
         <div className="rail-muted">
           This agent can navigate public pages in an isolated browser. Page content is
@@ -462,39 +504,6 @@ function BrowserOperator({
             </>
           )}
         </div>
-        {!!state?.media?.length && (
-          <div className="browser-media">
-            <div className="browser-subhead">Page media</div>
-            <div className="rail-muted">
-              Download a direct audio or video source made available by this page.
-            </div>
-            <div className="browser-media-actions">
-              <select
-                value={selectedMediaId || state.media[0].id}
-                onChange={(event) => {
-                  setSelectedMediaId(event.target.value);
-                  setDownloadMessage("");
-                }}
-                aria-label="Media format and resolution"
-              >
-                {state.media.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.kind === "video" ? "Video" : "Audio"} · {item.resolution}
-                    {item.mime_type ? ` · ${item.mime_type.replace(/^(video|audio)\//, "")}` : ""}
-                  </option>
-                ))}
-              </select>
-              <button className="btn secondary" onClick={downloadMedia} disabled={busy}>
-                Download
-              </button>
-            </div>
-            {downloadMessage && (
-              <div className={downloadMessage.startsWith("Saved") ? "rail-muted" : "browser-error"}>
-                {downloadMessage}
-              </div>
-            )}
-          </div>
-        )}
         {!!state?.history?.length && (
           <details className="browser-history">
             <summary>Navigation evidence ({state.history.length})</summary>
