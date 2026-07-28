@@ -34,6 +34,11 @@ dependencies = [
     # named schedule timezone (UTC, Asia/Kolkata, …) silently falls back to local time.
     "tzdata; sys_platform == 'win32'",
     "playwright>=1.44",
+    # Browser media analysis/download. Pinned because site extractors and security behavior
+    # change frequently; upgrades must pass the browser-download regression suite.
+    "yt-dlp==2026.6.9",
+    # Portable FFmpeg binary used to merge separate video/audio streams in desktop bundles.
+    "imageio-ffmpeg>=0.6,<0.7",
 ]
 
 [project.optional-dependencies]

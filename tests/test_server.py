@@ -197,6 +197,18 @@ def test_browser_rest_routes_actions_to_the_requested_session(tmp_path, monkeypa
         lambda session_id, media_id: calls.append(("download", session_id))
         or {"ok": True, "media_id": media_id},
     )
+    monkeypatch.setattr(
+        manager,
+        "browser_analyze_streaming_media",
+        lambda session_id: calls.append(("analyze-stream", session_id))
+        or {"ok": True, "formats": []},
+    )
+    monkeypatch.setattr(
+        manager,
+        "browser_download_streaming_media",
+        lambda session_id, selection_id: calls.append(("download-stream", session_id))
+        or {"ok": True, "selection_id": selection_id},
+    )
     client = TestClient(create_app(manager))
 
     assert client.get(
@@ -224,12 +236,25 @@ def test_browser_rest_routes_actions_to_the_requested_session(tmp_path, monkeypa
         json={"media_id": "video-0-0"},
     ).json()
     assert downloaded == {"ok": True, "media_id": "video-0-0"}
+    analyzed = client.post(
+        "/v1/browser/media/analyze-stream",
+        params={"session_id": "research-d"},
+    ).json()
+    assert analyzed == {"ok": True, "formats": []}
+    streamed = client.post(
+        "/v1/browser/media/download-stream",
+        params={"session_id": "research-d"},
+        json={"selection_id": "format-1080p"},
+    ).json()
+    assert streamed == {"ok": True, "selection_id": "format-1080p"}
     assert calls == [
         ("state", "chat-a"),
         ("screenshot", "code-b"),
         ("close", "ops-c"),
         ("policy", "research-d"),
         ("download", "research-d"),
+        ("analyze-stream", "research-d"),
+        ("download-stream", "research-d"),
     ]
 
 

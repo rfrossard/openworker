@@ -1196,6 +1196,21 @@ def create_app(manager: SessionManager) -> FastAPI:
             return {"error": "media_id is required"}
         return manager.browser_download_media(session_id, media_id)
 
+    @app.post("/v1/browser/media/analyze-stream")
+    def browser_media_analyze_stream_post(
+        session_id: str = "",
+    ) -> dict[str, Any]:
+        return manager.browser_analyze_streaming_media(session_id)
+
+    @app.post("/v1/browser/media/download-stream")
+    def browser_media_download_stream_post(
+        body: dict, session_id: str = ""
+    ) -> dict[str, Any]:
+        selection_id = str((body or {}).get("selection_id", "")).strip()
+        if not selection_id:
+            return {"error": "selection_id is required"}
+        return manager.browser_download_streaming_media(session_id, selection_id)
+
     # -- web search -------------------------------------------------------------
     @app.get("/v1/web-search")
     def web_search_get() -> dict[str, Any]:

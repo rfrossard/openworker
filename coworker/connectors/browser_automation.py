@@ -151,6 +151,9 @@ class _BrowserController:
             "history": [],
             "evidence": [],
             "media": [],
+            "streaming_media": [],
+            "streaming_media_status": "idle",
+            "streaming_media_error": "",
         }
 
     def _touch(self, **changes: Any) -> None:
@@ -274,6 +277,36 @@ class _BrowserController:
 
         return self._submit(run)
 
+    def media_context(self) -> dict[str, Any]:
+        def run() -> dict[str, Any]:
+            with self._lock:
+                if not self._state.get("url"):
+                    return {"error": "Open a page before analyzing streaming media."}
+                return {
+                    "ok": True,
+                    "url": self._state["url"],
+                    "cookies": (
+                        self._context.cookies() if self._context is not None else []
+                    ),
+                }
+
+        return self._submit(run)
+
+    def set_streaming_media(
+        self,
+        *,
+        media: Optional[list[dict[str, Any]]] = None,
+        status: str,
+        error: str = "",
+    ) -> dict[str, Any]:
+        with self._lock:
+            self._touch(
+                streaming_media=list(media or []),
+                streaming_media_status=status,
+                streaming_media_error=error,
+            )
+            return dict(self._state)
+
     def _setup_error(self, exc: Exception) -> dict[str, str]:
         return {
             "error": (
@@ -395,6 +428,7 @@ class _BrowserController:
                 page, err = self.page()
                 if err:
                     return err
+                previous_url = str(self._state.get("url") or "")
                 self._touch(last_action=action, last_result="running", last_error="")
                 try:
                     out = fn(page)
@@ -408,6 +442,12 @@ class _BrowserController:
                     )
                 else:
                     self._refresh_page_state()
+                    if previous_url and self._page.url != previous_url:
+                        self._touch(
+                            streaming_media=[],
+                            streaming_media_status="idle",
+                            streaming_media_error="",
+                        )
                     self._capture_preview()
                     self._record_evidence(action)
                     self._touch(last_action=action, last_result="ok", last_error="")
@@ -458,6 +498,24 @@ def browser_set_policy(
 
 def browser_media_source(session_id: str, media_id: str) -> dict[str, Any]:
     return _browser_for(session_id).media_source(media_id)
+
+
+def browser_media_context(session_id: str) -> dict[str, Any]:
+    return _browser_for(session_id).media_context()
+
+
+def browser_set_streaming_media(
+    session_id: str,
+    *,
+    media: Optional[list[dict[str, Any]]] = None,
+    status: str,
+    error: str = "",
+) -> dict[str, Any]:
+    return _browser_for(session_id).set_streaming_media(
+        media=media,
+        status=status,
+        error=error,
+    )
 
 
 def _cap(value: int, default: int = 20000, upper: int = 100000) -> int:

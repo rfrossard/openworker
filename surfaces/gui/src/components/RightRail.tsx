@@ -2,8 +2,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 // Emits the asset URL only; the worker itself loads lazily with the pdfjs chunk.
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import {
+  analyzeBrowserStreamingMedia,
   closeBrowser,
   downloadBrowserMedia,
+  downloadBrowserStreamingMedia,
   getArtifacts,
   getBrowserState,
   getSettings,
@@ -348,13 +350,43 @@ function BrowserOperator({
     await updatePolicy(false, [...(state?.allowed_domains || []), domain]);
     setDomainInput("");
   };
+  const directMedia = state?.media || [];
+  const streamingMedia = state?.streaming_media || [];
+  const mediaOptions = directMedia.length
+    ? directMedia.map((item) => ({
+        id: item.id,
+        source: "direct" as const,
+        label: `${item.kind === "video" ? "Video" : "Audio"} · ${item.resolution}${
+          item.mime_type ? ` · ${item.mime_type.replace(/^(video|audio)\//, "")}` : ""
+        }`,
+      }))
+    : streamingMedia.map((item) => ({
+        id: item.id,
+        source: "stream" as const,
+        label: item.label + (item.filesize ? ` · ~${Math.ceil(item.filesize / 1024 / 1024)} MB` : ""),
+      }));
+  const analyzeStreamingMedia = async () => {
+    setBusy(true);
+    setDownloadMessage("Analyzing available formats…");
+    try {
+      const result = await analyzeBrowserStreamingMedia(sessionId);
+      setDownloadMessage(result.ok ? "" : result.error || "No streaming formats were found.");
+      setSelectedMediaId("");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
   const downloadMedia = async () => {
-    const mediaId = selectedMediaId || state?.media?.[0]?.id;
-    if (!mediaId) return;
+    const option = mediaOptions.find((item) => item.id === selectedMediaId) || mediaOptions[0];
+    if (!option) return;
     setBusy(true);
     setDownloadMessage("Downloading…");
     try {
-      const result = await downloadBrowserMedia(sessionId, mediaId);
+      const result =
+        option.source === "direct"
+          ? await downloadBrowserMedia(sessionId, option.id)
+          : await downloadBrowserStreamingMedia(sessionId, option.id);
       setDownloadMessage(
         result.ok
           ? `Saved to ${result.path}`
@@ -408,24 +440,24 @@ function BrowserOperator({
         {(state?.open || !!state?.media?.length) && (
           <div className="browser-media">
             <div className="browser-subhead">Page media</div>
-            {!!state?.media?.length ? (
+            {!!mediaOptions.length ? (
               <>
                 <div className="rail-muted">
                   Choose an available audio or video source and resolution.
+                  Download only media you have permission to save.
                 </div>
                 <div className="browser-media-actions">
                   <select
-                    value={selectedMediaId || state.media[0].id}
+                    value={selectedMediaId || mediaOptions[0].id}
                     onChange={(event) => {
                       setSelectedMediaId(event.target.value);
                       setDownloadMessage("");
                     }}
                     aria-label="Media format and resolution"
                   >
-                    {state.media.map((item) => (
+                    {mediaOptions.map((item) => (
                       <option key={item.id} value={item.id}>
-                        {item.kind === "video" ? "Video" : "Audio"} · {item.resolution}
-                        {item.mime_type ? ` · ${item.mime_type.replace(/^(video|audio)\//, "")}` : ""}
+                        {item.label}
                       </option>
                     ))}
                   </select>
@@ -435,13 +467,28 @@ function BrowserOperator({
                 </div>
               </>
             ) : (
-              <div className="rail-muted">
-                No direct downloadable media was detected. The page may be using a
-                protected or streaming source.
-              </div>
+              <>
+                <div className="rail-muted">
+                  No direct media file was detected. Analyze the page for YouTube,
+                  HLS, DASH, and other supported streaming formats.
+                </div>
+                <button
+                  className="btn secondary"
+                  onClick={analyzeStreamingMedia}
+                  disabled={busy}
+                >
+                  Analyze streaming formats
+                </button>
+              </>
             )}
             {downloadMessage && (
-              <div className={downloadMessage.startsWith("Saved") ? "rail-muted" : "browser-error"}>
+              <div
+                className={
+                  /^(Saved|Analyzing|Downloading)/.test(downloadMessage)
+                    ? "rail-muted"
+                    : "browser-error"
+                }
+              >
                 {downloadMessage}
               </div>
             )}

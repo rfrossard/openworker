@@ -672,6 +672,18 @@ export interface BrowserState {
     width: number;
     height: number;
   }>;
+  streaming_media: Array<{
+    id: string;
+    kind: "video" | "audio";
+    label: string;
+    resolution: string;
+    ext: string;
+    filesize: number;
+    fps: number;
+    audio_included: boolean;
+  }>;
+  streaming_media_status: "idle" | "analyzing" | "ready" | "downloading" | "error";
+  streaming_media_error: string;
 }
 
 export async function getBrowserState(sessionId: string): Promise<BrowserState> {
@@ -714,6 +726,29 @@ export async function downloadBrowserMedia(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ media_id: mediaId }),
+  });
+  return res.json();
+}
+
+export async function analyzeBrowserStreamingMedia(
+  sessionId: string,
+): Promise<{ ok?: boolean; error?: string; formats?: BrowserState["streaming_media"] }> {
+  const q = new URLSearchParams({ session_id: sessionId });
+  const res = await fetch(`${httpBase()}/v1/browser/media/analyze-stream?${q}`, {
+    method: "POST",
+  });
+  return res.json();
+}
+
+export async function downloadBrowserStreamingMedia(
+  sessionId: string,
+  selectionId: string,
+): Promise<{ ok?: boolean; error?: string; path?: string; bytes?: number; resolution?: string }> {
+  const q = new URLSearchParams({ session_id: sessionId });
+  const res = await fetch(`${httpBase()}/v1/browser/media/download-stream?${q}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ selection_id: selectionId }),
   });
   return res.json();
 }

@@ -62,6 +62,8 @@ for pkg in (
     "pypdf",
     "pypdfium2",
     "playwright",
+    "yt_dlp",
+    "imageio_ffmpeg",
 ):
     d, b, h = collect_all(pkg)
     datas += d

@@ -53,12 +53,18 @@ from ..connectors import (
 )
 from ..connectors.browser_automation import (
     browser_close_session,
+    browser_media_context,
     browser_media_source,
+    browser_set_streaming_media,
     browser_set_policy,
     browser_state,
     browser_take_screenshot,
 )
 from ..connectors.browser_download import download_media
+from ..connectors.streaming_media import (
+    analyze_streaming_media,
+    download_streaming_media,
+)
 from ..connectors.parked import ParkedStore
 from ..mcp import (
     MCPManager,
@@ -1143,6 +1149,48 @@ class SessionManager:
             workspace,
             cookies=selected.get("cookies", []),
         )
+
+    def browser_analyze_streaming_media(self, session_id: str) -> dict[str, Any]:
+        context = browser_media_context(session_id)
+        if not context.get("ok"):
+            return context
+        browser_set_streaming_media(session_id, status="analyzing")
+        result = analyze_streaming_media(session_id, str(context["url"]))
+        if not result.get("ok"):
+            browser_set_streaming_media(
+                session_id,
+                status="error",
+                error=str(result.get("error") or "Streaming analysis failed."),
+            )
+            return result
+        browser_set_streaming_media(
+            session_id,
+            media=list(result["formats"]),
+            status="ready",
+        )
+        return result
+
+    def browser_download_streaming_media(
+        self, session_id: str, selection_id: str
+    ) -> dict[str, Any]:
+        record = self.session_store.load(session_id)
+        workspace = record.workspace if record else self.default_workspace
+        if not workspace:
+            return {"error": "Choose a workspace before downloading media."}
+        current = browser_state(session_id)
+        browser_set_streaming_media(
+            session_id,
+            media=list(current.get("streaming_media", [])),
+            status="downloading",
+        )
+        result = download_streaming_media(session_id, selection_id, workspace)
+        browser_set_streaming_media(
+            session_id,
+            media=list(current.get("streaming_media", [])),
+            status="ready" if result.get("ok") else "error",
+            error=str(result.get("error") or ""),
+        )
+        return result
 
     def list_artifacts(self, session_id: str) -> list[dict[str, Any]]:
         record = self.session_store.load(session_id)
