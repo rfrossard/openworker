@@ -22,6 +22,12 @@ class FakeYDL:
             self.on_download(self.options)
         return self.info
 
+    def process_ie_result(self, info, download=False):
+        self.info = info
+        if download and self.on_download:
+            self.on_download(self.options)
+        return info
+
 
 def _video_info():
     return {
@@ -197,6 +203,51 @@ def test_rejects_unsupported_subtitle_language(tmp_path, monkeypatch):
     assert result["error"] == (
         "Subtitle language must be English, Portuguese, or Spanish."
     )
+
+
+def test_missing_portuguese_track_uses_youtube_auto_translation(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(streaming_media, "validate_public_url", lambda url: url)
+    info = _video_info()
+    info["automatic_captions"] = {
+        "en": [
+            {
+                "ext": "vtt",
+                "url": "https://captions.example/timedtext?lang=en&fmt=vtt",
+            }
+        ]
+    }
+    analyzed = streaming_media.analyze_streaming_media(
+        "session-translated-subs",
+        "https://example.com/watch",
+        ydl_factory=lambda options: FakeYDL(options, info),
+    )
+    captured_info = {}
+
+    class TranslatingFakeYDL(FakeYDL):
+        def process_ie_result(self, processed, download=False):
+            captured_info.update(processed)
+            return super().process_ie_result(processed, download=download)
+
+    def create_output(_options):
+        (tmp_path / "Example_video-1080p.mp4").write_bytes(b"translated")
+
+    result = streaming_media.download_streaming_media(
+        "session-translated-subs",
+        analyzed["formats"][0]["id"],
+        tmp_path,
+        subtitle_language="pt",
+        ydl_factory=lambda options: TranslatingFakeYDL(
+            options, info, on_download=create_output
+        ),
+        ffmpeg_path="/safe/ffmpeg",
+    )
+
+    assert result["ok"] is True
+    subtitle = captured_info["subtitles"]["pt"][0]
+    assert subtitle["ext"] == "vtt"
+    assert "tlang=pt" in subtitle["url"]
 
 
 def test_download_recognizes_an_existing_file_reported_by_downloader(

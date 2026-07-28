@@ -7,6 +7,7 @@ import re
 import threading
 from pathlib import Path
 from typing import Any, Callable, Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .browser_download import MAX_MEDIA_BYTES, MEDIA_EXTENSIONS
 from .browser_policy import BrowserPolicyError, validate_public_url
@@ -82,6 +83,57 @@ def _subtitle_choices(info: dict[str, Any]) -> dict[str, str]:
     return choices
 
 
+def _translated_subtitles(
+    info: dict[str, Any], choices: dict[str, str]
+) -> dict[str, dict[str, Any]]:
+    """Build yt-dlp caption records for YouTube's supported auto-translation fallback."""
+    automatic = info.get("automatic_captions")
+    if not isinstance(automatic, dict):
+        return {}
+    source_language = choices.get("en")
+    source_formats = automatic.get(source_language) if source_language else None
+    if not isinstance(source_formats, list):
+        return {}
+    source = next(
+        (
+            item
+            for item in source_formats
+            if isinstance(item, dict)
+            and item.get("url")
+            and str(item.get("ext") or "") == "vtt"
+        ),
+        None,
+    )
+    if not source:
+        return {}
+    translated: dict[str, dict[str, Any]] = {}
+    for language in ("pt", "es"):
+        if language in choices:
+            continue
+        parts = urlsplit(str(source["url"]))
+        query = [
+            (key, value)
+            for key, value in parse_qsl(parts.query, keep_blank_values=True)
+            if key != "tlang"
+        ]
+        query.append(("tlang", language))
+        translated[language] = {
+            **source,
+            "url": urlunsplit(
+                (
+                    parts.scheme,
+                    parts.netloc,
+                    parts.path,
+                    urlencode(query),
+                    parts.fragment,
+                )
+            ),
+            "ext": "vtt",
+            "name": f"{language.upper()} (auto-translated)",
+        }
+    return translated
+
+
 def _normalized_formats(
     session_id: str, source_url: str, info: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -89,6 +141,7 @@ def _normalized_formats(
     output: list[dict[str, Any]] = []
     seen: set[tuple[Any, ...]] = set()
     subtitle_choices = _subtitle_choices(info)
+    translated_subtitles = _translated_subtitles(info, subtitle_choices)
     formats = [
         item
         for item in info.get("formats", [])
@@ -143,6 +196,7 @@ def _normalized_formats(
                 else "Audio"
             ),
             "subtitles": subtitle_choices,
+            "translated_subtitles": translated_subtitles,
         }
         output.append(
             {
@@ -238,13 +292,26 @@ def download_streaming_media(
         if subtitle_language
         else ""
     )
-    if subtitle_language and not subtitle_track:
+    translated_subtitle = (
+        dict(selection.get("translated_subtitles") or {}).get(subtitle_language)
+        if subtitle_language
+        else None
+    )
+    if subtitle_language and not subtitle_track and not translated_subtitle:
         return {
             "error": (
                 "The selected subtitle language is not available for this video, "
                 "including automatic captions."
             )
         }
+    if translated_subtitle:
+        try:
+            translated_subtitle["url"] = validate_public_url(
+                str(translated_subtitle.get("url") or "")
+            )
+        except BrowserPolicyError as exc:
+            return {"error": str(exc)}
+        subtitle_track = subtitle_language
     try:
         source_url = validate_public_url(selection["url"])
     except BrowserPolicyError as exc:
@@ -293,7 +360,13 @@ def download_streaming_media(
         "logger": _QuietLogger(),
         "format": selection["format"],
         "paths": {"home": str(destination), "temp": str(destination)},
-        "outtmpl": {"default": "%(title).120B-%(height)sp.%(ext)s"},
+        "outtmpl": {
+            "default": (
+                f"%(title).120B-%(height)sp-{subtitle_language}.%(ext)s"
+                if subtitle_language
+                else "%(title).120B-%(height)sp.%(ext)s"
+            )
+        },
         "restrictfilenames": True,
         "windowsfilenames": True,
         "overwrites": False,
@@ -324,7 +397,16 @@ def download_streaming_media(
         )
     try:
         with ydl_factory(options) as ydl:
-            info = ydl.extract_info(source_url, download=True)
+            if translated_subtitle:
+                info = ydl.extract_info(source_url, download=False)
+                if not isinstance(info, dict):
+                    return {"error": "The stream analyzer returned no media information."}
+                subtitles = dict(info.get("subtitles") or {})
+                subtitles[subtitle_language] = [translated_subtitle]
+                info["subtitles"] = subtitles
+                info = ydl.process_ie_result(info, download=True)
+            else:
+                info = ydl.extract_info(source_url, download=True)
             if isinstance(info, dict):
                 remember_path(info.get("filepath"))
                 remember_path(info.get("_filename"))
