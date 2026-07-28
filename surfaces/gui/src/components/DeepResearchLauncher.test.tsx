@@ -56,4 +56,59 @@ describe("Deep Research launcher", () => {
     expect(onCreate.mock.calls[0][0]).toContain("research-test123");
     fetchMock.mockRestore();
   });
+
+  it("reopens and edits a planned research project", async () => {
+    const run = {
+      run_id: "research-existing",
+      session_id: "session-a",
+      question: "Original question",
+      depth: "quick" as const,
+      plan: ["Original step"],
+      status: "planned" as const,
+      source_limit: 5,
+      agent_limit: 1,
+      sources_found: 0,
+      artifact_paths_at_start: [],
+      browser_history_count_at_start: 0,
+      browser_evidence_count_at_start: 0,
+      artifact_paths: [],
+      artifact_count: 0,
+      browser_navigation_count: 0,
+      browser_evidence_count: 0,
+      created_at: "2026-07-27T00:00:00Z",
+      updated_at: "2026-07-27T00:00:00Z",
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      json: async () => ({
+        ok: true,
+        run: { ...run, question: "Updated question", plan: ["Updated step"] },
+      }),
+    } as Response);
+    const onCreate = vi.fn();
+    render(
+      <DeepResearchLauncher
+        sessionId="session-a"
+        editingRun={run}
+        onCreate={onCreate}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Edit Research Project" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "Updated question" },
+    });
+    fireEvent.change(screen.getByLabelText("Research plan"), {
+      target: { value: "Updated step" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save and review" }));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/research-runs/research-existing"),
+      expect.objectContaining({ method: "PATCH" }),
+    );
+    expect(onCreate.mock.calls[0][0]).toContain("Updated question");
+    expect(onCreate.mock.calls[0][0]).toContain("Updated step");
+    fetchMock.mockRestore();
+  });
 });

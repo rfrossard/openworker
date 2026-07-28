@@ -1,3 +1,5 @@
+import json
+
 from coworker.research_runs import ResearchRunStore
 
 
@@ -65,3 +67,52 @@ def test_research_run_persists_telemetry_baselines(tmp_path):
     assert restored.artifact_paths_at_start == ["existing.md"]
     assert restored.browser_history_count_at_start == 2
     assert restored.browser_evidence_count_at_start == 3
+
+
+def test_planned_research_project_can_be_edited_and_reopened(tmp_path):
+    path = tmp_path / "research-runs.json"
+    store = ResearchRunStore(path)
+    created = store.create(
+        session_id="session-a",
+        question="Initial question",
+        depth="quick",
+        plan=["Initial step"],
+    )
+
+    updated = store.update(
+        created.run_id,
+        question="Updated question",
+        depth="deep",
+        plan=["Find primary sources", "", "Compare evidence"],
+    )
+    restored = ResearchRunStore(path).list("session-a")[0]
+
+    assert updated is not None
+    assert restored.question == "Updated question"
+    assert restored.depth == "deep"
+    assert restored.source_limit == 20
+    assert restored.plan == ["Find primary sources", "Compare evidence"]
+
+
+def test_unknown_research_fields_survive_round_trip(tmp_path):
+    path = tmp_path / "research-runs.json"
+    path.write_text(
+        """{
+  "version": 1,
+  "runs": [{
+    "run_id": "research-existing",
+    "session_id": "session-a",
+    "question": "Existing",
+    "depth": "quick",
+    "plan": ["Research"],
+    "future_field": {"keep": true}
+  }]
+}""",
+        encoding="utf-8",
+    )
+
+    store = ResearchRunStore(path)
+    store.update("research-existing", question="Edited")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    assert payload["runs"][0]["future_field"] == {"keep": True}

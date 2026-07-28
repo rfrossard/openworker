@@ -268,6 +268,22 @@ export async function createResearchRun(
   return res.json();
 }
 
+export async function updateResearchRun(
+  sessionId: string,
+  runId: string,
+  input: { question: string; depth: "quick" | "standard" | "deep"; plan: string[] },
+): Promise<{ ok: boolean; run?: ResearchRun; error?: string }> {
+  const res = await fetch(
+    `${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}/research-runs/${encodeURIComponent(runId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  return res.json();
+}
+
 // -- session roots (orphan Cowork: scratch + added folders) -------------------
 export interface RootInfo {
   path: string;

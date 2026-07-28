@@ -670,9 +670,16 @@ button.btn.danger { color: var(--accent); }
   display: flex; flex-direction: column; gap: 5px; margin-bottom: 9px; padding: 9px 10px;
   border: 1px solid var(--line); border-radius: 9px; background: var(--paper);
 }
-.research-run-card > div { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px; }
+.research-project-list { display: flex; flex-direction: column; gap: 7px; margin-bottom: 9px; }
+.research-project-list .research-run-card { margin-bottom: 0; }
+.research-run-card > div { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 7px; }
 .research-run-card strong { overflow: hidden; color: var(--ink); font-size: 11.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .research-run-card > span { color: var(--faint); font-size: 10.5px; text-transform: capitalize; }
+.research-project-edit {
+  padding: 2px 5px; border: 0; background: transparent; color: var(--accent);
+  font: inherit; font-size: 10.5px; font-weight: 650; cursor: pointer;
+}
+.research-project-edit:hover { text-decoration: underline; }
 .research-run-status { padding: 2px 5px; border-radius: 5px; color: var(--muted); background: var(--line); font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 .research-run-status.researching, .research-run-status.synthesizing { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .research-run-status.completed { color: #2e7d4f; background: color-mix(in srgb, #2e7d4f 12%, transparent); }

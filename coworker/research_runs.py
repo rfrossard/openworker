@@ -50,14 +50,27 @@ class ResearchRun:
     browser_evidence_count_at_start: int = 0
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
+    extra_fields: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "ResearchRun":
         fields = cls.__dataclass_fields__
-        return cls(**{key: value[key] for key in fields if key in value})
+        known = {
+            key: value[key]
+            for key in fields
+            if key in value and key != "extra_fields"
+        }
+        known["extra_fields"] = {
+            key: item
+            for key, item in value.items()
+            if key not in fields
+        }
+        return cls(**known)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        value = asdict(self)
+        extras = value.pop("extra_fields", {})
+        return {**extras, **value}
 
 
 class ResearchRunStore:
@@ -136,6 +149,9 @@ class ResearchRunStore:
 
     def update(self, run_id: str, **changes: Any) -> Optional[ResearchRun]:
         allowed = {
+            "question",
+            "depth",
+            "plan",
             "status",
             "sources_found",
             "artifact_path",
@@ -151,7 +167,29 @@ class ResearchRunStore:
                     continue
                 if key == "status" and value not in RESEARCH_STATUSES:
                     raise ValueError("Invalid research status.")
+                if key == "question":
+                    value = str(value).strip()
+                    if not value:
+                        raise ValueError("Research question is required.")
+                if key == "depth":
+                    value = str(value).strip().lower()
+                    if value not in RESEARCH_DEPTHS:
+                        raise ValueError(
+                            "Research depth must be quick, standard, or deep."
+                        )
+                if key == "plan":
+                    value = [
+                        str(item).strip()
+                        for item in (value or [])
+                        if str(item).strip()
+                    ]
+                    if not value:
+                        raise ValueError(
+                            "Research plan must contain at least one step."
+                        )
                 setattr(run, key, value)
+                if key == "depth":
+                    run.source_limit = SOURCE_LIMITS[value]
             run.updated_at = _now()
             self._save()
             return run

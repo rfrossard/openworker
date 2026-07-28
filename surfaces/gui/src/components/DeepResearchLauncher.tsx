@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { createResearchRun, type ResearchRun } from "../api";
+import { createResearchRun, updateResearchRun, type ResearchRun } from "../api";
 import { Icon } from "./Icon";
 
 export type ResearchDepth = "quick" | "standard" | "deep";
@@ -59,10 +59,14 @@ export function DeepResearchLauncher({
   sessionId,
   onCreate,
   onRunCreated,
+  editingRun = null,
+  onEditingClose,
 }: {
   sessionId: string;
   onCreate: (prompt: string) => void;
   onRunCreated?: (run: ResearchRun) => void;
+  editingRun?: ResearchRun | null;
+  onEditingClose?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
@@ -72,13 +76,25 @@ export function DeepResearchLauncher({
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!editingRun) return;
+    setQuestion(editingRun.question);
+    setDepth(editingRun.depth);
+    setPlan(editingRun.plan.join("\n"));
+    setError("");
+    setOpen(true);
+  }, [editingRun]);
+
+  useEffect(() => {
     if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        onEditingClose?.();
+      }
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [open]);
+  }, [open, onEditingClose]);
 
   const create = async () => {
     if (!question.trim() || busy) return;
@@ -86,11 +102,14 @@ export function DeepResearchLauncher({
     setError("");
     const brief = { question, depth, plan };
     try {
-      const result = await createResearchRun(sessionId, {
+      const input = {
         question: question.trim(),
         depth,
         plan: plan.split("\n").map((item) => item.trim()).filter(Boolean),
-      });
+      };
+      const result = editingRun
+        ? await updateResearchRun(sessionId, editingRun.run_id, input)
+        : await createResearchRun(sessionId, input);
       if (!result.ok || !result.run) {
         setError(result.error || "Could not save the research run.");
         return;
@@ -98,6 +117,7 @@ export function DeepResearchLauncher({
       onRunCreated?.(result.run);
       onCreate(buildDeepResearchPrompt(brief, result.run.run_id));
       setOpen(false);
+      onEditingClose?.();
     } catch {
       setError("Could not reach the local research service.");
     } finally {
@@ -107,13 +127,30 @@ export function DeepResearchLauncher({
 
   return (
     <>
-      <button className="research-launch-button" onClick={() => setOpen(true)}>
+      <button
+        className="research-launch-button"
+        onClick={() => {
+          if (!editingRun) {
+            setQuestion("");
+            setDepth("standard");
+            setPlan(DEFAULT_PLAN);
+            setError("");
+          }
+          setOpen(true);
+        }}
+      >
         <Icon name="search" size={15} />
         <span>New research</span>
       </button>
       {open &&
         createPortal(
-          <div className="research-modal-backdrop" onMouseDown={() => setOpen(false)}>
+          <div
+            className="research-modal-backdrop"
+            onMouseDown={() => {
+              setOpen(false);
+              onEditingClose?.();
+            }}
+          >
             <section
               className="research-modal"
               role="dialog"
@@ -124,12 +161,21 @@ export function DeepResearchLauncher({
               <header className="research-modal-header">
                 <div>
                   <span className="research-modal-eyebrow">Artifact Studio</span>
-                  <h2 id="research-modal-title">New Deep Research</h2>
-                  <p>Prepare a cited report. You can review the full task before it runs.</p>
+                  <h2 id="research-modal-title">
+                    {editingRun ? "Edit Research Project" : "New Deep Research"}
+                  </h2>
+                  <p>
+                    {editingRun
+                      ? "Review the saved brief and plan before starting."
+                      : "Prepare a cited report. You can review the full task before it runs."}
+                  </p>
                 </div>
                 <button
                   className="artifact-icon-btn"
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    setOpen(false);
+                    onEditingClose?.();
+                  }}
                   aria-label="Close"
                 >
                   <Icon name="x" size={17} />
@@ -170,6 +216,7 @@ export function DeepResearchLauncher({
                   value={plan}
                   onChange={(event) => setPlan(event.target.value)}
                   rows={5}
+                  aria-label="Research plan"
                   aria-describedby="research-plan-help"
                 />
                 <small id="research-plan-help">One step per line. Edit, reorder, or add steps.</small>
@@ -178,9 +225,17 @@ export function DeepResearchLauncher({
               {error && <div className="research-modal-error">{error}</div>}
 
               <footer className="research-modal-actions">
-                <button className="btn" onClick={() => setOpen(false)}>Cancel</button>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setOpen(false);
+                    onEditingClose?.();
+                  }}
+                >
+                  Cancel
+                </button>
                 <button className="btn primary" disabled={!question.trim() || busy} onClick={create}>
-                  {busy ? "Saving…" : "Review in composer"}
+                  {busy ? "Saving…" : editingRun ? "Save and review" : "Review in composer"}
                 </button>
               </footer>
             </section>

@@ -191,6 +191,52 @@ def test_research_run_lifecycle_follows_turn_and_artifact_creation(
     assert completed["sources_found"] == 1
 
 
+def test_only_planned_research_projects_can_change_their_brief(
+    tmp_path, monkeypatch
+):
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    monkeypatch.setattr(manager, "list_artifacts", lambda _session: [])
+    monkeypatch.setattr(
+        manager, "browser_state", lambda _session: {"history": [], "evidence": []}
+    )
+    created = manager.create_research_run(
+        "research-session",
+        question="Initial",
+        depth="quick",
+        plan=["Research"],
+    )["run"]
+
+    edited = manager.update_research_run(
+        "research-session",
+        created["run_id"],
+        {
+            "question": "Edited",
+            "depth": "deep",
+            "plan": ["Find sources", "Compare evidence"],
+        },
+    )
+    assert edited["ok"] is True
+    assert edited["run"]["question"] == "Edited"
+    assert edited["run"]["source_limit"] == 20
+
+    manager.start_research_run_from_text(
+        "research-session", f"Research Run: {created['run_id']}"
+    )
+    rejected = manager.update_research_run(
+        "research-session",
+        created["run_id"],
+        {"question": "Too late"},
+    )
+    assert rejected == {
+        "ok": False,
+        "error": "Only planned research projects can be edited.",
+    }
+
+
 def test_research_run_failure_can_be_retried(tmp_path, monkeypatch):
     manager = SessionManager(
         workspace=tmp_path,

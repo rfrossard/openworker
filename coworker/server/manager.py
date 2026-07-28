@@ -1458,6 +1458,12 @@ class SessionManager:
         )
         if run is None:
             return {"ok": False, "error": "Research run not found."}
+        if any(key in changes for key in {"question", "depth", "plan"}):
+            if run.status != "planned":
+                return {
+                    "ok": False,
+                    "error": "Only planned research projects can be edited.",
+                }
         try:
             updated = self.research_runs.update(run_id, **changes)
         except ValueError as exc:

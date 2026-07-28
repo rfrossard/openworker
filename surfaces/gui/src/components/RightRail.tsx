@@ -100,6 +100,7 @@ export function RightRail({
   const [selected, setSelected] = useState<ArtifactInfo | null>(null);
   const [content, setContent] = useState<ArtifactContent | null>(null);
   const [researchRuns, setResearchRuns] = useState<ResearchRun[]>([]);
+  const [editingResearchRun, setEditingResearchRun] = useState<ResearchRun | null>(null);
 
   const refreshArtifacts = () => getArtifacts(sessionId).then(setArtifacts).catch(() => setArtifacts([]));
   const refreshResearchRuns = () => getResearchRuns(sessionId).then(setResearchRuns).catch(() => setResearchRuns([]));
@@ -115,6 +116,7 @@ export function RightRail({
   useEffect(() => {
     setSelected(null);
     setContent(null);
+    setEditingResearchRun(null);
   }, [sessionId]);
 
   useEffect(() => {
@@ -218,25 +220,43 @@ export function RightRail({
               <DeepResearchLauncher
                 sessionId={sessionId}
                 onCreate={onResearchPrefill}
-                onRunCreated={(run) => setResearchRuns((current) => [run, ...current])}
+                editingRun={editingResearchRun}
+                onEditingClose={() => setEditingResearchRun(null)}
+                onRunCreated={(run) =>
+                  setResearchRuns((current) => [
+                    run,
+                    ...current.filter((item) => item.run_id !== run.run_id),
+                  ])
+                }
               />
             )}
-            {researchRuns[0] && (
-              <div className="research-run-card">
-                <div>
-                  <span className={`research-run-status ${researchRuns[0].status}`}>
-                    {researchRuns[0].status}
-                  </span>
-                  <strong>{researchRuns[0].question}</strong>
-                </div>
-                <span>
-                  {researchRuns[0].depth} · {researchRuns[0].artifact_count} artifacts ·{" "}
-                  {researchRuns[0].browser_navigation_count} pages
-                </span>
-                <span>
-                  {researchRuns[0].browser_evidence_count} browser evidence ·{" "}
-                  {researchRuns[0].source_limit} sources planned
-                </span>
+            {researchRuns.length > 0 && (
+              <div className="research-project-list" aria-label="Research projects">
+                {researchRuns.slice(0, 5).map((run) => (
+                  <div className="research-run-card" key={run.run_id}>
+                    <div>
+                      <span className={`research-run-status ${run.status}`}>
+                        {run.status}
+                      </span>
+                      <strong title={run.question}>{run.question}</strong>
+                      {run.status === "planned" && (
+                        <button
+                          className="research-project-edit"
+                          onClick={() => setEditingResearchRun(run)}
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                    <span>
+                      {run.depth} · {run.artifact_count} artifacts ·{" "}
+                      {run.browser_navigation_count} pages
+                    </span>
+                    <span>
+                      {run.plan.length} plan steps · {run.source_limit} sources planned
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
             {artifacts.length === 0 ? (
