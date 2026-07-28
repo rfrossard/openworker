@@ -66,6 +66,38 @@ def test_build_presentation_creates_real_matching_files_with_image(tmp_path):
         assert any(name.startswith("ppt/media/") for name in archive.namelist())
 
 
+def test_build_presentation_supports_designer_layouts(tmp_path):
+    tool = make_build_presentation_tool(workspace=tmp_path)
+    result = tool(
+        title="Designed from Markdown",
+        slides=[
+            {
+                "title": "A new chapter",
+                "takeaway": "The section layout creates a deliberate narrative break.",
+                "layout": "section",
+            },
+            {
+                "title": "A voice worth featuring",
+                "takeaway": "The quote layout makes one message visually dominant.",
+                "layout": "quote",
+                "bullets": ["Source attribution"],
+            },
+            {
+                "title": "Two sides of the decision",
+                "takeaway": "The content remains editable.",
+                "layout": "two-column",
+                "bullets": ["Benefit one", "Benefit two", "Risk one", "Risk two"],
+            },
+        ],
+        pptx_path="designer.pptx",
+        pdf_path="designer.pdf",
+    )
+
+    assert result["ok"] is True
+    assert len(Presentation(tmp_path / "designer.pptx").slides) == 4
+    assert len(PdfReader(tmp_path / "designer.pdf").pages) == 4
+
+
 def test_build_presentation_rejects_path_escape_and_missing_image(tmp_path):
     tool = make_build_presentation_tool(workspace=tmp_path)
     escaped = tool(

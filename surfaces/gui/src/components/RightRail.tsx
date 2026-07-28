@@ -29,6 +29,7 @@ import { ResearchEvidenceBoard } from "./ResearchEvidenceBoard";
 import { ResearchClaimsBoard } from "./ResearchClaimsBoard";
 import { MarkdownPdfLauncher } from "./MarkdownPdfLauncher";
 import { ManusPresentationLauncher } from "./ManusPresentationLauncher";
+import { MarkdownSlideDesigner } from "./MarkdownSlideDesigner";
 
 type Panel = "progress" | "browser" | "artifacts";
 
@@ -241,6 +242,11 @@ export function RightRail({
                     onCreate={onResearchPrefill}
                   />
                   <ManusPresentationLauncher
+                    artifacts={artifacts}
+                    onCreate={onResearchPrefill}
+                  />
+                  <MarkdownSlideDesigner
+                    sessionId={sessionId}
                     artifacts={artifacts}
                     onCreate={onResearchPrefill}
                   />

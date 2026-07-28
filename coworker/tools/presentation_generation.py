@@ -78,7 +78,15 @@ _SCHEMA = {
                             },
                             "layout": {
                                 "type": "string",
-                                "enum": ["auto", "image-right", "image-left", "statement"],
+                                "enum": [
+                                    "auto",
+                                    "image-right",
+                                    "image-left",
+                                    "statement",
+                                    "two-column",
+                                    "quote",
+                                    "section",
+                                ],
                                 "description": "Intentional slide composition; auto selects image-right when an image exists.",
                             },
                             "sources": {
@@ -256,7 +264,15 @@ def _normalize_slides(root: Path, slides: list[dict[str, Any]]) -> list[dict[str
                 "layout": str(item.get("layout") or "auto").strip().lower(),
             }
         )
-        if normalized[-1]["layout"] not in {"auto", "image-right", "image-left", "statement"}:
+        if normalized[-1]["layout"] not in {
+            "auto",
+            "image-right",
+            "image-left",
+            "statement",
+            "two-column",
+            "quote",
+            "section",
+        }:
             raise ValueError(f"Slide {index} has an unsupported layout.")
         if normalized[-1]["image_fit"] not in {"cover", "contain"}:
             raise ValueError(f"Slide {index} has an unsupported image fit.")
@@ -325,12 +341,22 @@ def _add_pptx(
     for number, spec in enumerate(slides, 1):
         slide = deck.slides.add_slide(blank_layout)
         slide.background.fill.solid()
-        slide.background.fill.fore_color.rgb = background
+        layout = spec["layout"]
+        slide.background.fill.fore_color.rgb = cover_rgb if layout == "section" else background
+        if layout == "section":
+            textbox(slide, f"{number:02d}", 0.82, 0.72, 1.0, 0.45, 13, accent_rgb, True)
+            textbox(slide, spec["title"], 0.82, 2.05, 11.4, 1.7, 42, RGBColor(255, 255, 255), True)
+            if spec["takeaway"]:
+                textbox(slide, spec["takeaway"], 0.86, 4.15, 10.6, 1.15, 19, RGBColor(205, 213, 225))
+            bar = slide.shapes.add_shape(1, Inches(0.84), Inches(5.78), Inches(1.6), Inches(0.1))
+            bar.fill.solid()
+            bar.fill.fore_color.rgb = accent_rgb
+            bar.line.fill.background()
+            continue
         textbox(slide, spec["title"], 0.72, 0.45, 11.8, 0.7, 28, ink, True)
         if spec["takeaway"]:
             textbox(slide, spec["takeaway"], 0.74, 1.22, 11.7, 0.62, 17, accent_rgb, True)
         image = spec["image"]
-        layout = spec["layout"]
         if layout == "statement":
             statement = spec["takeaway"] or (spec["bullets"][0] if spec["bullets"] else spec["title"])
             textbox(slide, statement, 1.05, 2.15, 11.1, 2.7, 31, ink, True)
@@ -340,6 +366,37 @@ def _add_pptx(
                     slide.notes_slide.notes_text_frame.text = "[Sources]\n" + "\n".join(spec["sources"])
                 except (AttributeError, NotImplementedError):
                     pass
+            continue
+        if layout == "quote":
+            quote = spec["takeaway"] or (spec["bullets"][0] if spec["bullets"] else spec["title"])
+            mark = textbox(slide, "“", 0.8, 1.45, 1.0, 1.0, 70, accent_rgb, True)
+            mark.text_frame.paragraphs[0].alignment = PP_ALIGN.LEFT
+            textbox(slide, quote, 1.5, 2.0, 10.35, 2.7, 29, ink, True)
+            if spec["bullets"]:
+                textbox(slide, spec["bullets"][-1], 1.55, 5.25, 9.8, 0.6, 14, muted)
+            textbox(slide, str(number), 12.25, 7.0, 0.4, 0.22, 9, muted)
+            continue
+        if layout == "two-column":
+            midpoint = max(1, (len(spec["bullets"]) + 1) // 2)
+            for column, values in enumerate((spec["bullets"][:midpoint], spec["bullets"][midpoint:])):
+                body = slide.shapes.add_textbox(
+                    Inches(0.76 + column * 6.15), Inches(2.02), Inches(5.65), Inches(4.55)
+                )
+                frame = body.text_frame
+                frame.clear()
+                frame.word_wrap = True
+                for idx, bullet in enumerate(values):
+                    paragraph = frame.paragraphs[0] if idx == 0 else frame.add_paragraph()
+                    paragraph.text = bullet
+                    paragraph.font.name = "Aptos"
+                    paragraph.font.size = Pt(18)
+                    paragraph.font.color.rgb = ink
+                    paragraph.space_after = Pt(12)
+            divider = slide.shapes.add_shape(1, Inches(6.61), Inches(2.05), Inches(0.02), Inches(4.1))
+            divider.fill.solid()
+            divider.fill.fore_color.rgb = muted
+            divider.line.fill.background()
+            textbox(slide, str(number), 12.25, 7.0, 0.4, 0.22, 9, muted)
             continue
         content_width = 5.55 if image else 11.3
         body_x = 6.98 if image and layout == "image-left" else 0.76
@@ -438,14 +495,47 @@ def _add_pdf(
     for number, spec in enumerate(slides, 1):
         canvas.setFillColor(background)
         canvas.rect(0, 0, width, height, stroke=0, fill=1)
+        layout = spec["layout"]
+        if layout == "section":
+            canvas.setFillColor(cover)
+            canvas.rect(0, 0, width, height, stroke=0, fill=1)
+            text(f"{number:02d}", 60, 465, 12, accent_color, "Helvetica-Bold")
+            text(spec["title"], 60, 335, 34, HexColor("#FFFFFF"), "Helvetica-Bold", 830)
+            if spec["takeaway"]:
+                text(spec["takeaway"], 62, 205, 16, HexColor("#CDD5E1"), max_width=760)
+            canvas.setFillColor(accent_color)
+            canvas.rect(62, 95, 115, 7, stroke=0, fill=1)
+            canvas.showPage()
+            continue
         text(spec["title"], 52, 485, 24, ink, "Helvetica-Bold", 850)
         if spec["takeaway"]:
             text(spec["takeaway"], 54, 425, 14, accent_color, "Helvetica-Bold", 840)
         image = spec["image"]
-        layout = spec["layout"]
         if layout == "statement":
             statement = spec["takeaway"] or (spec["bullets"][0] if spec["bullets"] else spec["title"])
             text(statement, 75, 320, 28, ink, "Helvetica-Bold", 810)
+            text(str(number), 895, 25, 8, muted)
+            canvas.showPage()
+            continue
+        if layout == "quote":
+            quote = spec["takeaway"] or (spec["bullets"][0] if spec["bullets"] else spec["title"])
+            text("“", 60, 400, 58, accent_color, "Helvetica-Bold")
+            text(quote, 115, 335, 28, ink, "Helvetica-Bold", 760)
+            if spec["bullets"]:
+                text(spec["bullets"][-1], 120, 115, 12, muted, max_width=700)
+            text(str(number), 895, 25, 8, muted)
+            canvas.showPage()
+            continue
+        if layout == "two-column":
+            midpoint = max(1, (len(spec["bullets"]) + 1) // 2)
+            for column, values in enumerate((spec["bullets"][:midpoint], spec["bullets"][midpoint:])):
+                y = 350
+                for bullet in values:
+                    text(f"•  {bullet}", 58 + column * 455, y, 13, ink, max_width=385)
+                    y -= 52
+            canvas.setStrokeColor(muted)
+            canvas.setLineWidth(0.5)
+            canvas.line(480, 95, 480, 380)
             text(str(number), 895, 25, 8, muted)
             canvas.showPage()
             continue
