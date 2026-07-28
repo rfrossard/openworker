@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenWorker Release Integrity"
+  short_description: "Safe tests, releases, costs, and rollback"
+  default_prompt: "Use $openworker-release-integrity to change and release OpenWorker safely."
