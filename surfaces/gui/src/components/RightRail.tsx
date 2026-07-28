@@ -20,6 +20,7 @@ import {
 } from "../api";
 import type { TodoItem } from "../types";
 import { AccessSection } from "./AccessSection";
+import { DeepResearchLauncher } from "./DeepResearchLauncher";
 import { Icon } from "./Icon";
 import { Markdown, OPEN_ARTIFACT_EVENT } from "./Markdown";
 
@@ -67,6 +68,7 @@ interface Props {
   scratchPrimary?: boolean;
   openAccessKey?: number;
   onOpenIntegrations?: () => void;
+  onResearchPrefill?: (prompt: string) => void;
 }
 
 export function RightRail({
@@ -85,6 +87,7 @@ export function RightRail({
   scratchPrimary,
   openAccessKey = 0,
   onOpenIntegrations,
+  onResearchPrefill,
 }: Props) {
   const [open, setOpen] = useState<Record<Panel, boolean>>({
     progress: true,
@@ -206,6 +209,9 @@ export function RightRail({
               </>
             }
           >
+            {onResearchPrefill && (
+              <DeepResearchLauncher onCreate={onResearchPrefill} />
+            )}
             {artifacts.length === 0 ? (
               <div className="rail-muted">No previewable files yet.</div>
             ) : (

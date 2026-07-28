@@ -1601,6 +1601,7 @@ export function App() {
             scratchPrimary={agent === "cowork"}
             openAccessKey={accessKey}
             onOpenIntegrations={() => setSurface("integrations")}
+            onResearchPrefill={prefillComposer}
           />
         </div>
       </div>
