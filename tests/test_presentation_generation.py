@@ -81,6 +81,45 @@ def test_build_presentation_rejects_path_escape_and_missing_image(tmp_path):
     assert "not found" in missing["error"]
 
 
+def test_build_presentation_applies_builtin_and_workspace_potx_templates(tmp_path):
+    tool = make_build_presentation_tool(workspace=tmp_path)
+    built_in = tool(
+        title="Template catalog",
+        slides=[{"title": "Editable theme"}],
+        pptx_path="built-in.pptx",
+        pdf_path="built-in.pdf",
+        template_id="forest",
+    )
+    assert built_in["ok"] is True
+    assert built_in["template_id"] == "forest"
+    assert built_in["template_path"] is None
+
+    source_pptx = tmp_path / "brand-source.pptx"
+    potx = tmp_path / "brand.potx"
+    Presentation().save(source_pptx)
+    with zipfile.ZipFile(source_pptx) as source, zipfile.ZipFile(
+        potx, "w", compression=zipfile.ZIP_DEFLATED
+    ) as output:
+        for name in source.namelist():
+            data = source.read(name)
+            if name == "[Content_Types].xml":
+                data = data.replace(
+                    b"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml",
+                    b"application/vnd.openxmlformats-officedocument.presentationml.template.main+xml",
+                )
+            output.writestr(name, data)
+    custom = tool(
+        title="Brand template",
+        slides=[{"title": "Inherited master"}],
+        pptx_path="custom.pptx",
+        pdf_path="custom.pdf",
+        template_path="brand.potx",
+    )
+    assert custom["ok"] is True
+    assert custom["template_path"] == "brand.potx"
+    assert len(Presentation(tmp_path / "custom.pptx").slides) == 2
+
+
 def test_quality_gate_rejects_markdown_renamed_as_pdf(tmp_path):
     reports = tmp_path / "reports"
     reports.mkdir()

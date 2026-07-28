@@ -21,12 +21,16 @@ through every phase.
 3. Write a storyboard with one narrative job and one evidence-backed takeaway per slide.
 4. Choose a coherent visual direction and vary slide composition without changing the
    visual system.
+   Apply the template selected in Artifact Studio. Built-in templates are editable design
+   tokens; a workspace `.potx` takes precedence and its masters, layouts, theme, and
+   placeholders must remain intact. Read [template-catalog.md](references/template-catalog.md).
 5. Create or source a distinct relevant image for slides that materially benefit from
    imagery. Use the native `generate_image` tool, which is configured for Gemini Nano
    Banana 2 Lite at 1K, and request 1536×1024 for a widescreen aspect ratio. Never invent
    charts, people, quotes, logos, or documentary evidence.
 6. Call `build_presentation` once with the complete structured slide specification,
-   workspace-relative image paths, and destinations under `reports/`.
+   workspace-relative image paths, the selected `template_id` or `template_path`, and
+   destinations under `reports/`.
 7. Verify that the returned result says `ok: true`, includes both formats, reports the
    expected number of embedded images, and returns slide previews plus a contact sheet.
    Inspect the rendered previews before accepting the deck; do not judge only the slide

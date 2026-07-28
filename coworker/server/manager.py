@@ -1360,6 +1360,7 @@ class SessionManager:
             ".xlsx",
             ".xls",
             ".pptx",
+            ".potx",
             ".ppt",
             ".pptm",
             ".docx",
@@ -4194,7 +4195,7 @@ def _artifact_kind(path: Path) -> str:
         return "pdf"
     if suffix in {".xlsx", ".xls"}:
         return "sheet"
-    if suffix in {".pptx", ".ppt", ".pptm", ".docx", ".doc", ".docm"}:
+    if suffix in {".pptx", ".potx", ".ppt", ".pptm", ".docx", ".doc", ".docm"}:
         return "office"
     if suffix in {".csv", ".tsv"}:
         return "csv"

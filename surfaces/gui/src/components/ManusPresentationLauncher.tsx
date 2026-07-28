@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import type { ArtifactInfo } from "../api";
+import { PRESENTATION_TEMPLATES, templateById } from "../presentationTemplates";
 import { Icon } from "./Icon";
 
 export interface ManusPresentationOptions {
@@ -13,6 +14,8 @@ export interface ManusPresentationOptions {
   sourcePath?: string;
   referencePath?: string;
   generateImages: boolean;
+  templateId?: string;
+  templatePath?: string;
 }
 
 export function buildManusPresentationPrompt(options: ManusPresentationOptions): string {
@@ -25,6 +28,10 @@ export function buildManusPresentationPrompt(options: ManusPresentationOptions):
   const images = options.generateImages
     ? "Create original, slide-specific visuals with generate_image using Gemini Nano Banana 2 Lite at 1K. Request a widescreen composition, preserve provenance, and never fabricate documentary evidence."
     : "Do not generate images. Use diagrams, typography, shapes, and properly sourced workspace assets instead.";
+  const selectedTemplate = templateById(options.templateId || "atlas");
+  const template = options.templatePath
+    ? `Apply the workspace POTX template at ${options.templatePath}. Preserve its slide masters, layouts, theme fonts, colors, and editable placeholders. Pass template_path="${options.templatePath}" to build_presentation.`
+    : `Apply the editable built-in "${selectedTemplate.name}" template (${selectedTemplate.description}). Pass template_id="${selectedTemplate.id}" to build_presentation.`;
 
   return `Create a Manus-style Presentation artifact about:
 
@@ -35,12 +42,13 @@ Desired outcome: ${options.outcome.trim()}
 Target length: ${options.slideCount} slides including the cover
 Research depth: ${options.depth}
 Visual direction: ${options.visualDirection.trim() || "Editorial, modern, restrained, and evidence-led"}
+Presentation template: ${options.templatePath || selectedTemplate.name}
 
 Run the presentation-studio skill and its Manus-style Presentation harness. Do not skip or merge these phases:
 1. BRIEF — define the communication job in one sentence and identify the audience decision.
 2. RESEARCHER — ${source}
 3. STORYBOARD — create one narrative job, atomic claim, evidence, transition, and visual intention per slide.
-4. ART DIRECTOR — ${reference}
+4. ART DIRECTOR — ${reference} ${template}
 5. ASSET CREATION — ${images}
 6. PRESENTER — build an editable widescreen PPTX and matching slide PDF from one structured specification with the native build_presentation tool. Vary layouts deliberately; do not produce a repetitive title-and-bullets deck.
 7. ENVIRONMENT-GROUNDED REFLECTION — inspect the rendered slide previews and contact sheet, not only the source specification. Check hierarchy, clipping, contrast, density, image relevance, visual rhythm, factual support, and narrative coherence.
@@ -78,6 +86,8 @@ export function ManusPresentationLauncher({
   const [sourcePath, setSourcePath] = useState("");
   const [referencePath, setReferencePath] = useState("");
   const [generateImages, setGenerateImages] = useState(true);
+  const [templateId, setTemplateId] = useState("atlas");
+  const [templatePath, setTemplatePath] = useState("");
 
   const sourceArtifacts = artifacts.filter((artifact) =>
     /\.(md|pdf|docx|txt|csv|xlsx|pptx)$/i.test(artifact.path),
@@ -85,6 +95,7 @@ export function ManusPresentationLauncher({
   const referenceArtifacts = artifacts.filter((artifact) =>
     /\.(pptx|pdf)$/i.test(artifact.path),
   );
+  const potxArtifacts = artifacts.filter((artifact) => /\.potx$/i.test(artifact.path));
   const close = () => setOpen(false);
 
   return (
@@ -172,6 +183,38 @@ export function ManusPresentationLauncher({
                 </select>
               </label>
               <label className="research-field">
+                <span>Editable PowerPoint template</span>
+                <select
+                  aria-label="Editable PowerPoint template"
+                  value={templatePath ? "custom" : templateId}
+                  onChange={(event) => {
+                    if (event.target.value === "custom") {
+                      setTemplatePath(potxArtifacts[0]?.path || "");
+                    } else {
+                      setTemplateId(event.target.value);
+                      setTemplatePath("");
+                    }
+                  }}
+                >
+                  {PRESENTATION_TEMPLATES.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name} — {template.description}
+                    </option>
+                  ))}
+                  {potxArtifacts.length > 0 && <option value="custom">Custom POTX from artifacts</option>}
+                </select>
+              </label>
+              {templatePath && (
+                <label className="research-field">
+                  <span>POTX artifact</span>
+                  <select value={templatePath} onChange={(event) => setTemplatePath(event.target.value)}>
+                    {potxArtifacts.map((artifact) => (
+                      <option key={artifact.path} value={artifact.path}>{artifact.path}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <label className="research-field">
                 <span>Design reference (optional)</span>
                 <select value={referencePath} onChange={(event) => setReferencePath(event.target.value)}>
                   <option value="">Create an original visual system</option>
@@ -205,6 +248,8 @@ export function ManusPresentationLauncher({
                       sourcePath: sourcePath || undefined,
                       referencePath: referencePath || undefined,
                       generateImages,
+                      templateId,
+                      templatePath: templatePath || undefined,
                     }));
                     close();
                   }}

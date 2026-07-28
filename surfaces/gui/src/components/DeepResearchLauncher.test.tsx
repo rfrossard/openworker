@@ -58,6 +58,7 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("both reports/<descriptive-name>.pptx and reports/<descriptive-name>.pdf");
     expect(prompt).toContain("speaker notes");
     expect(prompt).toContain("inspect for overlap");
+    expect(prompt).toContain('template_id="atlas"');
   });
 
   it("persists the run before letting the user review it", async () => {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { createResearchRun, updateResearchRun, type ResearchRun } from "../api";
+import { createResearchRun, updateResearchRun, type ArtifactInfo, type ResearchRun } from "../api";
+import { PRESENTATION_TEMPLATES, templateById } from "../presentationTemplates";
 import { Icon } from "./Icon";
 
 export type ResearchDepth = "quick" | "standard" | "deep";
@@ -16,6 +17,8 @@ interface ResearchBrief {
   visualDirection?: string;
   imageMode?: "generate" | "source" | "none";
   imageQuality?: "low" | "medium" | "high";
+  templateId?: string;
+  templatePath?: string;
 }
 
 const DEFAULT_PLAN = [
@@ -49,6 +52,9 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
     brief.deliverable === "presentation"
       ? `
 Research Presentation deliverable:
+${brief.templatePath
+  ? `- Apply the editable POTX template at ${brief.templatePath}. Preserve its masters, layouts, theme fonts, colors, and placeholders; pass template_path="${brief.templatePath}" to build_presentation.`
+  : `- Apply the editable built-in "${templateById(brief.templateId || "atlas").name}" template; pass template_id="${templateById(brief.templateId || "atlas").id}" to build_presentation.`}
 - Communication job: by the end, ${brief.audience?.trim() || "the intended audience"} should understand or decide the answer to the research question.
 - Plan a cumulative narrative arc before rendering. Give every slide one job and one evidence-backed takeaway title.
 - Target ${brief.slideCount || 10} slides. Keep the title slide minimal and close by resolving the opening question with conclusions or a decision.
@@ -113,12 +119,14 @@ export function DeepResearchLauncher({
   onRunCreated,
   editingRun = null,
   onEditingClose,
+  artifacts = [],
 }: {
   sessionId: string;
   onCreate: (prompt: string) => void;
   onRunCreated?: (run: ResearchRun) => void;
   editingRun?: ResearchRun | null;
   onEditingClose?: () => void;
+  artifacts?: ArtifactInfo[];
 }) {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
@@ -130,6 +138,8 @@ export function DeepResearchLauncher({
   const [visualDirection, setVisualDirection] = useState("");
   const [imageMode, setImageMode] = useState<"generate" | "source" | "none">("generate");
   const [imageQuality, setImageQuality] = useState<"low" | "medium" | "high">("medium");
+  const [templateId, setTemplateId] = useState("atlas");
+  const [templatePath, setTemplatePath] = useState("");
   const [plan, setPlan] = useState(DEFAULT_PLAN);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -177,6 +187,8 @@ export function DeepResearchLauncher({
       visualDirection,
       imageMode,
       imageQuality,
+      templateId,
+      templatePath: templatePath || undefined,
     };
     try {
       const input = {
@@ -224,6 +236,8 @@ export function DeepResearchLauncher({
             setVisualDirection("");
             setImageMode("generate");
             setImageQuality("medium");
+            setTemplateId("atlas");
+            setTemplatePath("");
             setPlan(DEFAULT_PLAN);
             setError("");
           }
@@ -338,6 +352,40 @@ export function DeepResearchLauncher({
                       placeholder="Editorial, cinematic, minimal, company colors…"
                     />
                   </label>
+                  <label className="research-field research-visual-direction">
+                    <span>Editable PowerPoint template</span>
+                    <select
+                      aria-label="Research presentation template"
+                      value={templatePath ? "custom" : templateId}
+                      onChange={(event) => {
+                        if (event.target.value === "custom") {
+                          setTemplatePath(artifacts.find((artifact) => /\.potx$/i.test(artifact.path))?.path || "");
+                        } else {
+                          setTemplateId(event.target.value);
+                          setTemplatePath("");
+                        }
+                      }}
+                    >
+                      {PRESENTATION_TEMPLATES.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name} — {template.description}
+                        </option>
+                      ))}
+                      {artifacts.some((artifact) => /\.potx$/i.test(artifact.path)) && (
+                        <option value="custom">Custom POTX from artifacts</option>
+                      )}
+                    </select>
+                  </label>
+                  {templatePath && (
+                    <label className="research-field research-visual-direction">
+                      <span>POTX artifact</span>
+                      <select value={templatePath} onChange={(event) => setTemplatePath(event.target.value)}>
+                        {artifacts.filter((artifact) => /\.potx$/i.test(artifact.path)).map((artifact) => (
+                          <option key={artifact.path} value={artifact.path}>{artifact.path}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <fieldset className="research-field research-visual-direction">
                     <legend>Presentation visuals</legend>
                     <div className="research-depth-options research-image-options">

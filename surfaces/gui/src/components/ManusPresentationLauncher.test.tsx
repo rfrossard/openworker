@@ -1,6 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildManusPresentationPrompt, ManusPresentationLauncher } from "./ManusPresentationLauncher";
+
+afterEach(cleanup);
 
 describe("ManusPresentationLauncher", () => {
   it("builds a render-and-revise harness prompt", () => {
@@ -21,6 +23,7 @@ describe("ManusPresentationLauncher", () => {
     expect(prompt).toContain("build_presentation");
     expect(prompt).toContain(".presentation.json");
     expect(prompt).toContain("rendered slide previews");
+    expect(prompt).toContain('template_id="atlas"');
   });
 
   it("sends a complete English brief to the composer", () => {
@@ -34,5 +37,12 @@ describe("ManusPresentationLauncher", () => {
     expect(onCreate).toHaveBeenCalledOnce();
     expect(onCreate.mock.calls[0][0]).toContain("A clear climate strategy");
     expect(onCreate.mock.calls[0][0]).toContain("Target length: 10 slides");
+  });
+
+  it("offers at least ten editable built-in templates", () => {
+    render(<ManusPresentationLauncher artifacts={[]} onCreate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Manus-style presentation/i }));
+    const options = screen.getByLabelText("Editable PowerPoint template").querySelectorAll("option");
+    expect(options.length).toBeGreaterThanOrEqual(10);
   });
 });

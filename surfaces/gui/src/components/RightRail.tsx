@@ -225,6 +225,7 @@ export function RightRail({
                 <div className="artifact-studio-actions">
                   <DeepResearchLauncher
                     sessionId={sessionId}
+                    artifacts={artifacts}
                     onCreate={onResearchPrefill}
                     editingRun={editingResearchRun}
                     onEditingClose={() => setEditingResearchRun(null)}
