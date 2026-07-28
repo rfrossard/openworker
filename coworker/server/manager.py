@@ -1451,6 +1451,26 @@ class SessionManager:
                     ),
                 }
             )
+            # Recovery for projects finalized by an older build: the report and
+            # `.claims.json` may exist even though a later provider-history error marked
+            # the run failed before importing its ledger. Import once on read; a
+            # successful replacement persists, so subsequent panel refreshes are cheap.
+            if (
+                value.get("method") == "grounded_claims"
+                and not value.get("claims")
+                and produced
+            ):
+                self._import_grounded_claims(session_id, value)
+                restored = next(
+                    (
+                        item
+                        for item in self.research_runs.list(session_id)
+                        if item.run_id == run.run_id
+                    ),
+                    None,
+                )
+                if restored is not None and restored.claims:
+                    value["claims"] = list(restored.claims)
             result.append(value)
         return result
 
@@ -1636,6 +1656,11 @@ class SessionManager:
         changes: dict[str, Any] = {
             "sources_found": int(run.get("browser_navigation_count") or 0)
         }
+        # Artifact writes can succeed before the provider rejects a later history replay.
+        # Preserve the useful, already-validated claim ledger even when the overall turn
+        # ends in error/interruption so the research panel does not incorrectly show zero.
+        if run.get("artifact_paths"):
+            self._import_grounded_claims(session_id, run)
         if terminal_status == "error":
             changes.update(status="failed", error="The model turn failed.")
         elif terminal_status == "interrupted":
@@ -1665,7 +1690,6 @@ class SessionManager:
                 artifact_path=preferred,
                 error=None,
             )
-            self._import_grounded_claims(session_id, run)
         updated = self.research_runs.update(run["run_id"], **changes)
         return updated.to_dict() if updated else None
 

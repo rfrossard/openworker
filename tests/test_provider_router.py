@@ -325,6 +325,7 @@ def test_manager_curated_models(tmp_path, monkeypatch):
     # The test controls the catalog; a developer's live Ollama daemon must not inject
     # whatever models happen to be installed on that machine.
     monkeypatch.setattr(SessionManager, "_ollama_models", lambda self: [])
+    monkeypatch.setattr(SessionManager, "_ollama_alive", lambda self: True)
     mgr = SessionManager(data_dir=tmp_path)
     # no provider keys → nothing but the always-selectable default
     assert mgr.get_settings()["models"] == [mgr.model]

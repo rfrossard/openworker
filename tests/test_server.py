@@ -436,6 +436,114 @@ def test_research_run_failure_can_be_retried(tmp_path, monkeypatch):
     assert resumed["error"] is None
 
 
+def test_failed_grounded_research_keeps_completed_claim_ledger(tmp_path, monkeypatch):
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    artifacts: list[dict] = []
+    monkeypatch.setattr(manager, "list_artifacts", lambda _session: artifacts)
+    monkeypatch.setattr(
+        manager, "browser_state", lambda _session: {"history": [], "evidence": []}
+    )
+    created = manager.create_research_run(
+        "research-session",
+        question="Recover completed claims",
+        depth="quick",
+        method="grounded_claims",
+        plan=["Research", "Synthesize"],
+    )["run"]
+    manager.start_research_run_from_text(
+        "research-session", f"Research Run: {created['run_id']}"
+    )
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "partial.md").write_text("# Partial report", encoding="utf-8")
+    (reports / "partial.claims.json").write_text(
+        json.dumps(
+            {
+                "claims": [
+                    {
+                        "claim_id": "C1",
+                        "claim": "A completed claim survives a later provider error.",
+                        "status": "supported",
+                        "confidence": 0.9,
+                        "sources": ["https://example.com/source"],
+                        "justification": "The artifact was written before the error.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    artifacts.extend(
+        [
+            {"path": "reports/partial.md"},
+            {"path": "reports/partial.claims.json"},
+        ]
+    )
+
+    failed = manager.finalize_research_turn("research-session", "error")
+    restored = manager.research_runs.list("research-session")[0]
+
+    assert failed["status"] == "failed"
+    assert len(restored.claims) == 1
+    assert restored.claims[0]["claim_id"] == "C1"
+
+
+def test_listing_old_failed_research_recovers_existing_claim_artifact(
+    tmp_path, monkeypatch
+):
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    artifacts: list[dict] = []
+    monkeypatch.setattr(manager, "list_artifacts", lambda _session: artifacts)
+    monkeypatch.setattr(
+        manager, "browser_state", lambda _session: {"history": [], "evidence": []}
+    )
+    created = manager.create_research_run(
+        "research-session",
+        question="Recover a legacy failed run",
+        depth="quick",
+        method="grounded_claims",
+        plan=["Research", "Synthesize"],
+    )["run"]
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "legacy.claims.json").write_text(
+        json.dumps(
+            {
+                "claims": [
+                    {
+                        "claim_id": "C1",
+                        "claim": "The existing ledger is recoverable without another model call.",
+                        "status": "supported",
+                        "confidence": 0.95,
+                        "sources": ["https://example.com/source"],
+                        "justification": "The artifact already exists on disk.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    artifacts.append({"path": "reports/legacy.claims.json"})
+    manager.research_runs.update(
+        created["run_id"], status="failed", error="The model turn failed."
+    )
+
+    listed = manager.list_research_runs("research-session")[0]
+    restored = manager.research_runs.list("research-session")[0]
+
+    assert listed["status"] == "failed"
+    assert listed["claims"][0]["claim_id"] == "C1"
+    assert restored.claims[0]["claim_id"] == "C1"
+
+
 def test_browser_preview_interval_defaults_persists_and_is_bounded(tmp_path):
     client = _client(tmp_path, [])
 

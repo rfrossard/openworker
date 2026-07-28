@@ -396,6 +396,70 @@ def test_outbound_repairs_only_missing_results_in_parallel_group(tmp_path):
     assert [m["tool_call_id"] for m in results] == ["call_done", "call_missing"]
 
 
+def test_outbound_drops_tool_result_without_preceding_call(tmp_path):
+    engine = TurnEngine(
+        provider=OneTurnProvider(AssistantTurn(text="done", finish_reason="stop")),
+        registry=ToolRegistry(),
+        permissions=PermissionEngine(workspace_root=tmp_path),
+        model="deepseek:deepseek-v4-flash",
+        messages=[
+            {
+                "role": "tool",
+                "tool_call_id": "call_from_compacted_history",
+                "content": '{"ok":true}',
+            },
+            {"role": "user", "content": "continue"},
+        ],
+    )
+
+    outbound = engine._outbound_messages()
+    assert [m["role"] for m in outbound] == ["user"]
+    assert engine.messages[0]["role"] == "tool"
+
+
+def test_outbound_drops_mismatched_and_duplicate_tool_results(tmp_path):
+    engine = TurnEngine(
+        provider=OneTurnProvider(AssistantTurn(text="done", finish_reason="stop")),
+        registry=ToolRegistry(),
+        permissions=PermissionEngine(workspace_root=tmp_path),
+        model="deepseek:deepseek-v4-flash",
+        messages=[
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_expected",
+                        "type": "function",
+                        "function": {"name": "write_file", "arguments": "{}"},
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_other",
+                "content": '{"ok":true}',
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_expected",
+                "content": '{"ok":true}',
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_expected",
+                "content": '{"ok":true,"duplicate":true}',
+            },
+            {"role": "user", "content": "continue"},
+        ],
+    )
+
+    outbound = engine._outbound_messages()
+    results = [m for m in outbound if m["role"] == "tool"]
+    assert [m["tool_call_id"] for m in results] == ["call_expected"]
+    assert "duplicate" not in results[0]["content"]
+
+
 def test_stop_during_thinking_keeps_partial_reasoning(tmp_path):
     class EndlessThinkingProvider(ProviderClient):
         def complete(self, **kwargs):  # pragma: no cover

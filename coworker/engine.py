@@ -997,9 +997,10 @@ class TurnEngine:
         """Close incomplete historical tool-call groups for provider compatibility.
 
         A tool result must follow its assistant ``tool_calls`` group before any new
-        user/assistant message. Valid results are retained; only missing IDs receive a
-        synthetic interruption result. This is deliberately send-time-only so recovery
-        does not rewrite the append-only conversation log.
+        user/assistant message. Valid results are retained, missing IDs receive a
+        synthetic interruption result, and orphaned/mismatched/duplicate results are
+        omitted. This is deliberately send-time-only so recovery does not rewrite the
+        append-only conversation log.
         """
         repaired: list[dict[str, Any]] = []
         pending: list[str] = []
@@ -1022,7 +1023,19 @@ class TurnEngine:
 
         for message in messages:
             role = message.get("role")
-            if pending and role != "tool":
+            if role == "tool":
+                call_id = message.get("tool_call_id")
+                if call_id not in pending:
+                    # A compacted/legacy transcript can retain a result after losing
+                    # the assistant call that introduced it. OpenAI-compatible APIs
+                    # reject that history; a duplicate result is invalid for the same
+                    # reason. Neither should be replayed to the model.
+                    continue
+                repaired.append(message)
+                pending.remove(call_id)
+                continue
+
+            if pending:
                 close_pending()
 
             repaired.append(message)
@@ -1033,10 +1046,6 @@ class TurnEngine:
                     for tc in message["tool_calls"]
                     if isinstance(tc, dict) and tc.get("id")
                 ]
-            elif role == "tool" and pending:
-                call_id = message.get("tool_call_id")
-                if call_id in pending:
-                    pending.remove(call_id)
 
         close_pending()
         return repaired
