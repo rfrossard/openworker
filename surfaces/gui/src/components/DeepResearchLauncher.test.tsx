@@ -59,6 +59,9 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("speaker notes");
     expect(prompt).toContain("inspect for overlap");
     expect(prompt).toContain('template_id="atlas"');
+    expect(prompt).toContain("minimum_images=5");
+    expect(prompt).toContain("visual_plan_complete=true");
+    expect(prompt).toContain("result.path exactly");
   });
 
   it("persists the run before letting the user review it", async () => {

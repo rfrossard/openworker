@@ -59,6 +59,9 @@ recoverable: completed phases and outputs must survive a model failure or user p
    known. For generated visuals use `generate_image` with Gemini Nano Banana 2 Lite at
    1K and request a widescreen composition. Preserve prompt, provider, model, source,
    and slide mapping in `asset_provenance`.
+   A successful asset record must include the exact workspace path returned by the tool.
+   Planned visuals are blocking: provider failure requires a sourced replacement or an
+   explicit user-approved change to the plan.
 6. **Presenter.** Create the PPTX and matching slide PDF with one complete call to
    `build_presentation`. Both formats must come from the same structured specification.
 7. **Environment-grounded reflection.** Inspect every PNG returned in `preview_paths`
@@ -83,7 +86,8 @@ Score each dimension from 1–5 and record evidence:
 
 The final quality decision passes only when every dimension is at least 4, there are no
 critical findings, every factual slide has sources, all output signatures are valid,
-and the preview count equals the PDF page count.
+the preview count equals the PDF page count, and `visual_plan_complete` is true. A deck
+that requested imagery cannot pass with zero embedded images.
 
 ## Checkpoints and recovery
 

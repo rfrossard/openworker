@@ -24,6 +24,8 @@ describe("ManusPresentationLauncher", () => {
     expect(prompt).toContain(".presentation.json");
     expect(prompt).toContain("rendered slide previews");
     expect(prompt).toContain('template_id="atlas"');
+    expect(prompt).toContain("minimum_images=5");
+    expect(prompt).toContain("visual_plan_complete=true");
   });
 
   it("sends a complete English brief to the composer", () => {

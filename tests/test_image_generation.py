@@ -59,8 +59,7 @@ def test_generate_image_writes_png_atomically_inside_workspace(tmp_path):
     assert interactions.calls[0]["model"] == "gemini-3.1-flash-lite-image"
     assert interactions.calls[0]["response_format"] == {
         "type": "image",
-        "mime_type": "image/png",
-        "aspect_ratio": "3:2",
+        "aspect_ratio": "16:9",
         "image_size": "1K",
     }
 

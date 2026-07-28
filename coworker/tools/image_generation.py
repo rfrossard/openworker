@@ -19,7 +19,9 @@ _MAX_IMAGE_BYTES = 30 * 1024 * 1024
 _ESTIMATED_IMAGE_COST_USD = 0.0336
 _ASPECT_RATIOS = {
     "1024x1024": "1:1",
-    "1536x1024": "3:2",
+    # The presentation canvas is 16:9. The public size is retained for backwards
+    # compatibility with saved plans; Gemini chooses the exact 1K pixel dimensions.
+    "1536x1024": "16:9",
     "1024x1536": "2:3",
 }
 
@@ -133,7 +135,6 @@ def make_generate_image_tool(
                 input=clean_prompt,
                 response_format={
                     "type": "image",
-                    "mime_type": "image/png",
                     "aspect_ratio": _ASPECT_RATIOS[size],
                     "image_size": "1K",
                 },

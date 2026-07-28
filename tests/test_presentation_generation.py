@@ -31,6 +31,9 @@ def test_build_presentation_creates_real_matching_files_with_image(tmp_path):
                 "image_path": "visual.png",
                 "image_caption": "Test visual",
                 "layout": "image-left",
+                "image_fit": "contain",
+                "image_focus": "right",
+                "image_required": True,
                 "sources": ["https://example.com/research"],
             },
             {
@@ -41,11 +44,13 @@ def test_build_presentation_creates_real_matching_files_with_image(tmp_path):
         ],
         pptx_path="reports/deck.pptx",
         pdf_path="reports/deck.pdf",
+        minimum_images=1,
     )
 
     assert result["ok"] is True
     assert result["slides"] == 3
     assert result["images_embedded"] == 1
+    assert result["visual_plan_complete"] is True
     assert len(result["preview_paths"]) == 3
     assert result["visual_review_required"] is True
     pptx = tmp_path / "reports/deck.pptx"
@@ -79,6 +84,24 @@ def test_build_presentation_rejects_path_escape_and_missing_image(tmp_path):
     assert "escapes" in escaped["error"]
     assert missing["ok"] is False
     assert "not found" in missing["error"]
+
+    incomplete = tool(
+        title="Deck",
+        slides=[{"title": "Slide without its planned asset"}],
+        pptx_path="incomplete.pptx",
+        pdf_path="incomplete.pdf",
+        minimum_images=1,
+    )
+    required = tool(
+        title="Deck",
+        slides=[{"title": "Required visual", "image_required": True}],
+        pptx_path="required.pptx",
+        pdf_path="required.pdf",
+    )
+    assert incomplete["ok"] is False
+    assert "requires at least 1 images" in incomplete["error"]
+    assert required["ok"] is False
+    assert "requires its planned image" in required["error"]
 
 
 def test_build_presentation_applies_builtin_and_workspace_potx_templates(tmp_path):

@@ -28,6 +28,9 @@ through every phase.
    imagery. Use the native `generate_image` tool, which is configured for Gemini Nano
    Banana 2 Lite at 1K, and request 1536×1024 for a widescreen aspect ratio. Never invent
    charts, people, quotes, logos, or documentary evidence.
+   Copy the exact successful tool `path` into the slide's `image_path`; a planned visual
+   remains incomplete until that workspace file exists. If generation is unavailable,
+   use a sourced visual with provenance rather than silently dropping the asset.
 6. Call `build_presentation` once with the complete structured slide specification,
    workspace-relative image paths, the selected `template_id` or `template_path`, and
    destinations under `reports/`.
@@ -35,6 +38,8 @@ through every phase.
    expected number of embedded images, and returns slide previews plus a contact sheet.
    Inspect the rendered previews before accepting the deck; do not judge only the slide
    specification. Fix the specification and rebuild on failure.
+   When visuals were requested, require `visual_plan_complete: true`. Never approve a
+   deck with `images_embedded: 0` or mark image relevance “not applicable.”
 8. Save the storyboard, slide-by-slide source manifest, and factual claim ledger beside
    the PPTX and PDF.
 
@@ -45,6 +50,10 @@ through every phase.
 - Use at most six concise bullets; prefer three or four.
 - Put explanation in the presentation narrative, not dense paragraphs.
 - Add `image_path`, `image_caption`, and source URLs when relevant.
+- Set `image_required: true` for every storyboard visual. Choose `image_fit` (`cover` or
+  `contain`) and `image_focus` (`left`, `center`, or `right`) based on the composition.
+- Pass the approved visual count as `minimum_images` so rendering fails if assets are
+  missing instead of quietly producing an incomplete deck.
 - Select `image-left`, `image-right`, or `statement` layouts when they strengthen the
   narrative; use `auto` only when no deliberate alternative is warranted.
 - Use one image at most once unless it is an intentional background.

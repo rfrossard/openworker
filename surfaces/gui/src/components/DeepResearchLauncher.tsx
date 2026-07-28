@@ -42,12 +42,13 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
     .map((line, index) => `${index + 1}. ${line.replace(/^\d+[.)]\s*/, "")}`)
     .join("\n");
   const depth = DEPTH_SETTINGS[brief.depth];
+  const minimumImages = Math.max(2, Math.ceil(((brief.slideCount || 10) - 1) * 0.4));
   const imageRequirements =
     brief.imageMode === "none"
       ? `- Do not generate or source decorative images. Use only evidence-backed charts, tables, and diagrams that can be built from verified data.`
       : brief.imageMode === "source"
         ? `- Use sourced visuals only. Prefer primary-source or permissively licensed images, preserve the original URL and license in the source manifest, and never hotlink remote assets in the final files.`
-        : `- Generate original 1K visuals with the native generate_image tool using Gemini Nano Banana 2 Lite. Use 1536x1024 for widescreen slides and save each approved result under reports/assets/. Every call is paid and approval-gated; if Gemini generation is unavailable or declined, fall back to a sourced visual or an evidence-backed diagram.`;
+        : `- Generate at least ${minimumImages} distinct original 1K visuals with the native generate_image tool using Gemini Nano Banana 2 Lite. Use 1536x1024 for widescreen slides and save each approved result under reports/assets/. Every call is paid and approval-gated. Copy each successful result.path exactly into the matching slide image_path. If Gemini generation is unavailable or declined, obtain a sourced visual with provenance; do not silently remove the planned visual or declare image relevance non-applicable.`;
   const presentationRequirements =
     brief.deliverable === "presentation"
       ? `
@@ -62,6 +63,7 @@ ${brief.templatePath
 - Use a two-stage workflow inspired by PPTAgent: first research and storyboard; then render, inspect every slide, and revise visual or factual defects.
 - Load the presentation-studio skill before storyboarding. Its workflow and quality gate are mandatory.
 - Build both final formats with the native build_presentation tool from one structured slide specification. Never create the PDF with a Markdown writer, plain-text converter, or by renaming a file.
+- For every planned visual set image_required=true, choose image_fit and image_focus deliberately, and call build_presentation with minimum_images=${brief.imageMode === "none" ? 0 : minimumImages}. A failed image call does not satisfy the visual plan.
 - Apply Presenton-style local/BYOK principles: never send research, files, or credentials to an unapproved external presentation service.
 - Give each slide that materially benefits from imagery one distinct, relevant visual. Never invent charts, data, people, quotes, or outcomes.
 ${imageRequirements}
@@ -70,6 +72,7 @@ ${imageRequirements}
 - Export both reports/<descriptive-name>.pptx and reports/<descriptive-name>.pdf from build_presentation, using the same approved visual assets in both. Also export reports/<descriptive-name>.claims.json, reports/<descriptive-name>-storyboard.md, and reports/<descriptive-name>.sources.md.
 - The claim ledger must use this top-level shape even when Standard Research is selected: {"claims":[{"claim_id":"C1","claim":"atomic factual statement","status":"supported","confidence":0.9,"sources":["https://..."],"justification":"what the evidence establishes","counterevidence":"contradictions or limitations"}]}.
 - Render every final slide to images, inspect for overlap, clipping, wrapping, unreadable text, broken crops, and unresolved placeholders, then fix all defects before completion.
+- Verify build_presentation returns visual_plan_complete=true and the expected images_embedded count. A presentation requested with visuals must never pass quality review with zero embedded images.
 - End your response with clickable artifact links to the PPTX, PDF, storyboard, source manifest, and claim ledger.`
       : `
 - Create the report as reports/<descriptive-name>.md and a machine-readable ledger beside it as reports/<descriptive-name>.claims.json.

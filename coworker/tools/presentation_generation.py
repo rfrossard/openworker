@@ -62,6 +62,20 @@ _SCHEMA = {
                                 "description": "Optional workspace-relative PNG or JPEG.",
                             },
                             "image_caption": {"type": "string"},
+                            "image_fit": {
+                                "type": "string",
+                                "enum": ["cover", "contain"],
+                                "description": "Cover crops to fill; contain preserves the entire image.",
+                            },
+                            "image_focus": {
+                                "type": "string",
+                                "enum": ["left", "center", "right"],
+                                "description": "Horizontal focal point used when cover-cropping.",
+                            },
+                            "image_required": {
+                                "type": "boolean",
+                                "description": "Fail instead of silently rendering this slide without its planned visual.",
+                            },
                             "layout": {
                                 "type": "string",
                                 "enum": ["auto", "image-right", "image-left", "statement"],
@@ -95,6 +109,12 @@ _SCHEMA = {
                 "template_path": {
                     "type": "string",
                     "description": "Optional workspace-relative .potx file; overrides template_id.",
+                },
+                "minimum_images": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": _MAX_SLIDES,
+                    "description": "Fail when fewer images are embedded than the approved visual plan requires.",
                 },
             },
             "required": ["title", "slides", "pptx_path", "pdf_path"],
@@ -179,11 +199,23 @@ def _editable_copy_of_potx(template: Path) -> Path:
         raise
 
 
-def _cover_image(path: Path, width: int = 1200, height: int = 750) -> BytesIO:
+def _cover_image(
+    path: Path,
+    width: int = 1200,
+    height: int = 750,
+    *,
+    fit: str = "cover",
+    focus: str = "center",
+) -> BytesIO:
     from PIL import Image, ImageOps
 
     with Image.open(path) as source:
-        fitted = ImageOps.fit(source.convert("RGB"), (width, height))
+        source_rgb = source.convert("RGB")
+        if fit == "contain":
+            fitted = ImageOps.pad(source_rgb, (width, height), color="#EEF1F5")
+        else:
+            centering = {"left": (0.2, 0.5), "center": (0.5, 0.5), "right": (0.8, 0.5)}[focus]
+            fitted = ImageOps.fit(source_rgb, (width, height), centering=centering)
         stream = BytesIO()
         fitted.save(stream, format="JPEG", quality=92, optimize=True)
     stream.seek(0)
@@ -217,12 +249,21 @@ def _normalize_slides(root: Path, slides: list[dict[str, Any]]) -> list[dict[str
                 "bullets": [value[:360] for value in bullets],
                 "image": _safe_image(root, str(item.get("image_path") or "")),
                 "image_caption": str(item.get("image_caption") or "").strip()[:220],
+                "image_fit": str(item.get("image_fit") or "cover").strip().lower(),
+                "image_focus": str(item.get("image_focus") or "center").strip().lower(),
+                "image_required": bool(item.get("image_required")),
                 "sources": sources,
                 "layout": str(item.get("layout") or "auto").strip().lower(),
             }
         )
         if normalized[-1]["layout"] not in {"auto", "image-right", "image-left", "statement"}:
             raise ValueError(f"Slide {index} has an unsupported layout.")
+        if normalized[-1]["image_fit"] not in {"cover", "contain"}:
+            raise ValueError(f"Slide {index} has an unsupported image fit.")
+        if normalized[-1]["image_focus"] not in {"left", "center", "right"}:
+            raise ValueError(f"Slide {index} has an unsupported image focus.")
+        if normalized[-1]["image_required"] and not normalized[-1]["image"]:
+            raise ValueError(f"Slide {index} requires its planned image before rendering.")
     return normalized
 
 
@@ -319,7 +360,11 @@ def _add_pptx(
         if image:
             image_x = 0.76 if layout == "image-left" else 6.65
             slide.shapes.add_picture(
-                _cover_image(image),
+                _cover_image(
+                    image,
+                    fit=spec["image_fit"],
+                    focus=spec["image_focus"],
+                ),
                 Inches(image_x),
                 Inches(2.0),
                 width=Inches(5.9),
@@ -412,7 +457,13 @@ def _add_pdf(
             y -= 52
         if image:
             image_x = 54 if layout == "image-left" else 500
-            prepared = _cover_image(image, 800, 500)
+            prepared = _cover_image(
+                image,
+                800,
+                500,
+                fit=spec["image_fit"],
+                focus=spec["image_focus"],
+            )
             canvas.drawImage(
                 ImageReader(prepared),
                 image_x,
@@ -509,6 +560,7 @@ def make_build_presentation_tool(*, workspace: Path | str):
         accent_color: str = "",
         template_id: str = "atlas",
         template_path: str = "",
+        minimum_images: int = 0,
     ) -> dict[str, Any]:
         """Render an editable PPTX and a matching slide-formatted PDF."""
         clean_title = str(title or "").strip()
@@ -528,8 +580,20 @@ def make_build_presentation_tool(*, workspace: Path | str):
             pdf_target = _safe_target(root, pdf_path, ".pdf")
             normalized = _normalize_slides(root, slides)
             custom_template = _safe_template(root, template_path)
+            required_images = max(0, min(_MAX_SLIDES, int(minimum_images or 0)))
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
+        except (TypeError, OverflowError):
+            return {"ok": False, "error": "Minimum images must be a whole number."}
+        embedded_images = sum(bool(item["image"]) for item in normalized)
+        if embedded_images < required_images:
+            return {
+                "ok": False,
+                "error": (
+                    f"The approved visual plan requires at least {required_images} images, "
+                    f"but only {embedded_images} valid image files were provided."
+                ),
+            }
 
         pptx_fd, pptx_temp = _atomic_destination(pptx_target)
         pdf_fd, pdf_temp = _atomic_destination(pdf_target)
@@ -574,7 +638,9 @@ def make_build_presentation_tool(*, workspace: Path | str):
             "pptx_path": str(pptx_target.relative_to(root)),
             "pdf_path": str(pdf_target.relative_to(root)),
             "slides": len(normalized) + 1,
-            "images_embedded": sum(bool(item["image"]) for item in normalized),
+            "images_embedded": embedded_images,
+            "minimum_images": required_images,
+            "visual_plan_complete": embedded_images >= required_images,
             "formats": ["pptx", "pdf"],
             "preview_paths": [str(path.relative_to(root)) for path in preview_paths],
             "contact_sheet_path": str(contact_sheet.relative_to(root)),
