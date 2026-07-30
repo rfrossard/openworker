@@ -32,7 +32,7 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("final entailment check");
     expect(prompt).toContain('"schema_version": "openworker.deep-research.v2"');
     expect(prompt).toContain('"sections"');
-    expect(prompt).toContain("table | bar_chart | donut_chart | quote | flowchart | org_chart | timeline | process");
+    expect(prompt).toContain("table | bar_chart | donut_chart | big_number | quote | flowchart | org_chart | timeline | process");
     expect(prompt).toContain("Every numeric chart/table value, exact quote, relationship, event, and process step");
     expect(prompt).toContain("visual_references");
     expect(prompt).toContain("Never invent content to complete");
@@ -71,6 +71,10 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("result.path exactly");
     expect(prompt).toContain("add sections for Slide Designer");
     expect(prompt).toContain("Every numeric chart/table value");
+    expect(prompt).toContain("```openworker-visual");
+    expect(prompt).toContain('"type": "table"');
+    expect(prompt).toContain("For big_number, provide data.value");
+    expect(prompt).toContain("storyboard blocks and the companion .claims.json visual ledger must agree");
   });
 
   it("persists the run before letting the user review it", async () => {

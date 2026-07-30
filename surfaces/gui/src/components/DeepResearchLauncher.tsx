@@ -62,7 +62,7 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
     "claim_ids": ["C1"],
     "sources": ["https://..."],
     "representation": {
-      "type": "table | bar_chart | donut_chart | quote | flowchart | org_chart | timeline | process | roadmap | comparison | metrics | image | text",
+      "type": "table | bar_chart | donut_chart | big_number | quote | flowchart | org_chart | timeline | process | roadmap | comparison | metrics | image | text",
       "reason": "why this representation best explains the evidence",
       "data": {
         "columns": ["Column"],
@@ -89,6 +89,25 @@ ${visualLedgerSchema}
 - Choose one primary representation per section. Include only the representation.data fields that apply to that type.
 - Every numeric chart/table value, exact quote, relationship, event, and process step must map to claim_ids and source URLs. Never invent content to complete a visual.
 - Add visual_references when a primary, licensed, or compositionally useful reference could illustrate the section. References are provenance and art direction, not permission to copy; record URL, purpose, source type, license note, and claim IDs.`;
+  const storyboardMarkdownContract = `Storyboard Markdown visual contract:
+- Deep Research, not Slide Designer, must decide whether each section is best communicated as a table, chart, big number, quote, diagram, timeline, image, or concise text. Choose the representation that makes the verified evidence easiest to understand, not the one that adds the most decoration.
+- After the audience-facing Narrative job and Takeaway in every storyboard section, write exactly one fenced \`\`\`openworker-visual block containing valid JSON. Slide Designer reads this block as production data and never renders it as slide copy.
+- Use this shape:
+\`\`\`openworker-visual
+{
+  "type": "table",
+  "reason": "A table makes the alternatives directly comparable.",
+  "data": {
+    "columns": ["Option", "Cost", "Evidence"],
+    "rows": [["A", "$10", "C1"], ["B", "$20", "C2"]]
+  },
+  "claim_ids": ["C1", "C2"],
+  "sources": ["https://..."]
+}
+\`\`\`
+- For bar_chart and donut_chart, provide data.series with label, numeric value, and claim_ids. For big_number, provide data.value, data.label, and data.context. For tables, provide actual columns and rows. For quotes, provide exact text and attribution. For timelines, processes, flowcharts, and org charts, provide ordered items or relationships.
+- Put only audience-facing prose outside the block. Do not expose layout instructions, transition notes, source manifests, image paths, or production comments as slide copy.
+- Use verified values rather than placeholders. The storyboard blocks and the companion .claims.json visual ledger must agree on representation, data, claims, and sources.`;
   const imageRequirements =
     brief.imageMode === "none"
       ? `- Do not generate or source decorative images. Use only evidence-backed charts, tables, and diagrams that can be built from verified data.`
@@ -99,6 +118,7 @@ ${visualLedgerSchema}
     brief.deliverable === "presentation"
       ? `
 Research Presentation deliverable:
+${storyboardMarkdownContract}
 ${brief.templatePath
   ? `- Apply the editable POTX template at ${brief.templatePath}. Preserve its masters, layouts, theme fonts, colors, and placeholders; pass template_path="${brief.templatePath}" to build_presentation.`
   : `- Apply the editable built-in "${templateById(brief.templateId || "atlas").name}" template; pass template_id="${templateById(brief.templateId || "atlas").id}" to build_presentation.`}

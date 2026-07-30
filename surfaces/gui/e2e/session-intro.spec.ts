@@ -80,7 +80,7 @@ test("folder task opens the inline add-folder form; adding a folder prefills the
   const path = page.getByPlaceholder("Choose or paste a folder path…");
   await expect(path).toBeVisible();
   await path.fill("/Users/me/Reports");
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.locator(".intro-addfolder").getByRole("button", { name: "Add", exact: true }).click();
 
   await expect(page.getByPlaceholder(/Ask the coworker/)).toHaveValue(
     /Analyze the files in this folder/,

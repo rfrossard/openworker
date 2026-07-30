@@ -147,6 +147,36 @@ A2A Protocol: https://a2a-protocol.org/latest/
     expect(deck.slides[0].bullets).toEqual(["Option | Cost", "A | 10", "B | 20"]);
   });
 
+  it("reads Deep Research visual data from Markdown without rendering production instructions", () => {
+    const deck = parseMarkdownDeck(`# Results
+## Slide 2: Options at a glance
+- **Narrative job:** Compare the verified alternatives.
+- **Takeaway:** Option A costs less.
+\`\`\`openworker-visual
+{
+  "type": "table",
+  "reason": "The alternatives share comparable fields.",
+  "data": {
+    "columns": ["Option", "Cost"],
+    "rows": [["A", "$10"], ["B", "$20"]]
+  },
+  "claim_ids": ["C1", "C2"],
+  "sources": ["https://example.com/data"]
+}
+\`\`\``);
+    expect(deck.slides[0]).toMatchObject({
+      title: "Options at a glance",
+      takeaway: "Option A costs less.",
+      layout: "table",
+      bullets: ["Option | Cost", "A | $10", "B | $20"],
+      claimIds: ["C1", "C2"],
+      sourceUrls: ["https://example.com/data"],
+      visualPlanReason: "The alternatives share comparable fields.",
+    });
+    expect(JSON.stringify(deck)).not.toContain("openworker-visual");
+    expect(JSON.stringify(deck)).not.toContain("Narrative job:");
+  });
+
   it("maps grounded research sections into editable semantic slide representations", () => {
     const deck = parseMarkdownDeck(`# Evidence deck
 ## Market evidence
@@ -290,9 +320,9 @@ Original visual.`);
     expect((screen.getByLabelText("Row 1 column 1") as HTMLInputElement).value).toBe("Option");
     fireEvent.change(screen.getByLabelText("Row 2 column 2"), { target: { value: "12" } });
     expect(screen.getByTestId("slide-preview").textContent).toContain("12");
-    fireEvent.click(screen.getByRole("button", { name: "+ Add column" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Column" }));
     expect(screen.getByLabelText("Row 1 column 3")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "− Remove last column" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete column" }));
     expect(screen.queryByLabelText("Row 1 column 3")).toBeNull();
   });
 
@@ -513,10 +543,11 @@ Original visual.`);
     await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
     expect(screen.getByText("Story and content")).toBeTruthy();
     expect(screen.getByText("Story role")).toBeTruthy();
-    expect(screen.queryByText("Add a structured element")).toBeNull();
+    expect(screen.queryByText("Change visual type")).toBeNull();
     expect(screen.queryByRole("button", { name: "Bar chart Compare values" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
-    expect(screen.getByText("Add a structured element")).toBeTruthy();
+    expect(screen.getAllByText("Standard").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText("Change visual type"));
     fireEvent.click(screen.getByRole("button", { name: "Bar chart Compare values" }));
     expect(screen.getByTestId("slide-preview").className).toContain("layout-bar-chart");
     expect(screen.getByText("Chart data")).toBeTruthy();
@@ -530,6 +561,32 @@ Original visual.`);
     expect((screen.getByLabelText("Label 1") as HTMLInputElement).value).toBe("Consumer");
     fireEvent.click(screen.getByLabelText("Remove row 3"));
     expect(screen.queryByLabelText("Label 3")).toBeNull();
+  });
+
+  it("opens Markdown tables in a spreadsheet-like grid and accepts pasted cells", async () => {
+    vi.spyOn(api, "readArtifact").mockResolvedValue({
+      ok: true,
+      path: "reports/options-storyboard.md",
+      kind: "markdown",
+      content: `# Options
+## Comparison
+\`\`\`openworker-visual
+{"type":"table","data":{"columns":["Option","Cost"],"rows":[["A","10"],["B","20"]]}}
+\`\`\``,
+    });
+    render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
+    await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
+    expect(screen.getByRole("grid", { name: "Table data grid" })).toBeTruthy();
+    expect((screen.getByLabelText("Row 2 column 1") as HTMLInputElement).value).toBe("A");
+    fireEvent.paste(screen.getByLabelText("Row 2 column 1"), {
+      clipboardData: { getData: () => "Enterprise\t72\nConsumer\t28" },
+    });
+    expect((screen.getByLabelText("Row 2 column 1") as HTMLInputElement).value).toBe("Enterprise");
+    expect((screen.getByLabelText("Row 3 column 2") as HTMLInputElement).value).toBe("28");
+    fireEvent.click(screen.getByRole("button", { name: "+ Row" }));
+    expect(screen.getByLabelText("Row 4 column 1")).toBeTruthy();
   });
 
   it("shows a transparent image budget and keeps paid generation approval-gated", async () => {

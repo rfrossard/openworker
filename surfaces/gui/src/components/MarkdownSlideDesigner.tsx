@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { readArtifact, type ArtifactInfo } from "../api";
 import { PRESENTATION_TEMPLATE_GROUPS, templateById, templatesInGroup } from "../presentationTemplates";
@@ -76,6 +76,16 @@ interface ResearchVisualSection {
     data?: Record<string, unknown>;
   };
   visual_references?: unknown[];
+}
+
+interface MarkdownVisualBlock {
+  type?: string;
+  reason?: string;
+  data?: Record<string, unknown>;
+  claim_ids?: string[];
+  sources?: string[];
+  visual_references?: unknown[];
+  image_prompt?: string;
 }
 
 export interface ResearchVisualPlanResult {
@@ -256,6 +266,28 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
   if (!sections.length && preamble.length) sections.push({ title, lines: preamble });
 
   const slides = sections.slice(0, 30).map((section, index) => {
+    let markdownVisual: MarkdownVisualBlock | null = null;
+    let insideVisualBlock = false;
+    const visibleLines: string[] = [];
+    const visualJson: string[] = [];
+    for (const line of section.lines) {
+      if (/^```openworker-visual\s*$/i.test(line.trim())) {
+        insideVisualBlock = true;
+        continue;
+      }
+      if (insideVisualBlock && /^```\s*$/.test(line.trim())) {
+        insideVisualBlock = false;
+        try {
+          const parsed = JSON.parse(visualJson.join("\n"));
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) markdownVisual = parsed as MarkdownVisualBlock;
+        } catch {
+          markdownVisual = null;
+        }
+        continue;
+      }
+      if (insideVisualBlock) visualJson.push(line);
+      else visibleLines.push(line);
+    }
     const bullets: string[] = [];
     const paragraphs: string[] = [];
     const sourceUrls: string[] = [];
@@ -272,7 +304,7 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
       if (cleaned) paragraphs.push(cleaned);
       paragraph = "";
     };
-    for (const line of section.lines) {
+    for (const line of visibleLines) {
       const trimmed = line.trim();
       if (/^<!--[\s\S]*-->$/.test(trimmed) || /^```/.test(trimmed) || /^---+$/.test(trimmed)) continue;
       if (!trimmed) {
@@ -333,14 +365,27 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
       takeaway,
       [...bullets, ...paragraphs].slice(0, 8),
     );
+    const visualData = markdownVisual?.data && typeof markdownVisual.data === "object" && !Array.isArray(markdownVisual.data)
+      ? markdownVisual.data
+      : {};
+    const visualType = String(markdownVisual?.type || "").toLowerCase().replace(/[\s-]+/g, "_");
+    const visualLayout = visualType ? layoutFromRepresentation(visualType, visualData) : directiveLayout;
+    const semanticRows = visualType ? rowsFromRepresentation(visualType, visualData) : [];
+    const visualReferences = normalizeVisualReferences(markdownVisual?.visual_references);
+    const visualSources = strings(markdownVisual?.sources, 30).filter((url) => /^https?:\/\//.test(url));
+    const visualClaims = strings(markdownVisual?.claim_ids, 50);
+    const referenceDirection = visualReferences.map((item) => [item.description, item.purpose, item.url].filter(Boolean).join(" · ")).join("; ");
     return {
       ...slide,
-      layout: directiveLayout,
-      imageRequired,
-      imagePrompt,
-      sourceUrls: [...new Set(sourceUrls)].slice(0, 30),
-      visualPlanReason,
-      visualPlanData,
+      layout: visualLayout,
+      bullets: semanticRows.length ? semanticRows.slice(0, 12) : slide.bullets,
+      imageRequired: imageRequired || visualLayout === "image-right",
+      imagePrompt: cleanInline(String(markdownVisual?.image_prompt || "")) || referenceDirection || imagePrompt,
+      claimIds: visualClaims,
+      sourceUrls: [...new Set([...sourceUrls, ...visualSources])].slice(0, 30),
+      visualReferences,
+      visualPlanReason: cleanInline(String(markdownVisual?.reason || "")) || visualPlanReason,
+      visualPlanData: Object.keys(visualData).length ? visualData : visualPlanData,
     };
   });
 
@@ -374,6 +419,19 @@ function normalizeVisualReferences(value: unknown): ResearchVisualReference[] {
 }
 
 function rowsFromRepresentation(type: string, data: Record<string, unknown>): string[] {
+  if (type === "big_number") {
+    const value = cleanInline(String(data.value ?? ""));
+    const label = cleanInline(String(data.label || ""));
+    const context = cleanInline(String(data.context || data.detail || ""));
+    return value ? [[value, label].filter(Boolean).join(" | "), context].filter(Boolean) : [];
+  }
+  if (type === "metrics") {
+    return records(data.series || data.items, 12).map((item) => {
+      const label = cleanInline(String(item.label || item.name || ""));
+      const value = cleanInline(String(item.value ?? ""));
+      return label && value ? `${label} | ${value}` : "";
+    }).filter(Boolean);
+  }
   if (type === "table") {
     const columns = strings(data.columns, 6);
     const rows = Array.isArray(data.rows) ? data.rows.slice(0, 12) : [];
@@ -423,6 +481,7 @@ function layoutFromRepresentation(type: string, data: Record<string, unknown>): 
     roadmap: "roadmap",
     comparison: "comparison",
     metrics: "metric-grid",
+    big_number: "big-number",
     image: "image-right",
     text: "auto",
   };
@@ -972,6 +1031,8 @@ function TableEditor({
   rows: string[];
   onChange: (rows: string[]) => void;
 }) {
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [selectedCell, setSelectedCell] = useState({ row: 0, column: 0 });
   const columnCount = Math.max(2, Math.min(6, ...rows.map((row) => row.split("|").length)));
   const matrix = rows.map((row) => {
     const cells = row.split("|").map((cell) => cell.trim()).slice(0, columnCount);
@@ -984,40 +1045,108 @@ function TableEditor({
     serialize(next);
   };
   const addRow = () => serialize([...matrix, Array.from({ length: columnCount }, () => "")]);
-  const removeRow = (rowIndex: number) => serialize(matrix.filter((_, index) => index !== rowIndex));
+  const removeRow = (rowIndex: number) => {
+    if (matrix.length <= 2) return;
+    serialize(matrix.filter((_, index) => index !== rowIndex));
+    setSelectedCell(({ row, column }) => ({ row: Math.min(row, matrix.length - 2), column }));
+  };
   const addColumn = () => {
     if (columnCount >= 6) return;
     serialize(matrix.map((row) => [...row, ""]));
   };
-  const removeColumn = () => {
+  const removeColumn = (columnIndex = columnCount - 1) => {
     if (columnCount <= 2) return;
-    serialize(matrix.map((row) => row.slice(0, -1)));
+    serialize(matrix.map((row) => row.filter((_, index) => index !== columnIndex)));
+    setSelectedCell(({ row, column }) => ({ row, column: Math.min(column, columnCount - 2) }));
   };
+  const focusCell = (row: number, column: number) => {
+    const nextRow = Math.max(0, Math.min(row, matrix.length - 1));
+    const nextColumn = Math.max(0, Math.min(column, columnCount - 1));
+    setSelectedCell({ row: nextRow, column: nextColumn });
+    requestAnimationFrame(() => {
+      gridRef.current?.querySelector<HTMLInputElement>(`[data-grid-cell="${nextRow}-${nextColumn}"]`)?.focus();
+    });
+  };
+  const navigate = (event: KeyboardEvent<HTMLInputElement>, row: number, column: number) => {
+    const moves: Record<string, [number, number]> = {
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+    };
+    if (event.key === "Enter") {
+      event.preventDefault();
+      focusCell(row + (event.shiftKey ? -1 : 1), column);
+    } else if (moves[event.key] && !event.metaKey && !event.ctrlKey && event.currentTarget.selectionStart === event.currentTarget.selectionEnd) {
+      event.preventDefault();
+      focusCell(row + moves[event.key][0], column + moves[event.key][1]);
+    }
+  };
+  const pasteGrid = (event: ClipboardEvent<HTMLInputElement>, startRow: number, startColumn: number) => {
+    const pasted = event.clipboardData.getData("text");
+    if (!pasted.includes("\t") && !pasted.includes("\n")) return;
+    event.preventDefault();
+    const pastedRows = pasted.replace(/\r\n?/g, "\n").trimEnd().split("\n").map((line) => line.split("\t"));
+    const nextRowCount = Math.min(12, Math.max(matrix.length, startRow + pastedRows.length));
+    const nextColumnCount = Math.min(6, Math.max(columnCount, startColumn + Math.max(...pastedRows.map((row) => row.length))));
+    const next = Array.from({ length: nextRowCount }, (_, rowIndex) =>
+      Array.from({ length: nextColumnCount }, (_, columnIndex) => matrix[rowIndex]?.[columnIndex] || ""),
+    );
+    pastedRows.forEach((pastedRow, rowOffset) => pastedRow.forEach((value, columnOffset) => {
+      if (startRow + rowOffset < nextRowCount && startColumn + columnOffset < nextColumnCount) {
+        next[startRow + rowOffset][startColumn + columnOffset] = value.trim();
+      }
+    }));
+    serialize(next);
+  };
+  const columnName = (index: number) => String.fromCharCode(65 + index);
 
   return (
     <fieldset className="slide-designer-table-editor">
-      <legend>Table cells</legend>
-      <span>The first row becomes the table header.</span>
-      <div className="slide-designer-table-matrix" style={{ "--table-columns": columnCount } as CSSProperties}>
+      <legend>Table data</legend>
+      <span>Detected by Deep Research. Paste rows and columns directly from Excel or Google Sheets, or fine-tune individual cells.</span>
+      <div
+        ref={gridRef}
+        className="slide-designer-table-grid"
+        role="grid"
+        aria-label="Table data grid"
+        style={{ "--table-columns": columnCount } as CSSProperties}
+      >
+        <div className="corner" aria-hidden="true" />
+        {Array.from({ length: columnCount }, (_, columnIndex) => (
+          <div className="column-header" role="columnheader" key={`column-${columnIndex}`}>{columnName(columnIndex)}</div>
+        ))}
         {matrix.map((row, rowIndex) => (
-          <div key={`${rowIndex}-${row.join("|")}`} className={rowIndex === 0 ? "header" : ""}>
+          <div className="table-grid-row" role="row" key={`row-${rowIndex}`}>
+            <button
+              type="button"
+              className={selectedCell.row === rowIndex ? "row-header selected" : "row-header"}
+              aria-label={`Select table row ${rowIndex + 1}`}
+              onClick={() => setSelectedCell({ row: rowIndex, column: selectedCell.column })}
+            >{rowIndex + 1}</button>
             {row.map((cell, columnIndex) => (
               <input
-                key={columnIndex}
+                key={`${rowIndex}-${columnIndex}`}
+                role="gridcell"
+                data-grid-cell={`${rowIndex}-${columnIndex}`}
+                className={`${rowIndex === 0 ? "header-cell " : ""}${selectedCell.row === rowIndex && selectedCell.column === columnIndex ? "selected" : ""}`}
                 aria-label={`Row ${rowIndex + 1} column ${columnIndex + 1}`}
-                placeholder={rowIndex === 0 ? `Header ${columnIndex + 1}` : `Cell ${rowIndex + 1}.${columnIndex + 1}`}
+                placeholder={rowIndex === 0 ? `Header ${columnName(columnIndex)}` : ""}
                 value={cell}
+                onFocus={() => setSelectedCell({ row: rowIndex, column: columnIndex })}
                 onChange={(event) => update(rowIndex, columnIndex, event.target.value)}
+                onKeyDown={(event) => navigate(event, rowIndex, columnIndex)}
+                onPaste={(event) => pasteGrid(event, rowIndex, columnIndex)}
               />
             ))}
-            <button type="button" aria-label={`Remove table row ${rowIndex + 1}`} onClick={() => removeRow(rowIndex)}>Remove</button>
           </div>
         ))}
       </div>
       <div className="slide-designer-table-actions">
-        <button type="button" onClick={addRow}>+ Add row</button>
-        <button type="button" onClick={addColumn} disabled={columnCount >= 6}>+ Add column</button>
-        <button type="button" onClick={removeColumn} disabled={columnCount <= 2}>− Remove last column</button>
+        <button type="button" onClick={addRow}>+ Row</button>
+        <button type="button" onClick={addColumn} disabled={columnCount >= 6}>+ Column</button>
+        <button type="button" onClick={() => removeRow(selectedCell.row)} disabled={matrix.length <= 2}>Delete row</button>
+        <button type="button" onClick={() => removeColumn(selectedCell.column)} disabled={columnCount <= 2}>Delete column</button>
       </div>
     </fieldset>
   );
@@ -1198,24 +1327,32 @@ export function MarkdownSlideDesigner({
                     <label className="research-field"><span>Supporting points</span><textarea aria-label="Supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /><small className="slide-designer-format-help">Keep only audience-facing copy here.</small></label>
                     <label className="research-field"><span>Story role</span><textarea aria-label="Story role" rows={2} placeholder="What must this slide accomplish in the overall narrative?" value={slide.visualPlanReason} onChange={(event) => updateSlide({ visualPlanReason: event.target.value })} /><small className="slide-designer-format-help">Production guidance for the presentation generator. It will not appear on the slide.</small></label>
                   </div> : <div className="presentation-copilot-visual">
-                    <fieldset className="slide-designer-element-picker">
-                      <legend>Add a structured element</legend>
-                      <span>Choose a format, then refine its visual data below.</span>
+                    <div className="slide-designer-detected-element">
                       <div>
-                        {CONTENT_ELEMENTS.map((element) => (
-                          <button
-                            type="button"
-                            key={element.id}
-                            className={slide.layout === element.id ? "selected" : ""}
-                            aria-pressed={slide.layout === element.id}
-                            onClick={() => updateSlide(applyContentElement(slide, element.id))}
-                          >
-                            <strong>{element.label}</strong>
-                            <small>{element.hint}</small>
-                          </button>
-                        ))}
+                        <strong>{LAYOUTS.find((layout) => layout.id === slide.layout)?.label || "Standard"}</strong>
+                        <span>Selected from the Deep Research Markdown. Fine-tune the data below only when needed.</span>
                       </div>
-                    </fieldset>
+                      <details>
+                        <summary>Change visual type</summary>
+                        <fieldset className="slide-designer-element-picker">
+                          <legend>Visual type</legend>
+                          <div>
+                            {CONTENT_ELEMENTS.map((element) => (
+                              <button
+                                type="button"
+                                key={element.id}
+                                className={slide.layout === element.id ? "selected" : ""}
+                                aria-pressed={slide.layout === element.id}
+                                onClick={() => updateSlide(applyContentElement(slide, element.id))}
+                              >
+                                <strong>{element.label}</strong>
+                                <small>{element.hint}</small>
+                              </button>
+                            ))}
+                          </div>
+                        </fieldset>
+                      </details>
+                    </div>
                     {slide.layout === "table" ? (
                       <TableEditor rows={slide.bullets} onChange={(bullets) => updateSlide({ bullets })} />
                     ) : structuredRows ? (
