@@ -865,6 +865,14 @@ button.btn.danger { color: var(--accent); }
 .slide-designer-layouts { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 6px; padding-bottom: 12px; }
 .slide-designer-edit-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .slide-designer-edit-fields .research-field:first-child { grid-column: 1 / -1; }
+.slide-designer-story-header {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 3px;
+  padding-bottom: 2px;
+}
+.slide-designer-story-header strong { color: var(--ink); font-size: 12px; }
+.slide-designer-story-header span { color: var(--faint); font-size: 9.5px; line-height: 1.4; }
 .slide-designer-element-picker {
   grid-column: 1 / -1; min-width: 0; display: grid; gap: 7px; margin: 0; padding: 10px;
   border: 1px solid var(--line); border-radius: 10px; background: var(--panel);

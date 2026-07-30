@@ -189,29 +189,83 @@ function blankSlide(id: string, title: string, takeaway = "", bullets: string[] 
   };
 }
 
+function audienceTitle(value: string): string {
+  return cleanInline(value).replace(/^slide\s+\d+\s*[:.)—–-]\s*/i, "").trim();
+}
+
+function audienceCopy(value: string): string {
+  return cleanInline(value).replace(/^(?:takeaway|key message|message)\s*:\s*/i, "").trim();
+}
+
+function layoutDirective(value: string): SlideLayout {
+  const normalized = value.toLowerCase().replace(/[_\s]+/g, "-").trim();
+  const aliases: Record<string, SlideLayout> = {
+    standard: "auto",
+    text: "auto",
+    statement: "statement",
+    "title-only": "title-only",
+    section: "section",
+    conclusion: "conclusion",
+    "image-left": "image-left",
+    "image-right": "image-right",
+    "image-background": "image-background",
+    "image-top": "image-top",
+    "image-bottom": "image-bottom",
+    quote: "quote",
+    "two-column": "two-column",
+    "two-columns": "two-column",
+    timeline: "timeline",
+    process: "process",
+    roadmap: "roadmap",
+    flowchart: "flow-diagram",
+    "flow-diagram": "flow-diagram",
+    "org-chart": "org-chart",
+    comparison: "comparison",
+    "pros-cons": "pros-cons",
+    table: "table",
+    "bar-chart": "bar-chart",
+    "donut-chart": "donut-chart",
+    "metric-grid": "metric-grid",
+  };
+  return aliases[normalized] || "auto";
+}
+
 export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentation"): ParsedMarkdownDeck {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const h1 = lines.find((line) => /^#\s+/.test(line));
-  const title = cleanInline(h1?.replace(/^#\s+/, "") || fallbackTitle);
+  const title = cleanInline(h1?.replace(/^#\s+/, "") || fallbackTitle).replace(/^storyboard\s*:\s*/i, "");
   const sections: { title: string; lines: string[] }[] = [];
+  const preamble: string[] = [];
   let current: { title: string; lines: string[] } | null = null;
 
   for (const line of lines) {
     const heading = line.match(/^#{2,3}\s+(.+)$/);
     if (heading) {
       if (current) sections.push(current);
-      current = { title: cleanInline(heading[1]), lines: [] };
+      current = { title: audienceTitle(heading[1]), lines: [] };
       continue;
     }
     if (/^#\s+/.test(line)) continue;
-    if (!current && line.trim()) current = { title, lines: [] };
+    if (!current) {
+      if (line.trim() && !/^\s*---+\s*$/.test(line)) preamble.push(line);
+      continue;
+    }
     current?.lines.push(line);
   }
   if (current) sections.push(current);
+  if (!sections.length && preamble.length) sections.push({ title, lines: preamble });
 
   const slides = sections.slice(0, 30).map((section, index) => {
     const bullets: string[] = [];
     const paragraphs: string[] = [];
+    const sourceUrls: string[] = [];
+    let directiveTakeaway = "";
+    let directiveLayout: SlideLayout = "auto";
+    let imagePrompt = "";
+    let imageRequired = false;
+    let visualPlanReason = "";
+    const visualPlanData: Record<string, unknown> = {};
+    let sourceBlock = false;
     let paragraph = "";
     const flush = () => {
       const cleaned = cleanInline(paragraph);
@@ -219,6 +273,45 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
       paragraph = "";
     };
     for (const line of section.lines) {
+      const trimmed = line.trim();
+      if (/^<!--[\s\S]*-->$/.test(trimmed) || /^```/.test(trimmed) || /^---+$/.test(trimmed)) continue;
+      if (!trimmed) {
+        flush();
+        sourceBlock = false;
+        continue;
+      }
+      const directiveLine = trimmed.replace(/\*\*/g, "").replace(/__/g, "");
+      const directive = directiveLine.match(/^(?:[-*+]\s*)?(narrative job|story role|takeaway|key message|message|transition|animation|layout|slide layout|image|image prompt|visual|visual direction|sources?|references?|speaker notes?|notes?|representation|chart type|template)\s*:\s*(.*)$/i);
+      if (directive) {
+        flush();
+        const key = directive[1].toLowerCase();
+        const value = cleanInline(directive[2]);
+        if (key === "takeaway" || key === "key message" || key === "message") {
+          directiveTakeaway = value;
+        } else if (key === "narrative job" || key === "story role") {
+          visualPlanReason = value;
+        } else if (key === "layout" || key === "slide layout") {
+          directiveLayout = layoutDirective(value);
+        } else if (key === "transition" || key === "animation") {
+          if (value) visualPlanData[key] = value;
+        } else if (key === "image" || key === "image prompt" || key === "visual" || key === "visual direction") {
+          imagePrompt = value;
+          imageRequired = Boolean(value);
+        } else if (key === "sources" || key === "source" || key === "references" || key === "reference") {
+          sourceBlock = true;
+          const urls = directive[2].match(/https?:\/\/[^\s)>]+/g) || [];
+          sourceUrls.push(...urls);
+        } else if (value) {
+          visualPlanData[key] = value;
+        }
+        continue;
+      }
+      const urls = trimmed.match(/https?:\/\/[^\s)>]+/g) || [];
+      if (sourceBlock || urls.length) {
+        flush();
+        sourceUrls.push(...urls);
+        continue;
+      }
       const bullet = line.match(/^\s*(?:[-*+]|\d+[.)])\s+(.+)$/);
       if (bullet) {
         flush();
@@ -228,20 +321,27 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
         flush();
         const cells = line.split("|").map(cleanInline).filter(Boolean);
         if (cells.length > 1) bullets.push(cells.join(" | "));
-      } else if (!line.trim()) {
-        flush();
-      } else if (!/^```/.test(line)) {
+      } else {
         paragraph = `${paragraph} ${line}`.trim();
       }
     }
     flush();
-    const takeaway = paragraphs.shift() || "";
-    return blankSlide(
+    const takeaway = directiveTakeaway || paragraphs.shift() || "";
+    const slide = blankSlide(
       `slide-${index + 1}`,
-      section.title || `Slide ${index + 1}`,
+      section.title || `Untitled ${index + 1}`,
       takeaway,
       [...bullets, ...paragraphs].slice(0, 8),
     );
+    return {
+      ...slide,
+      layout: directiveLayout,
+      imageRequired,
+      imagePrompt,
+      sourceUrls: [...new Set(sourceUrls)].slice(0, 30),
+      visualPlanReason,
+      visualPlanData,
+    };
   });
 
   return {
@@ -330,7 +430,7 @@ function layoutFromRepresentation(type: string, data: Record<string, unknown>): 
 }
 
 function normalizedTitle(value: string): string {
-  return cleanInline(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return audienceTitle(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 export function applyResearchVisualPlan(deck: ParsedMarkdownDeck, json: string): ResearchVisualPlanResult {
@@ -371,8 +471,8 @@ export function applyResearchVisualPlan(deck: ParsedMarkdownDeck, json: string):
     appliedSections += 1;
     return {
       ...slide,
-      title: cleanInline(String(section.title || "")) || slide.title,
-      takeaway: quoteText || cleanInline(String(section.takeaway || "")) || slide.takeaway,
+      title: audienceTitle(String(section.title || "")) || slide.title,
+      takeaway: quoteText || audienceCopy(String(section.takeaway || "")) || slide.takeaway,
       bullets: semanticRows.length ? semanticRows.slice(0, 12) : (attribution ? [attribution] : slide.bullets),
       layout,
       imageRequired: layoutFromRepresentation(type, data) === "image-right",
@@ -933,7 +1033,9 @@ export function MarkdownSlideDesigner({
   onCreate: (prompt: string) => void;
 }) {
   const markdown = useMemo(
-    () => artifacts.filter((artifact) => /\.(md|markdown)$/i.test(artifact.path)),
+    () => artifacts.filter((artifact) =>
+      /\.(md|markdown)$/i.test(artifact.path)
+      && !/(?:^|[._-])(sources?|claims?|evidence|source-notes)\.(?:md|markdown)$/i.test(artifact.path)),
     [artifacts],
   );
   const [open, setOpen] = useState(false);
@@ -1087,9 +1189,18 @@ export function MarkdownSlideDesigner({
                 <div className="slide-designer-stage">
                   <SlidePreview slide={slide} templateId={templateId} />
                   {step === "content" ? <div className="slide-designer-edit-fields">
+                    <div className="slide-designer-story-header">
+                      <strong>Story and content</strong>
+                      <span>Review the narrative before choosing how the slide will look.</span>
+                    </div>
+                    <label className="research-field"><span>Slide title</span><input aria-label="Slide title" value={slide.title} onChange={(event) => updateSlide({ title: event.target.value })} /></label>
+                    <label className="research-field"><span>Key message</span><textarea aria-label="Key message" rows={2} value={slide.takeaway} onChange={(event) => updateSlide({ takeaway: event.target.value })} /></label>
+                    <label className="research-field"><span>Supporting points</span><textarea aria-label="Supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /><small className="slide-designer-format-help">Keep only audience-facing copy here.</small></label>
+                    <label className="research-field"><span>Story role</span><textarea aria-label="Story role" rows={2} placeholder="What must this slide accomplish in the overall narrative?" value={slide.visualPlanReason} onChange={(event) => updateSlide({ visualPlanReason: event.target.value })} /><small className="slide-designer-format-help">Production guidance for the presentation generator. It will not appear on the slide.</small></label>
+                  </div> : <div className="presentation-copilot-visual">
                     <fieldset className="slide-designer-element-picker">
                       <legend>Add a structured element</legend>
-                      <span>Choose a format, then enter its content below.</span>
+                      <span>Choose a format, then refine its visual data below.</span>
                       <div>
                         {CONTENT_ELEMENTS.map((element) => (
                           <button
@@ -1105,16 +1216,13 @@ export function MarkdownSlideDesigner({
                         ))}
                       </div>
                     </fieldset>
-                    <label className="research-field"><span>Slide title</span><input aria-label="Slide title" value={slide.title} onChange={(event) => updateSlide({ title: event.target.value })} /></label>
-                    <label className="research-field"><span>Key message</span><textarea aria-label="Key message" rows={2} value={slide.takeaway} onChange={(event) => updateSlide({ takeaway: event.target.value })} /></label>
                     {slide.layout === "table" ? (
                       <TableEditor rows={slide.bullets} onChange={(bullets) => updateSlide({ bullets })} />
                     ) : structuredRows ? (
                       <StructuredRowsEditor layout={slide.layout as "bar-chart" | "donut-chart" | "timeline" | "flow-diagram" | "org-chart"} rows={slide.bullets} onChange={(bullets) => updateSlide({ bullets })} />
                     ) : (
-                      <label className="research-field"><span>{supportLabel}</span><textarea aria-label="Supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /><small className="slide-designer-format-help">The preview updates as you type.</small></label>
+                      <label className="research-field"><span>{supportLabel}</span><textarea aria-label="Design supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /><small className="slide-designer-format-help">Use this fine-tuning field when the selected style needs a specific visual structure.</small></label>
                     )}
-                  </div> : <div className="presentation-copilot-visual">
                     {slide.visualReferences.length > 0 && (
                       <div className="slide-designer-research-references">
                         <div>
@@ -1159,9 +1267,9 @@ export function MarkdownSlideDesigner({
                   <span>The preview updates immediately.</span>
                   {LAYOUTS.map((layout, index) => <div className="slide-designer-layout-option" key={layout.id}>{index === 0 || LAYOUTS[index - 1].category !== layout.category ? <h4>{layout.category}</h4> : null}<button className={slide.layout === layout.id ? "selected" : ""} aria-pressed={slide.layout === layout.id} onClick={() => updateSlide({ layout: layout.id, imageRequired: IMAGE_LAYOUTS.includes(layout.id) || slide.imageRequired })}><strong>{layout.label}</strong><small>{layout.description}</small></button></div>)}
                 </aside> : <aside className="presentation-copilot-guidance">
-                  <strong>Content check</strong>
-                  <span>Keep one message per slide. Shorten copy before reducing type size.</span>
-                  <dl><div><dt>Slides</dt><dd>{deck.slides.length}</dd></div><div><dt>Current words</dt><dd>{[slide.title, slide.takeaway, ...slide.bullets].join(" ").split(/\s+/).filter(Boolean).length}</dd></div></dl>
+                  <strong>Story check</strong>
+                  <span>Confirm the sequence, one message per slide, and a clear progression toward the conclusion.</span>
+                  <dl><div><dt>Position</dt><dd>{selected + 1}/{deck.slides.length}</dd></div><div><dt>Current words</dt><dd>{[slide.title, slide.takeaway, ...slide.bullets].join(" ").split(/\s+/).filter(Boolean).length}</dd></div></dl>
                 </aside>}
               </div>
             )}

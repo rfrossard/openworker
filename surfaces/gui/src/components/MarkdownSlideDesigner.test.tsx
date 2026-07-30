@@ -48,6 +48,95 @@ Choose the first investment.`);
     });
   });
 
+  it("separates audience copy from slide-production directives", () => {
+    const deck = parseMarkdownDeck(`# Agent protocols
+
+## Slide 1: The protocol stack
+- **Narrative job:** Establish why the stack matters.
+- **Takeaway:** MCP connects tools while A2A connects agents.
+- **Transition:** Fade
+- **Layout:** image-right
+- **Image:** reports/assets/protocol-stack.png (generated)
+- **Sources:**
+MCP specification: https://modelcontextprotocol.io/specification
+A2A Protocol: https://a2a-protocol.org/latest/
+
+- Each protocol solves a different interoperability layer.`);
+
+    expect(deck.slides[0]).toMatchObject({
+      title: "The protocol stack",
+      takeaway: "MCP connects tools while A2A connects agents.",
+      bullets: ["Each protocol solves a different interoperability layer."],
+      layout: "image-right",
+      imageRequired: true,
+      imagePrompt: "reports/assets/protocol-stack.png (generated)",
+      sourceUrls: [
+        "https://modelcontextprotocol.io/specification",
+        "https://a2a-protocol.org/latest/",
+      ],
+      visualPlanReason: "Establish why the stack matters.",
+      visualPlanData: { transition: "Fade" },
+    });
+    expect(JSON.stringify(deck.slides[0])).not.toContain("Slide 1:");
+    expect([deck.slides[0].takeaway, ...deck.slides[0].bullets].join(" ")).not.toMatch(
+      /Narrative job|Transition:|Layout:|Sources:|MCP specification:/,
+    );
+  });
+
+  it("treats the storyboard preamble as a deck brief rather than a slide", () => {
+    const deck = parseMarkdownDeck(`# Storyboard: Agent protocols
+
+**Audience:** Technology leaders
+**Outcome:** Choose an interoperability architecture
+**Takeaway:** MCP and A2A are complementary.
+
+---
+
+## Slide 1: Title Slide
+- **Narrative job:** Establish the frame.
+- **Takeaway:** The protocol stack is becoming infrastructure.
+
+## Slide 2: The decision
+- **Takeaway:** Use each protocol for its intended layer.`);
+
+    expect(deck.title).toBe("Agent protocols");
+    expect(deck.slides).toHaveLength(2);
+    expect(deck.slides.map((slide) => slide.title)).toEqual(["Title Slide", "The decision"]);
+    expect(JSON.stringify(deck.slides)).not.toMatch(/Audience:|Outcome:|Technology leaders/);
+  });
+
+  it("does not offer source ledgers as presentation Markdown", async () => {
+    const presentationArtifacts = [
+      {
+        path: "reports/protocol.sources.md",
+        name: "protocol.sources.md",
+        kind: "markdown",
+        size: 100,
+        modified_at: 1,
+      },
+      {
+        path: "reports/protocol-storyboard.md",
+        name: "protocol-storyboard.md",
+        kind: "markdown",
+        size: 100,
+        modified_at: 2,
+      },
+    ];
+    vi.spyOn(api, "readArtifact").mockResolvedValue({
+      ok: true,
+      path: "reports/protocol-storyboard.md",
+      kind: "markdown",
+      content: "# Protocols\n## Slide 1: The choice\nChoose deliberately.",
+    });
+    render(<MarkdownSlideDesigner sessionId="session-1" artifacts={presentationArtifacts} onCreate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
+    await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    const selector = screen.getByLabelText("Markdown artifact") as HTMLSelectElement;
+    expect(selector.value).toBe("reports/protocol-storyboard.md");
+    expect(selector.querySelectorAll("option")).toHaveLength(1);
+    expect(screen.queryByText("protocol.sources.md")).toBeNull();
+  });
+
   it("preserves Markdown tables and suggests semantic layouts", () => {
     const deck = parseMarkdownDeck(`# Results
 ## Comparison
@@ -78,8 +167,8 @@ Original visual.`);
       schema_version: "openworker.deep-research.v2",
       sections: [
         {
-          title: "Market evidence",
-          takeaway: "Segment A leads the market.",
+          title: "Slide 1: Market evidence",
+          takeaway: "Takeaway: Segment A leads the market.",
           claim_ids: ["C1", "C2"],
           sources: ["https://example.com/data"],
           representation: {
@@ -146,6 +235,7 @@ Original visual.`);
 
     expect(applied).toMatchObject({ appliedSections: 7, warning: "" });
     expect(applied.deck.slides[0]).toMatchObject({
+      title: "Market evidence",
       layout: "bar-chart",
       takeaway: "Segment A leads the market.",
       bullets: ["Segment A | 64", "Segment B | 36"],
@@ -195,6 +285,7 @@ Original visual.`);
     render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
     await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
     fireEvent.click(screen.getByRole("button", { name: "Table Rows and columns" }));
     expect((screen.getByLabelText("Row 1 column 1") as HTMLInputElement).value).toBe("Option");
     fireEvent.change(screen.getByLabelText("Row 2 column 2"), { target: { value: "12" } });
@@ -406,11 +497,11 @@ Original visual.`);
     await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Auto-design deck" }));
     expect(screen.getByTestId("slide-preview").className).toContain("layout-bar-chart");
-    expect(screen.getByText("Chart data")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
+    expect(screen.getByText("Chart data")).toBeTruthy();
   });
 
-  it("offers structured elements in the content step and updates guidance immediately", async () => {
+  it("keeps storytelling in Content and structured visual editing in Design", async () => {
     vi.spyOn(api, "readArtifact").mockResolvedValue({
       ok: true,
       path: "reports/strategy.md",
@@ -420,6 +511,12 @@ Original visual.`);
     render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
     await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    expect(screen.getByText("Story and content")).toBeTruthy();
+    expect(screen.getByText("Story role")).toBeTruthy();
+    expect(screen.queryByText("Add a structured element")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Bar chart Compare values" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
+    expect(screen.getByText("Add a structured element")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Bar chart Compare values" }));
     expect(screen.getByTestId("slide-preview").className).toContain("layout-bar-chart");
     expect(screen.getByText("Chart data")).toBeTruthy();
@@ -522,8 +619,8 @@ Original visual.`);
     render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
     await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Bar chart Compare values" }));
     fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bar chart Compare values" }));
     fireEvent.click(screen.getByLabelText("Generate an original visual"));
     fireEvent.click(screen.getByRole("button", { name: "Review deck" }));
     expect(screen.getByRole("region", { name: "Presentation quality check" })).toBeTruthy();
