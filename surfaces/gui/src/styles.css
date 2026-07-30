@@ -673,9 +673,14 @@ button.btn.danger { color: var(--accent); }
 .slide-designer-modal > .research-modal-header,
 .slide-designer-modal > .presentation-copilot-steps,
 .slide-designer-modal > .slide-designer-toolbar,
+.slide-designer-modal > .slide-designer-plan-status,
 .slide-designer-modal > .research-modal-error,
 .slide-designer-modal > .slide-designer-loading { flex: 0 0 auto; }
 .slide-designer-toolbar { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(180px, .7fr); gap: 12px; }
+.slide-designer-plan-status {
+  padding: 8px 11px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line)); border-radius: 9px;
+  color: var(--muted); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); font-size: 11px;
+}
 .slide-designer-workspace {
   display: grid; grid-template-columns: 180px minmax(0, 1fr) 190px; gap: 16px;
   flex: 1 1 auto; min-height: 0; overflow: hidden;
@@ -918,6 +923,21 @@ button.btn.danger { color: var(--accent); }
 .presentation-copilot-guidance dl div { display: flex; justify-content: space-between; padding-top: 7px; border-top: 1px solid var(--line); font-size: 10px; }
 .presentation-copilot-guidance dd { margin: 0; color: var(--ink); font-weight: 750; }
 .presentation-copilot-visual { display: grid; gap: 10px; }
+.slide-designer-research-references {
+  display: grid; gap: 8px; padding: 11px; border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
+  border-radius: 9px; background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+}
+.slide-designer-research-references > div { display: grid; gap: 3px; }
+.slide-designer-research-references b { font-size: 11px; }
+.slide-designer-research-references span,
+.slide-designer-research-references small { color: var(--faint); font-size: 9.5px; line-height: 1.35; }
+.slide-designer-research-references ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.slide-designer-research-references li { display: grid; gap: 2px; padding-top: 6px; border-top: 1px solid var(--line); }
+.slide-designer-research-references li strong { font-size: 10px; }
+.slide-designer-research-references button {
+  justify-self: start; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px;
+  color: var(--ink); background: var(--surface); font-size: 10px; font-weight: 700; cursor: pointer;
+}
 .presentation-copilot-toggle { display: flex; align-items: flex-start; gap: 10px; padding: 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
 .presentation-copilot-toggle.compact { padding: 8px 10px; }
 .presentation-copilot-toggle input { margin-top: 2px; accent-color: var(--accent); }

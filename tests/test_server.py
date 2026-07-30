@@ -220,6 +220,7 @@ def test_grounded_research_imports_bounded_claim_ledger(tmp_path, monkeypatch):
     (reports / "grounded.claims.json").write_text(
         json.dumps(
             {
+                "schema_version": "openworker.deep-research.v2",
                 "claims": [
                     {
                         "claim_id": "C1",
@@ -230,7 +231,24 @@ def test_grounded_research_imports_bounded_claim_ledger(tmp_path, monkeypatch):
                         "justification": "Direct measurement.",
                         "counterevidence": "",
                     }
-                ]
+                ],
+                "sections": [
+                    {
+                        "section_id": "S1",
+                        "title": "Primary evidence",
+                        "claim_ids": ["C1"],
+                        "representation": {
+                            "type": "quote",
+                            "reason": "The primary wording is material.",
+                            "data": {
+                                "quote": {
+                                    "text": "The primary source supports this claim.",
+                                    "attribution": "Primary source",
+                                }
+                            },
+                        },
+                    }
+                ],
             }
         ),
         encoding="utf-8",

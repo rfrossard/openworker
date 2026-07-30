@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api";
 import {
   applyContentElement,
+  applyResearchVisualPlan,
   buildMarkdownSlideDesignerPrompt,
   MarkdownSlideDesigner,
   parseMarkdownDeck,
@@ -55,6 +56,133 @@ Choose the first investment.`);
     expect(deck.slides[0].bullets).toEqual(["Option | Cost", "A | 10", "B | 20"]);
   });
 
+  it("maps grounded research sections into editable semantic slide representations", () => {
+    const deck = parseMarkdownDeck(`# Evidence deck
+## Market evidence
+Original prose.
+## Verified voice
+Original quote.
+## Decision flow
+Original flow.
+## Team
+Original hierarchy.
+## Milestones
+Original timeline.
+## Delivery
+Original process.
+## Field evidence
+Original visual.`);
+    const applied = applyResearchVisualPlan(deck, JSON.stringify({
+      schema_version: "openworker.deep-research.v2",
+      sections: [
+        {
+          title: "Market evidence",
+          takeaway: "Segment A leads the market.",
+          claim_ids: ["C1", "C2"],
+          sources: ["https://example.com/data"],
+          representation: {
+            type: "bar_chart",
+            reason: "The categories share one comparable measure.",
+            data: {
+              series: [
+                { label: "Segment A", value: 64, claim_ids: ["C1"] },
+                { label: "Segment B", value: 36, claim_ids: ["C2"] },
+              ],
+            },
+          },
+        },
+        {
+          title: "Verified voice",
+          representation: {
+            type: "quote",
+            data: { quote: { text: "Evidence changes the decision.", attribution: "Primary interview" } },
+          },
+        },
+        {
+          title: "Decision flow",
+          representation: {
+            type: "flowchart",
+            data: { items: [{ label: "Screen" }, { label: "Verify" }, { label: "Decide" }] },
+          },
+        },
+        {
+          title: "Team",
+          representation: {
+            type: "org_chart",
+            data: { relationships: [{ parent: "Lead", child: "Research" }, { parent: "Lead", child: "Design" }] },
+          },
+        },
+        {
+          title: "Milestones",
+          representation: {
+            type: "timeline",
+            data: { items: [{ date: "Q1", label: "Pilot" }, { date: "Q2", label: "Launch" }] },
+          },
+        },
+        {
+          title: "Delivery",
+          representation: {
+            type: "process",
+            data: { steps: [{ label: "Discover" }, { label: "Build" }, { label: "Validate" }] },
+          },
+        },
+        {
+          title: "Field evidence",
+          claim_ids: ["C7"],
+          representation: { type: "image", reason: "A field photograph makes the context concrete.", data: {} },
+          visual_references: [{
+            url: "https://example.com/reference.jpg",
+            description: "Wide field scene with the subject on the right",
+            purpose: "Illustrate operating context",
+            source_type: "licensed",
+            license: "Reference only",
+            claim_ids: ["C7"],
+          }],
+        },
+      ],
+    }));
+
+    expect(applied).toMatchObject({ appliedSections: 7, warning: "" });
+    expect(applied.deck.slides[0]).toMatchObject({
+      layout: "bar-chart",
+      takeaway: "Segment A leads the market.",
+      bullets: ["Segment A | 64", "Segment B | 36"],
+      claimIds: ["C1", "C2"],
+      sourceUrls: ["https://example.com/data"],
+      visualPlanReason: "The categories share one comparable measure.",
+      visualPlanData: {
+        series: [
+          { label: "Segment A", value: 64, claim_ids: ["C1"] },
+          { label: "Segment B", value: 36, claim_ids: ["C2"] },
+        ],
+      },
+    });
+    expect(applied.deck.slides[1]).toMatchObject({
+      layout: "quote",
+      takeaway: "Evidence changes the decision.",
+      bullets: ["Primary interview"],
+    });
+    expect(applied.deck.slides[2]).toMatchObject({ layout: "flow-diagram", bullets: ["Screen", "Verify", "Decide"] });
+    expect(applied.deck.slides[3]).toMatchObject({ layout: "org-chart", bullets: ["Lead > Research", "Lead > Design"] });
+    expect(applied.deck.slides[4]).toMatchObject({ layout: "timeline", bullets: ["Q1 — Pilot", "Q2 — Launch"] });
+    expect(applied.deck.slides[5]).toMatchObject({ layout: "process", bullets: ["Discover", "Build", "Validate"] });
+    expect(applied.deck.slides[6]).toMatchObject({
+      layout: "image-right",
+      imageRequired: true,
+      claimIds: ["C7"],
+      imagePrompt: expect.stringContaining("Wide field scene"),
+      visualReferences: [expect.objectContaining({ sourceType: "licensed", license: "Reference only" })],
+    });
+  });
+
+  it("preserves Markdown when the companion visual ledger is malformed", () => {
+    const deck = parseMarkdownDeck("# Plan\n## Decision\nKeep the verified prose.");
+    const applied = applyResearchVisualPlan(deck, "{not-json");
+    expect(applied.appliedSections).toBe(0);
+    expect(applied.warning).toContain("invalid");
+    expect(applied.deck).toEqual(deck);
+  });
+
   it("edits a Markdown table as cells while preserving pipe-separated rows", async () => {
     vi.spyOn(api, "readArtifact").mockResolvedValue({
       ok: true,
@@ -92,6 +220,16 @@ Choose the first investment.`);
     deck.slides[0].layout = "image-right";
     deck.slides[0].imageRequired = true;
     deck.slides[0].imagePrompt = "Editorial market scene with negative space on the left";
+    deck.slides[0].claimIds = ["C1"];
+    deck.slides[0].visualPlanData = { series: [{ label: "Market", value: 42, claim_ids: ["C1"] }] };
+    deck.slides[0].visualReferences = [{
+      url: "https://example.com/reference",
+      description: "Market context",
+      purpose: "Ground the visual",
+      sourceType: "primary",
+      license: "Reference only",
+      claimIds: ["C1"],
+    }];
     const prompt = buildMarkdownSlideDesignerPrompt("reports/plan.md", deck, "atlas");
     expect(prompt).toContain('"layout": "image-right"');
     expect(prompt).toContain('"image_required": true');
@@ -100,6 +238,9 @@ Choose the first investment.`);
     expect(prompt).toContain('"image_prompt": "Editorial market scene');
     expect(prompt).toContain("Do not silently replace a selected layout");
     expect(prompt).toContain("13.333 × 7.5 inches (16:9)");
+    expect(prompt).toContain('"visual_plan_data"');
+    expect(prompt).toContain('"source_type": "primary"');
+    expect(prompt).toContain('"claim_ids": [');
     const photographicPrompt = buildMarkdownSlideDesignerPrompt("reports/plan.md", deck, "science-studio");
     expect(photographicPrompt).toContain("cover_image_path");
     expect(photographicPrompt).toContain('"photo-right" template treatment');
@@ -131,6 +272,64 @@ Choose the first investment.`);
     await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(onCreate.mock.calls[0][0]).toContain('"layout": "two-column"');
+  });
+
+  it("automatically applies a matching Deep Research visual ledger", async () => {
+    const visualArtifacts = [
+      ...artifacts,
+      {
+        path: "reports/strategy.claims.json",
+        name: "strategy.claims.json",
+        kind: "code",
+        size: 400,
+        modified_at: 2,
+      },
+    ];
+    vi.spyOn(api, "readArtifact").mockImplementation(async (_sessionId, artifactPath) => artifactPath.endsWith(".claims.json")
+      ? {
+        ok: true,
+        path: artifactPath,
+        kind: "code",
+        content: JSON.stringify({
+          schema_version: "openworker.deep-research.v2",
+          sections: [{
+            title: "The choice",
+            takeaway: "The evidence favors option A.",
+            claim_ids: ["C1"],
+            representation: {
+              type: "table",
+              reason: "The alternatives need a direct comparison.",
+              data: { columns: ["Option", "Score"], rows: [["A", "82"], ["B", "61"]] },
+            },
+            visual_references: [{
+              url: "https://example.com/context.jpg",
+              description: "Decision workshop with negative space",
+              purpose: "Illustrate the decision context",
+              license: "Reference only",
+            }],
+          }],
+        }),
+      }
+      : {
+        ok: true,
+        path: artifactPath,
+        kind: "markdown",
+        content: "# Strategy\n## The choice\nOriginal narrative.",
+      });
+
+    render(<MarkdownSlideDesigner sessionId="session-1" artifacts={visualArtifacts} onCreate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
+    await waitFor(() => expect(screen.getByText("Research visual plan applied to 1 section.")).toBeTruthy());
+    expect(api.readArtifact).toHaveBeenCalledWith("session-1", "reports/strategy.claims.json");
+    expect(screen.getByTestId("slide-preview").className).toContain("layout-table");
+    expect(screen.getByTestId("slide-preview").textContent).toContain("Option");
+    expect(screen.getByTestId("slide-preview").textContent).toContain("82");
+    fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
+    expect(screen.getByText("1 research visual reference")).toBeTruthy();
+    expect(screen.getByText("Decision workshop with negative space")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Use as visual direction" }));
+    expect(screen.getByTestId("slide-preview").className).toContain("layout-image-right");
+    expect((screen.getByLabelText("Generate an original visual") as HTMLInputElement).checked).toBe(true);
   });
 
   it("explains blocked creation instead of leaving an inert composer button", async () => {

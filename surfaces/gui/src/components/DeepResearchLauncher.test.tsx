@@ -30,6 +30,13 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("Unsupported claims must not appear as facts");
     expect(prompt).toContain(".claims.json");
     expect(prompt).toContain("final entailment check");
+    expect(prompt).toContain('"schema_version": "openworker.deep-research.v2"');
+    expect(prompt).toContain('"sections"');
+    expect(prompt).toContain("table | bar_chart | donut_chart | quote | flowchart | org_chart | timeline | process");
+    expect(prompt).toContain("Every numeric chart/table value, exact quote, relationship, event, and process step");
+    expect(prompt).toContain("visual_references");
+    expect(prompt).toContain("Never invent content to complete");
+    expect(prompt.match(/"schema_version": "openworker\.deep-research\.v2"/g)).toHaveLength(1);
   });
 
   it("builds a researched, image-aware, QA-gated presentation task", () => {
@@ -62,6 +69,8 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("minimum_images=5");
     expect(prompt).toContain("visual_plan_complete=true");
     expect(prompt).toContain("result.path exactly");
+    expect(prompt).toContain("add sections for Slide Designer");
+    expect(prompt).toContain("Every numeric chart/table value");
   });
 
   it("persists the run before letting the user review it", async () => {

@@ -43,11 +43,45 @@ export interface MarkdownSlide {
   imageRequired: boolean;
   imagePrompt: string;
   regenerateImage: boolean;
+  claimIds: string[];
+  sourceUrls: string[];
+  visualReferences: ResearchVisualReference[];
+  visualPlanReason: string;
+  visualPlanData: Record<string, unknown>;
 }
 
 export interface ParsedMarkdownDeck {
   title: string;
   slides: MarkdownSlide[];
+}
+
+export interface ResearchVisualReference {
+  url: string;
+  description: string;
+  purpose: string;
+  sourceType: string;
+  license: string;
+  claimIds: string[];
+}
+
+interface ResearchVisualSection {
+  section_id?: string;
+  title?: string;
+  takeaway?: string;
+  claim_ids?: string[];
+  sources?: string[];
+  representation?: {
+    type?: string;
+    reason?: string;
+    data?: Record<string, unknown>;
+  };
+  visual_references?: unknown[];
+}
+
+export interface ResearchVisualPlanResult {
+  deck: ParsedMarkdownDeck;
+  appliedSections: number;
+  warning: string;
 }
 
 const LAYOUTS: { id: SlideLayout; label: string; description: string; category: string }[] = [
@@ -104,6 +138,24 @@ function cleanInline(value: string): string {
     .trim();
 }
 
+function blankSlide(id: string, title: string, takeaway = "", bullets: string[] = []): MarkdownSlide {
+  return {
+    id,
+    title,
+    takeaway,
+    bullets,
+    layout: "auto",
+    imageRequired: false,
+    imagePrompt: "",
+    regenerateImage: false,
+    claimIds: [],
+    sourceUrls: [],
+    visualReferences: [],
+    visualPlanReason: "",
+    visualPlanData: {},
+  };
+}
+
 export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentation"): ParsedMarkdownDeck {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const h1 = lines.find((line) => /^#\s+/.test(line));
@@ -151,24 +203,155 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
     }
     flush();
     const takeaway = paragraphs.shift() || "";
-    return {
-      id: `slide-${index + 1}`,
-      title: section.title || `Slide ${index + 1}`,
+    return blankSlide(
+      `slide-${index + 1}`,
+      section.title || `Slide ${index + 1}`,
       takeaway,
-      bullets: [...bullets, ...paragraphs].slice(0, 8),
-      layout: "auto" as SlideLayout,
-      imageRequired: false,
-      imagePrompt: "",
-      regenerateImage: false,
-    };
+      [...bullets, ...paragraphs].slice(0, 8),
+    );
   });
 
   return {
     title: title || fallbackTitle,
     slides: slides.length
       ? slides
-      : [{ id: "slide-1", title, takeaway: "", bullets: [], layout: "auto", imageRequired: false, imagePrompt: "", regenerateImage: false }],
+      : [blankSlide("slide-1", title)],
   };
+}
+
+function strings(value: unknown, limit = 20): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, limit).map((item) => cleanInline(String(item || ""))).filter(Boolean);
+}
+
+function records(value: unknown, limit = 20): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, limit).filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item));
+}
+
+function normalizeVisualReferences(value: unknown): ResearchVisualReference[] {
+  return records(value, 12).map((item) => ({
+    url: String(item.url || "").trim().slice(0, 2048),
+    description: cleanInline(String(item.description || "")),
+    purpose: cleanInline(String(item.purpose || "")),
+    sourceType: cleanInline(String(item.source_type || "")),
+    license: cleanInline(String(item.license || "")),
+    claimIds: strings(item.claim_ids, 20),
+  })).filter((item) => item.url.startsWith("https://") || item.url.startsWith("http://") || item.description);
+}
+
+function rowsFromRepresentation(type: string, data: Record<string, unknown>): string[] {
+  if (type === "table") {
+    const columns = strings(data.columns, 6);
+    const rows = Array.isArray(data.rows) ? data.rows.slice(0, 12) : [];
+    return [
+      ...(columns.length ? [columns.join(" | ")] : []),
+      ...rows.map((row) => strings(row, 6).join(" | ")).filter((row) => row.includes("|")),
+    ];
+  }
+  if (type === "bar_chart" || type === "donut_chart" || type === "chart") {
+    return records(data.series, 12).map((item) => {
+      const label = cleanInline(String(item.label || ""));
+      const value = typeof item.value === "number" ? String(item.value) : cleanInline(String(item.value || ""));
+      return label && value ? `${label} | ${value}` : "";
+    }).filter(Boolean);
+  }
+  if (type === "org_chart") {
+    return records(data.relationships || data.items, 12).map((item) => {
+      const parent = cleanInline(String(item.parent || ""));
+      const child = cleanInline(String(item.child || item.label || ""));
+      return parent && child ? `${parent} > ${child}` : "";
+    }).filter(Boolean);
+  }
+  const items = records(data.items || data.steps || data.nodes, 12);
+  return items.map((item) => {
+    const date = cleanInline(String(item.date || item.time || ""));
+    const label = cleanInline(String(item.label || item.title || item.name || ""));
+    const detail = cleanInline(String(item.detail || item.description || ""));
+    return [date, label, detail].filter(Boolean).join(date ? " — " : ": ");
+  }).filter(Boolean);
+}
+
+function layoutFromRepresentation(type: string, data: Record<string, unknown>): SlideLayout {
+  const normalized = type.toLowerCase().replace(/[\s-]+/g, "_");
+  if (normalized === "chart") {
+    return String(data.chart_type || "").toLowerCase().includes("donut") ? "donut-chart" : "bar-chart";
+  }
+  const layouts: Record<string, SlideLayout> = {
+    table: "table",
+    bar_chart: "bar-chart",
+    donut_chart: "donut-chart",
+    quote: "quote",
+    flowchart: "flow-diagram",
+    flow_diagram: "flow-diagram",
+    org_chart: "org-chart",
+    timeline: "timeline",
+    process: "process",
+    roadmap: "roadmap",
+    comparison: "comparison",
+    metrics: "metric-grid",
+    image: "image-right",
+    text: "auto",
+  };
+  return layouts[normalized] || "auto";
+}
+
+function normalizedTitle(value: string): string {
+  return cleanInline(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+export function applyResearchVisualPlan(deck: ParsedMarkdownDeck, json: string): ResearchVisualPlanResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return { deck, appliedSections: 0, warning: "The companion research JSON is invalid. The Markdown content was preserved." };
+  }
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { sections?: unknown }).sections)) {
+    return { deck, appliedSections: 0, warning: "The companion research JSON has no visual sections. The Markdown content was preserved." };
+  }
+  const sections = ((parsed as { sections: ResearchVisualSection[] }).sections || []).slice(0, 30);
+  const used = new Set<number>();
+  let appliedSections = 0;
+  const slides = deck.slides.map((slide, index) => {
+    const titleMatch = sections.findIndex((section, sectionIndex) =>
+      !used.has(sectionIndex)
+      && normalizedTitle(String(section.title || "")) === normalizedTitle(slide.title));
+    const sectionIndex = titleMatch >= 0 ? titleMatch : (sections[index] && !used.has(index) ? index : -1);
+    if (sectionIndex < 0) return slide;
+    const section = sections[sectionIndex];
+    used.add(sectionIndex);
+    const representation = section.representation || {};
+    const type = String(representation.type || "text").toLowerCase().replace(/[\s-]+/g, "_");
+    const data = representation.data && typeof representation.data === "object" && !Array.isArray(representation.data)
+      ? representation.data
+      : {};
+    const layout = layoutFromRepresentation(type, data);
+    const semanticRows = rowsFromRepresentation(type, data);
+    const quote = data.quote && typeof data.quote === "object" && !Array.isArray(data.quote)
+      ? data.quote as Record<string, unknown>
+      : data;
+    const quoteText = type === "quote" ? cleanInline(String(quote.text || "")) : "";
+    const attribution = type === "quote" ? cleanInline(String(quote.attribution || "")) : "";
+    const visualReferences = normalizeVisualReferences(section.visual_references);
+    const referenceDirection = visualReferences.map((item) => [item.description, item.purpose, item.url].filter(Boolean).join(" · ")).join("; ");
+    appliedSections += 1;
+    return {
+      ...slide,
+      title: cleanInline(String(section.title || "")) || slide.title,
+      takeaway: quoteText || cleanInline(String(section.takeaway || "")) || slide.takeaway,
+      bullets: semanticRows.length ? semanticRows.slice(0, 12) : (attribution ? [attribution] : slide.bullets),
+      layout,
+      imageRequired: layoutFromRepresentation(type, data) === "image-right",
+      imagePrompt: referenceDirection || slide.imagePrompt,
+      claimIds: strings(section.claim_ids, 50),
+      sourceUrls: strings(section.sources, 30).filter((url) => url.startsWith("https://") || url.startsWith("http://")),
+      visualReferences,
+      visualPlanReason: cleanInline(String(representation.reason || "")),
+      visualPlanData: data,
+    };
+  });
+  return { deck: { ...deck, slides }, appliedSections, warning: "" };
 }
 
 export function presentationImageEstimate(deck: ParsedMarkdownDeck): {
@@ -250,11 +433,31 @@ export function buildMarkdownSlideDesignerPrompt(
   const selectedTemplate = templateById(templateId);
   const visualSlides = deck.slides.filter((slide) => slide.imageRequired).length;
   const estimate = presentationImageEstimate(deck);
-  const specification = deck.slides.map(({ id: _id, imageRequired, imagePrompt, regenerateImage, ...slide }) => ({
+  const specification = deck.slides.map(({
+    id: _id,
+    imageRequired,
+    imagePrompt,
+    regenerateImage,
+    claimIds,
+    sourceUrls,
+    visualReferences,
+    visualPlanReason,
+    visualPlanData,
+    ...slide
+  }) => ({
     ...slide,
     image_required: imageRequired,
     image_prompt: imagePrompt,
     regenerate_image: regenerateImage,
+    claim_ids: claimIds,
+    source_urls: sourceUrls,
+    visual_references: visualReferences.map(({ claimIds: referenceClaimIds, sourceType, ...reference }) => ({
+      ...reference,
+      source_type: sourceType,
+      claim_ids: referenceClaimIds,
+    })),
+    visual_plan_reason: visualPlanReason,
+    visual_plan_data: visualPlanData,
   }));
   return `Create an editable presentation from this existing Markdown artifact:
 
@@ -277,6 +480,8 @@ Requirements:
 - ${selectedTemplate.composition ? `Generate a separate widescreen cover visual composed specifically for the "${selectedTemplate.composition}" template treatment. Preserve intentional negative space for the title, and pass its exact result.path as cover_image_path.` : "Keep the template's native typographic cover."}
 - For non-image layouts, keep image_required=false unless the user explicitly adds an image later.
 - Preserve semantic rows exactly: tables use pipe-separated cells, charts use "Label | Value", and org charts use "Parent > Child".
+- Preserve claim_ids, source_urls, visual_references, visual_plan_reason, and visual_plan_data in the presentation JSON and speaker notes. They are the evidence contract behind each selected representation.
+- Treat visual_references as provenance and composition guidance. Reuse an asset only when its license permits it; otherwise generate or source a distinct visual with the same approved communicative purpose.
 - Run the presentation quality gate and resolve every critical issue before finishing. Report its score and any remaining warnings.
 - Write the files beside the source with descriptive .pptx and .pdf names. Also keep the structured slide specification as a .presentation.json artifact.
 - Inspect all rendered slide previews and the contact sheet. Fix clipping, overflow, weak contrast, missing images, and layout mismatches before finishing.
@@ -521,6 +726,7 @@ export function MarkdownSlideDesigner({
   const [step, setStep] = useState<"content" | "design" | "review">("content");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [visualPlanNotice, setVisualPlanNotice] = useState("");
 
   useEffect(() => {
     if (!markdown.some((artifact) => artifact.path === path)) setPath(markdown[0]?.path || "");
@@ -531,18 +737,34 @@ export function MarkdownSlideDesigner({
     let active = true;
     setLoading(true);
     setError("");
-    readArtifact(sessionId, path)
-      .then((result) => {
+    setVisualPlanNotice("");
+    const companionPath = path.replace(/\.(md|markdown)$/i, ".claims.json");
+    const companion = artifacts.find((artifact) => artifact.path === companionPath);
+    Promise.all([
+      readArtifact(sessionId, path),
+      companion ? readArtifact(sessionId, companion.path) : Promise.resolve(null),
+    ])
+      .then(([result, visualResult]) => {
         if (!active) return;
         if (!result.ok || typeof result.content !== "string") throw new Error(result.error || "Unable to read this Markdown artifact.");
-        setDeck(parseMarkdownDeck(result.content, path.replace(/^.*\//, "").replace(/\.(md|markdown)$/i, "")));
+        const parsedDeck = parseMarkdownDeck(result.content, path.replace(/^.*\//, "").replace(/\.(md|markdown)$/i, ""));
+        if (visualResult?.ok && typeof visualResult.content === "string") {
+          const applied = applyResearchVisualPlan(parsedDeck, visualResult.content);
+          setDeck(applied.deck);
+          setVisualPlanNotice(applied.warning || `Research visual plan applied to ${applied.appliedSections} section${applied.appliedSections === 1 ? "" : "s"}.`);
+        } else {
+          setDeck(parsedDeck);
+          if (companion && visualResult && !visualResult.ok) {
+            setVisualPlanNotice("The companion research JSON could not be read. The Markdown content was preserved.");
+          }
+        }
         setSelected(0);
         setStep("content");
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : "Unable to read this Markdown artifact."))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, [open, path, sessionId]);
+  }, [artifacts, open, path, sessionId]);
 
   if (!markdown.length) return null;
   const slide = deck?.slides[selected];
@@ -616,6 +838,7 @@ export function MarkdownSlideDesigner({
                 </small>
               </label>
             </div>
+            {visualPlanNotice && <div className="slide-designer-plan-status">{visualPlanNotice}</div>}
             {error && <div className="research-modal-error">{error}</div>}
             {loading && <p className="slide-designer-loading">Reading the Markdown artifact…</p>}
             {deck && slide && !loading && step !== "review" && (
@@ -654,6 +877,32 @@ export function MarkdownSlideDesigner({
                       <label className="research-field"><span>{supportLabel}</span><textarea aria-label="Supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /><small className="slide-designer-format-help">The preview updates as you type.</small></label>
                     )}
                   </div> : <div className="presentation-copilot-visual">
+                    {slide.visualReferences.length > 0 && (
+                      <div className="slide-designer-research-references">
+                        <div>
+                          <b>{slide.visualReferences.length} research visual reference{slide.visualReferences.length === 1 ? "" : "s"}</b>
+                          <span>Grounded context from the companion JSON. Review licensing before reuse.</span>
+                        </div>
+                        <ul>
+                          {slide.visualReferences.slice(0, 3).map((reference, index) => (
+                            <li key={`${reference.url}-${index}`}>
+                              <strong>{reference.description || `Reference ${index + 1}`}</strong>
+                              <small>{reference.purpose || reference.url}{reference.license ? ` · ${reference.license}` : ""}</small>
+                            </li>
+                          ))}
+                        </ul>
+                        <button
+                          type="button"
+                          onClick={() => updateSlide({
+                            imageRequired: true,
+                            layout: IMAGE_LAYOUTS.includes(slide.layout) ? slide.layout : "image-right",
+                            regenerateImage: false,
+                          })}
+                        >
+                          Use as visual direction
+                        </button>
+                      </div>
+                    )}
                     <label className="presentation-copilot-toggle">
                       <input type="checkbox" aria-label="Generate an original visual" checked={slide.imageRequired} onChange={(event) => updateSlide({ imageRequired: event.target.checked, regenerateImage: false })} />
                       <span><b>Generate an original visual</b><small>Nano Banana 2 Lite · approval required before the paid call</small></span>
