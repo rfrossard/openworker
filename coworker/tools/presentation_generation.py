@@ -414,7 +414,7 @@ def _add_pptx(
     from pptx import Presentation
     from pptx.chart.data import ChartData
     from pptx.dml.color import RGBColor
-    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+    from pptx.enum.chart import XL_CHART_TYPE, XL_DATA_LABEL_POSITION, XL_LEGEND_POSITION
     from pptx.enum.shapes import MSO_CONNECTOR
     from pptx.enum.text import PP_ALIGN
     from pptx.oxml.xmlchemy import OxmlElement
@@ -664,7 +664,7 @@ def _add_pptx(
             chart_type = (
                 XL_CHART_TYPE.DOUGHNUT
                 if layout == "donut-chart"
-                else XL_CHART_TYPE.COLUMN_CLUSTERED
+                else XL_CHART_TYPE.BAR_CLUSTERED
             )
             chart = slide.shapes.add_chart(
                 chart_type,
@@ -682,6 +682,12 @@ def _add_pptx(
             if layout == "bar-chart":
                 chart.value_axis.has_major_gridlines = True
                 chart.category_axis.tick_labels.font.size = Pt(13)
+                chart.category_axis.reverse_order = True
+                chart.plots[0].has_data_labels = True
+                chart.plots[0].data_labels.position = XL_DATA_LABEL_POSITION.OUTSIDE_END
+                chart.plots[0].data_labels.font.size = Pt(12)
+                chart.plots[0].data_labels.font.bold = True
+                chart.has_legend = False
             chart.series[0].format.fill.solid()
             chart.series[0].format.fill.fore_color.rgb = accent_rgb
             attach_sources(slide, spec["sources"])

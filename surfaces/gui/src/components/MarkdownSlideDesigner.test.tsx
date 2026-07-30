@@ -156,6 +156,11 @@ A2A Protocol: https://a2a-protocol.org/latest/
 {
   "type": "table",
   "reason": "The alternatives share comparable fields.",
+  "visual_question": "Which option costs less?",
+  "data_shape": "comparison",
+  "selection_confidence": 0.94,
+  "rejected_representations": [{"type": "bar_chart", "reason": "It would hide the option names."}],
+  "design_spec": {"emphasis": "A", "sort": "ascending"},
   "data": {
     "columns": ["Option", "Cost"],
     "rows": [["A", "$10"], ["B", "$20"]]
@@ -173,8 +178,32 @@ A2A Protocol: https://a2a-protocol.org/latest/
       sourceUrls: ["https://example.com/data"],
       visualPlanReason: "The alternatives share comparable fields.",
     });
+    expect(deck.slides[0].visualPlanData).toMatchObject({
+      visual_question: "Which option costs less?",
+      data_shape: "comparison",
+      selection_confidence: 0.94,
+      design_spec: { emphasis: "A", sort: "ascending" },
+    });
     expect(JSON.stringify(deck)).not.toContain("openworker-visual");
     expect(JSON.stringify(deck)).not.toContain("Narrative job:");
+  });
+
+  it("flags decorative or overly dense visual choices and auto-fixes safe cases", () => {
+    const deck = parseMarkdownDeck(`# Quality
+## Composition
+\`\`\`openworker-visual
+{"type":"donut_chart","data":{"series":[{"label":"A","value":30},{"label":"B","value":25},{"label":"C","value":20},{"label":"D","value":10},{"label":"E","value":8},{"label":"F","value":7}]}}
+\`\`\`
+## Decision path
+\`\`\`openworker-visual
+{"type":"flowchart","visual_question":"What happens next?","data_shape":"sequence","data":{"items":[{"label":"Research"},{"label":"Build"},{"label":"Launch"}]}}
+\`\`\``);
+    const report = presentationQualityReport(deck);
+    expect(report.findings.map((finding) => finding.id)).toContain("donut-density-0");
+    expect(report.findings.map((finding) => finding.id)).toContain("flow-sequence-1");
+    const fixed = autoFixPresentation(deck);
+    expect(fixed.deck.slides[0].layout).toBe("bar-chart");
+    expect(fixed.deck.slides[1].layout).toBe("process");
   });
 
   it("maps grounded research sections into editable semantic slide representations", () => {

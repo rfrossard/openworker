@@ -75,6 +75,11 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain('"type": "table"');
     expect(prompt).toContain("For big_number, provide data.value");
     expect(prompt).toContain("storyboard blocks and the companion .claims.json visual ledger must agree");
+    expect(prompt).toContain('"visual_question"');
+    expect(prompt).toContain('"rejected_representations"');
+    expect(prompt).toContain("Never turn ordinary bullets into a table");
+    expect(prompt).toContain("Use a flowchart only when there is a decision, branch, loop, exception, or alternative path");
+    expect(prompt).toContain("understandable within five seconds");
   });
 
   it("persists the run before letting the user review it", async () => {

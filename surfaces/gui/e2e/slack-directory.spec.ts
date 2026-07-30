@@ -64,7 +64,7 @@ test("channel typeahead: a NAME resolves to the workspace's id-address", async (
   // the raw address survives underneath — the tooltip carries it and Add subscribes by id.
   await expect(input).toHaveValue("#launch-team");
   await expect(input).toHaveAttribute("title", "slack:T1DL/C9LAUNCH");
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByTestId("access-section").getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText(/Subscribed channels · 1/)).toBeVisible();
 });
 

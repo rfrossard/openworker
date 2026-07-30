@@ -64,6 +64,21 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
     "representation": {
       "type": "table | bar_chart | donut_chart | big_number | quote | flowchart | org_chart | timeline | process | roadmap | comparison | metrics | image | text",
       "reason": "why this representation best explains the evidence",
+      "visual_question": "the exact question this visual answers",
+      "data_shape": "comparison | ranking | trend | composition | distribution | relationship | hierarchy | sequence | decision | single_metric | narrative",
+      "selection_confidence": 0.9,
+      "rejected_representations": [{
+        "type": "alternative type",
+        "reason": "why it would communicate the evidence less clearly"
+      }],
+      "design_spec": {
+        "emphasis": "the category, series, node, cell, or number to highlight",
+        "sort": "descending | ascending | chronological | logical | none",
+        "unit": "% | USD | days | other unit",
+        "comparison_baseline": "target, previous period, benchmark, or none",
+        "annotation": "one concise evidence-backed annotation",
+        "color_semantics": {"accent": "meaning of the accent color", "risk": "meaning of risk color"}
+      },
       "data": {
         "columns": ["Column"],
         "rows": [["Cell"]],
@@ -87,6 +102,7 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
 - The .claims.json file must be valid UTF-8 and follow this schema. Keep the top-level claims array for the Grounded Claims Board and add sections for Slide Designer:
 ${visualLedgerSchema}
 - Choose one primary representation per section. Include only the representation.data fields that apply to that type.
+- Before choosing it, write the visual_question and classify the data_shape. Record at least one rejected representation whenever a structured visual is chosen. A chart or diagram is not automatically better than concise text.
 - Every numeric chart/table value, exact quote, relationship, event, and process step must map to claim_ids and source URLs. Never invent content to complete a visual.
 - Add visual_references when a primary, licensed, or compositionally useful reference could illustrate the section. References are provenance and art direction, not permission to copy; record URL, purpose, source type, license note, and claim IDs.`;
   const storyboardMarkdownContract = `Storyboard Markdown visual contract:
@@ -97,6 +113,18 @@ ${visualLedgerSchema}
 {
   "type": "table",
   "reason": "A table makes the alternatives directly comparable.",
+  "visual_question": "Which option offers the strongest value-risk trade-off?",
+  "data_shape": "comparison",
+  "selection_confidence": 0.92,
+  "rejected_representations": [{"type": "bar_chart", "reason": "One axis would hide the multidimensional trade-offs."}],
+  "design_spec": {
+    "emphasis": "Option A",
+    "sort": "logical",
+    "unit": "USD",
+    "comparison_baseline": "current solution",
+    "annotation": "Option A has the lowest cost without the slowest delivery.",
+    "color_semantics": {"accent": "recommended option", "risk": "material trade-off"}
+  },
   "data": {
     "columns": ["Option", "Cost", "Evidence"],
     "rows": [["A", "$10", "C1"], ["B", "$20", "C2"]]
@@ -106,6 +134,17 @@ ${visualLedgerSchema}
 }
 \`\`\`
 - For bar_chart and donut_chart, provide data.series with label, numeric value, and claim_ids. For big_number, provide data.value, data.label, and data.context. For tables, provide actual columns and rows. For quotes, provide exact text and attribution. For timelines, processes, flowcharts, and org charts, provide ordered items or relationships.
+- Tactical selection rules:
+  - Use a table only for 3-7 comparable items across 2-5 meaningful dimensions. Never turn ordinary bullets into a table. Sort deliberately and identify the recommended, highest-risk, or best-value cell or row.
+  - Use a horizontal bar chart for ranking or category comparison, a line chart for a verified time trend, a stacked bar for composition across groups, a waterfall for drivers of change, a funnel for stage loss, and a 2x2 matrix for two meaningful decision dimensions. Do not substitute one chart type merely because the renderer supports it.
+  - Use a donut only for a true part-to-whole relationship with 2-5 non-negative categories whose values form a meaningful total.
+  - Use a big number only when the value includes unit, definition, period, baseline, and source. Include the delta or benchmark when available.
+  - Use an org chart for hierarchy, ownership, governance, or decision rights; use a relationship map for a non-hierarchical ecosystem.
+  - Use a flowchart only when there is a decision, branch, loop, exception, or alternative path. Use a process for a linear sequence.
+  - Use a timeline for dated evidence or milestones and mark past, current, planned, or uncertain status.
+  - Prefer concise text when the evidence has no defensible structure or a visual would add decoration rather than understanding.
+- Write takeaway titles as evidence-backed conclusions, not topic labels. Every structured visual must make its conclusion understandable within five seconds.
+- Keep charts directly labeled, tables scannable, diagrams connector-safe, and slides visually sparse. Highlight one primary comparison; render secondary information neutrally.
 - Put only audience-facing prose outside the block. Do not expose layout instructions, transition notes, source manifests, image paths, or production comments as slide copy.
 - Use verified values rather than placeholders. The storyboard blocks and the companion .claims.json visual ledger must agree on representation, data, claims, and sources.`;
   const imageRequirements =

@@ -86,6 +86,11 @@ interface MarkdownVisualBlock {
   sources?: string[];
   visual_references?: unknown[];
   image_prompt?: string;
+  visual_question?: string;
+  data_shape?: string;
+  selection_confidence?: number;
+  rejected_representations?: unknown[];
+  design_spec?: Record<string, unknown>;
 }
 
 export interface ResearchVisualPlanResult {
@@ -385,7 +390,16 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
       sourceUrls: [...new Set([...sourceUrls, ...visualSources])].slice(0, 30),
       visualReferences,
       visualPlanReason: cleanInline(String(markdownVisual?.reason || "")) || visualPlanReason,
-      visualPlanData: Object.keys(visualData).length ? visualData : visualPlanData,
+      visualPlanData: markdownVisual ? {
+        ...visualData,
+        visual_question: cleanInline(String(markdownVisual.visual_question || "")),
+        data_shape: cleanInline(String(markdownVisual.data_shape || "")),
+        selection_confidence: markdownVisual.selection_confidence,
+        rejected_representations: records(markdownVisual.rejected_representations, 8),
+        design_spec: markdownVisual.design_spec && typeof markdownVisual.design_spec === "object"
+          ? markdownVisual.design_spec
+          : {},
+      } : visualPlanData,
     };
   });
 
@@ -621,6 +635,9 @@ export function presentationQualityReport(
     if (slide.title.length > 82) {
       add(`long-title-${index}`, "Content", "warning", `Slide ${number} title may wrap excessively.`, index, false);
     }
+    if (/^(overview|introduction|market|results|findings|analysis|recommendations?|conclusion|next steps)$/i.test(slide.title.trim())) {
+      add(`topic-title-${index}`, "Content", "warning", `Slide ${number} title names a topic instead of stating the takeaway.`, index, false);
+    }
     if (wordCount([slide.title, slide.takeaway, ...slide.bullets].join(" ")) > 110) {
       add(`dense-${index}`, "Content", "warning", `Slide ${number} is dense; shorten copy or split the idea.`, index, false);
     }
@@ -631,8 +648,29 @@ export function presentationQualityReport(
     if ((slide.layout === "bar-chart" || slide.layout === "donut-chart") && numericRows.length < 2) {
       add(`chart-${index}`, "Data", "critical", `Slide ${number} needs at least two chart rows formatted as Label | Value.`, index, true);
     }
+    if (slide.layout === "donut-chart" && numericRows.length > 5) {
+      add(`donut-density-${index}`, "Data", "warning", `Slide ${number} has too many donut segments; use a ranked bar chart.`, index, true);
+    }
     if (slide.layout === "table" && slide.bullets.filter((row) => row.includes("|")).length < 2) {
       add(`table-${index}`, "Data", "critical", `Slide ${number} needs a header and at least one table row.`, index, true);
+    }
+    if (slide.layout === "table") {
+      const tableRows = slide.bullets.filter((row) => row.includes("|"));
+      const columns = Math.max(0, ...tableRows.map((row) => row.split("|").length));
+      if (tableRows.length > 8 || columns > 5) {
+        add(`table-density-${index}`, "Data", "warning", `Slide ${number} table is too dense; keep 3-7 items and 2-5 dimensions.`, index, true);
+      }
+    }
+    if (slide.layout === "big-number" && (!slide.takeaway.trim() || slide.sourceUrls.length === 0)) {
+      add(`metric-context-${index}`, "Evidence", "warning", `Slide ${number} big number needs context, a comparison, and a source.`, index, false);
+    }
+    if (STRUCTURED_LAYOUTS.has(slide.layout)
+      && Object.keys(slide.visualPlanData).length > 0
+      && !String(slide.visualPlanData.visual_question || "").trim()) {
+      add(`visual-question-${index}`, "Design", "warning", `Slide ${number} does not state the question its visual must answer.`, index, false);
+    }
+    if (slide.layout === "flow-diagram" && slide.visualPlanData.data_shape === "sequence") {
+      add(`flow-sequence-${index}`, "Design", "warning", `Slide ${number} is a linear sequence; use a process unless it contains a branch or decision.`, index, true);
     }
     if (slide.claimIds.length > 0 && slide.sourceUrls.length === 0) {
       add(`sources-${index}`, "Evidence", "critical", `Slide ${number} has claim IDs but no source URL.`, index, false);
@@ -729,6 +767,22 @@ export function autoFixPresentation(deck: ParsedMarkdownDeck): PresentationAutoF
     if (updated.layout === "table" && updated.bullets.filter((row) => row.includes("|")).length < 2) {
       updated.layout = "auto";
       fixes.push(`Changed slide ${index + 1} to a text layout because its data cannot support a table.`);
+    }
+    if (updated.layout === "donut-chart" && updated.bullets.filter((row) => row.includes("|")).length > 5) {
+      updated.layout = "bar-chart";
+      fixes.push(`Changed slide ${index + 1} to a bar chart because the composition has more than five categories.`);
+    }
+    if (updated.layout === "table") {
+      const tableRows = updated.bullets.filter((row) => row.includes("|"));
+      const columns = Math.max(0, ...tableRows.map((row) => row.split("|").length));
+      if (tableRows.length > 8 || columns > 5) {
+        updated.bullets = tableRows.slice(0, 8).map((row) => row.split("|").slice(0, 5).map((cell) => cell.trim()).join(" | "));
+        fixes.push(`Reduced the table on slide ${index + 1} to a readable 8 × 5 grid.`);
+      }
+    }
+    if (updated.layout === "flow-diagram" && updated.visualPlanData.data_shape === "sequence") {
+      updated.layout = "process";
+      fixes.push(`Changed slide ${index + 1} to a process because its data is linear.`);
     }
     return updated;
   });
@@ -857,6 +911,10 @@ Requirements:
 - ${selectedTemplate.composition ? `Generate a separate widescreen cover visual composed specifically for the "${selectedTemplate.composition}" template treatment. Preserve intentional negative space for the title, and pass its exact result.path as cover_image_path.` : "Keep the template's native typographic cover."}
 - For non-image layouts, keep image_required=false unless the user explicitly adds an image later.
 - Preserve semantic rows exactly: tables use pipe-separated cells, charts use "Label | Value", and org charts use "Parent > Child".
+- Honor each visual_question, data_shape, rejected_representations, and design_spec. The selected visual must answer its visual question within five seconds; do not convert verified data into a decorative visual.
+- Use conclusion-led slide titles. For tables, emphasize the recommended or highest-risk row and keep 3-7 items across 2-5 dimensions. For bar charts, rank categories and label values directly. Use donuts only for a true 2-5 category part-to-whole. Big numbers require definition, period, baseline, and source.
+- Use flow diagrams only for real decisions, branches, loops, or exceptions. Use process for a linear sequence, timeline for dated milestones, and org charts only for hierarchy, ownership, governance, or decision rights.
+- Keep one dominant message, one accent meaning, and no more than three visual groups per slide. Prefer a flat editorial composition over grids of UI cards.
 - Preserve claim_ids, source_urls, visual_references, visual_plan_reason, and visual_plan_data in the presentation JSON and speaker notes. They are the evidence contract behind each selected representation.
 - Treat visual_references as provenance and composition guidance. Reuse an asset only when its license permits it; otherwise generate or source a distinct visual with the same approved communicative purpose.
 - Run the presentation quality gate and resolve every critical issue before finishing. Report its score and any remaining warnings.

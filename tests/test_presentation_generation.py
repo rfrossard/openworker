@@ -159,6 +159,9 @@ def test_build_presentation_supports_editable_semantic_visuals(tmp_path):
     assert "[Sources]" in presentation.slides[2].notes_slide.notes_text_frame.text
     assert any(getattr(shape, "has_chart", False) for shape in presentation.slides[2].shapes)
     assert any(getattr(shape, "has_chart", False) for shape in presentation.slides[3].shapes)
+    bar_chart = next(shape.chart for shape in presentation.slides[2].shapes if getattr(shape, "has_chart", False))
+    assert bar_chart.chart_type == 57  # BAR_CLUSTERED
+    assert bar_chart.plots[0].has_data_labels is True
     assert len(PdfReader(tmp_path / "semantic.pdf").pages) == 7
 
 

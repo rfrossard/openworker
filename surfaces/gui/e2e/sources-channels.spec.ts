@@ -24,7 +24,7 @@ test("Slack channels drill-down: gating, add (auto-prefixed), remove", async ({ 
 
   // Add a bare channel id — the panel scopes it to the connector (→ "slack:C0123").
   await page.getByPlaceholder("slack:C0123 or channel link").fill("C0123");
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByTestId("access-section").getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText("slack:C0123", { exact: true })).toBeVisible();
   await expect(page.getByText(/Subscribed channels · 1/)).toBeVisible();
 
@@ -69,7 +69,7 @@ test("recent channels popover: opens on focus, filters, picks", async ({ page })
   await expect(input).toHaveValue("slack:C0BBB222");
   await expect(page.getByTestId("channel-suggestions")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByTestId("access-section").getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText(/Subscribed channels · 1/)).toBeVisible();
 });
 
@@ -85,7 +85,7 @@ test("channel add: link URLs resolve, bare #names are rejected with a hint", asy
 
   const input = page.getByPlaceholder("slack:C0123 or channel link");
   await input.fill("#general");
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByTestId("access-section").getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByTestId("channel-add-error")).toContainText(
     "paste the channel ID",
   );
@@ -94,7 +94,7 @@ test("channel add: link URLs resolve, bare #names are rejected with a hint", asy
   await input.fill("https://acme.slack.com/archives/C0123ABC");
   // Typing again clears the rejection.
   await expect(page.getByTestId("channel-add-error")).toHaveCount(0);
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByTestId("access-section").getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText("slack:C0123ABC")).toBeVisible();
   await expect(page.getByText(/Subscribed channels · 1/)).toBeVisible();
 });
