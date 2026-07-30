@@ -294,7 +294,7 @@ export function DeepResearchLauncher({
         }}
       >
         <Icon name="search" size={15} />
-        <span>New artifact</span>
+        <span>Deep Research</span>
       </button>
       {open &&
         createPortal(
@@ -314,14 +314,14 @@ export function DeepResearchLauncher({
             >
               <header className="research-modal-header">
                 <div>
-                  <span className="research-modal-eyebrow">Artifact Studio</span>
+                  <span className="research-modal-eyebrow">Research workspace</span>
                   <h2 id="research-modal-title">
-                    {editingRun ? "Edit Research Project" : "New Research Artifact"}
+                    {editingRun ? "Edit Deep Research" : "Deep Research"}
                   </h2>
                   <p>
                     {editingRun
-                      ? "Review the saved brief and plan before starting."
-                      : "Prepare a cited report. You can review the full task before it runs."}
+                      ? "Update the question and research settings."
+                      : "Turn a question into grounded evidence and a reusable artifact."}
                   </p>
                 </div>
                 <button
@@ -474,28 +474,6 @@ export function DeepResearchLauncher({
               )}
 
               <fieldset className="research-field">
-                <legend>Method</legend>
-                <div className="research-depth-options research-method-options">
-                  <button
-                    type="button"
-                    className={method === "grounded_claims" ? "selected" : ""}
-                    onClick={() => setMethod("grounded_claims")}
-                  >
-                    <strong>Grounded Research</strong>
-                    <span>Claims, evidence, contradictions, and confidence</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={method === "standard" ? "selected" : ""}
-                    onClick={() => setMethod("standard")}
-                  >
-                    <strong>Standard Research</strong>
-                    <span>Cited narrative report</span>
-                  </button>
-                </div>
-              </fieldset>
-
-              <fieldset className="research-field">
                 <legend>Depth</legend>
                 <div className="research-depth-options">
                   {(["quick", "standard", "deep"] as ResearchDepth[]).map((value) => (
@@ -512,17 +490,44 @@ export function DeepResearchLauncher({
                 </div>
               </fieldset>
 
-              <label className="research-field">
-                <span>Research plan</span>
-                <textarea
-                  value={plan}
-                  onChange={(event) => setPlan(event.target.value)}
-                  rows={5}
-                  aria-label="Research plan"
-                  aria-describedby="research-plan-help"
-                />
-                <small id="research-plan-help">One step per line. Edit, reorder, or add steps.</small>
-              </label>
+              <details className="research-advanced-options">
+                <summary>Advanced options</summary>
+                <div className="research-advanced-content">
+                  <fieldset className="research-field">
+                    <legend>Research method</legend>
+                    <div className="research-depth-options research-method-options">
+                      <button
+                        type="button"
+                        className={method === "grounded_claims" ? "selected" : ""}
+                        onClick={() => setMethod("grounded_claims")}
+                      >
+                        <strong>Grounded claims</strong>
+                        <span>Recommended · verifies claims and contradictions</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={method === "standard" ? "selected" : ""}
+                        onClick={() => setMethod("standard")}
+                      >
+                        <strong>Standard</strong>
+                        <span>Faster cited narrative</span>
+                      </button>
+                    </div>
+                  </fieldset>
+
+                  <label className="research-field">
+                    <span>Research plan</span>
+                    <textarea
+                      value={plan}
+                      onChange={(event) => setPlan(event.target.value)}
+                      rows={4}
+                      aria-label="Research plan"
+                      aria-describedby="research-plan-help"
+                    />
+                    <small id="research-plan-help">One step per line.</small>
+                  </label>
+                </div>
+              </details>
 
               {error && <div className="research-modal-error">{error}</div>}
 
@@ -537,7 +542,7 @@ export function DeepResearchLauncher({
                   Cancel
                 </button>
                 <button className="btn primary" disabled={!question.trim() || busy} onClick={create}>
-                  {busy ? "Saving…" : editingRun ? "Save and review" : "Review in composer"}
+                  {busy ? "Saving…" : editingRun ? "Save to composer" : "Continue in composer"}
                 </button>
               </footer>
             </section>

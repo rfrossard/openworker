@@ -95,12 +95,12 @@ describe("Deep Research launcher", () => {
     const onCreate = vi.fn();
     render(<DeepResearchLauncher sessionId="session-a" onCreate={onCreate} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "New artifact" }));
+    fireEvent.click(screen.getByRole("button", { name: "Deep Research" }));
     fireEvent.change(screen.getByLabelText("Research question"), {
       target: { value: "Compare secure browser frameworks" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Deep/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Review in composer" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Deep at least 20 credible sources$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue in composer" }));
 
     await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -157,14 +157,14 @@ describe("Deep Research launcher", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Edit Research Project" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Edit Deep Research" })).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Research question"), {
       target: { value: "Updated question" },
     });
     fireEvent.change(screen.getByLabelText("Research plan"), {
       target: { value: "Updated step" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save and review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save to composer" }));
 
     await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith(

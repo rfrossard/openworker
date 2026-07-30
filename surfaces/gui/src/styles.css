@@ -632,8 +632,20 @@ button.btn.danger { color: var(--accent); }
   cursor: pointer;
 }
 .research-launch-button:hover { border-color: var(--accent); color: var(--accent); }
-.artifact-studio-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 9px; }
+.artifact-studio-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 10px; }
 .artifact-studio-actions .research-launch-button { margin-bottom: 0; min-width: 0; }
+.artifact-studio-actions > :first-child {
+  grid-column: 1 / -1; justify-content: flex-start; padding: 10px 11px;
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+}
+.artifact-studio-actions > :not(:first-child) {
+  padding: 7px 6px; border-color: transparent; background: transparent;
+  color: var(--muted); font-size: 10.5px; font-weight: 550;
+}
+.artifact-studio-actions > :not(:first-child):hover {
+  border-color: var(--line); background: var(--panel); color: var(--ink);
+}
 .research-modal-backdrop {
   position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px;
   background: color-mix(in srgb, #000 46%, transparent); backdrop-filter: blur(4px);
@@ -661,6 +673,15 @@ button.btn.danger { color: var(--accent); }
   background: var(--panel); color: var(--ink); font: inherit; font-size: 12px;
 }
 .research-field input:focus, .research-field select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent); }
+.research-advanced-options {
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  padding: 10px 0; color: var(--ink);
+}
+.research-advanced-options > summary {
+  cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 650;
+}
+.research-advanced-options[open] > summary { color: var(--ink); margin-bottom: 14px; }
+.research-advanced-content { display: flex; flex-direction: column; gap: 16px; }
 .research-presentation-fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(82px, .65fr); gap: 10px; }
 .research-presentation-fields .research-visual-direction { grid-column: 1 / -1; }
 .markdown-pdf-modal { width: min(520px, 100%); }
