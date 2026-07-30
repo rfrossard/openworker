@@ -378,6 +378,55 @@ function SlidePreview({
   );
 }
 
+function StructuredRowsEditor({
+  layout,
+  rows,
+  onChange,
+}: {
+  layout: "bar-chart" | "donut-chart" | "timeline" | "flow-diagram" | "org-chart";
+  rows: string[];
+  onChange: (rows: string[]) => void;
+}) {
+  const chart = layout === "bar-chart" || layout === "donut-chart";
+  const organization = layout === "org-chart";
+  const separator = chart ? "|" : organization ? ">" : "";
+  const parts = (row: string) => {
+    if (!separator) return [row];
+    const index = row.indexOf(separator);
+    return index < 0 ? [row, ""] : [row.slice(0, index).trim(), row.slice(index + 1).trim()];
+  };
+  const update = (index: number, field: number, value: string) => {
+    const next = [...rows];
+    const values = parts(next[index] || "");
+    values[field] = value;
+    next[index] = separator ? `${values[0] || ""} ${separator} ${values[1] || ""}` : value;
+    onChange(next);
+  };
+  const add = () => onChange([...rows, separator ? ` ${separator} ` : ""]);
+  const remove = (index: number) => onChange(rows.filter((_, rowIndex) => rowIndex !== index));
+  const firstLabel = chart ? "Label" : organization ? "Parent" : "Step";
+  const secondLabel = chart ? "Value" : "Child";
+
+  return (
+    <fieldset className="slide-designer-row-editor">
+      <legend>{chart ? "Chart data" : organization ? "Reporting relationships" : "Sequence"}</legend>
+      <div>
+        {rows.map((row, index) => {
+          const values = parts(row);
+          return (
+            <div className={separator ? "has-pair" : ""} key={`${index}-${row}`}>
+              <label><span>{firstLabel} {index + 1}</span><input aria-label={`${firstLabel} ${index + 1}`} value={values[0] || ""} onChange={(event) => update(index, 0, event.target.value)} /></label>
+              {separator && <label><span>{secondLabel}</span><input aria-label={`${secondLabel} ${index + 1}`} inputMode={chart ? "decimal" : "text"} value={values[1] || ""} onChange={(event) => update(index, 1, event.target.value)} /></label>}
+              <button type="button" aria-label={`Remove row ${index + 1}`} onClick={() => remove(index)}>Remove</button>
+            </div>
+          );
+        })}
+      </div>
+      <button type="button" className="slide-designer-add-row" onClick={add}>+ Add {organization ? "relationship" : chart ? "data row" : "step"}</button>
+    </fieldset>
+  );
+}
+
 export function MarkdownSlideDesigner({
   sessionId,
   artifacts,
@@ -435,11 +484,27 @@ export function MarkdownSlideDesigner({
         : slide?.layout === "flow-diagram" || slide?.layout === "roadmap"
           ? "Steps or milestones (one per line)"
           : "Supporting points (one per line)";
+  const structuredRows = slide?.layout === "bar-chart"
+    || slide?.layout === "donut-chart"
+    || slide?.layout === "timeline"
+    || slide?.layout === "flow-diagram"
+    || slide?.layout === "org-chart";
   const updateSlide = (patch: Partial<MarkdownSlide>) => {
     if (!deck || !slide) return;
+    if (error === "Resolve the required review items before creating the presentation.") setError("");
     setDeck({ ...deck, slides: deck.slides.map((item, index) => index === selected ? { ...item, ...patch } : item) });
   };
   const close = () => setOpen(false);
+  const createInComposer = () => {
+    if (!deck || loading || error) return;
+    if (!preflight.passed) {
+      setError("Resolve the required review items before creating the presentation.");
+      return;
+    }
+    const prompt = buildMarkdownSlideDesignerPrompt(path, deck, templateId);
+    close();
+    window.setTimeout(() => onCreate(prompt), 0);
+  };
 
   return (
     <>
@@ -508,7 +573,11 @@ export function MarkdownSlideDesigner({
                     </fieldset>
                     <label className="research-field"><span>Slide title</span><input aria-label="Slide title" value={slide.title} onChange={(event) => updateSlide({ title: event.target.value })} /></label>
                     <label className="research-field"><span>Key message</span><textarea aria-label="Key message" rows={2} value={slide.takeaway} onChange={(event) => updateSlide({ takeaway: event.target.value })} /></label>
-                    <label className="research-field"><span>{supportLabel}</span><textarea aria-label="Supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /><small className="slide-designer-format-help">{slide.layout === "table" ? "Example: Region | Revenue | Growth" : slide.layout === "bar-chart" || slide.layout === "donut-chart" ? "Example: Enterprise | 64" : slide.layout === "org-chart" ? "Example: CEO > Product" : slide.layout === "timeline" || slide.layout === "flow-diagram" ? "Use one event or step per line." : "The preview updates as you type."}</small></label>
+                    {structuredRows ? (
+                      <StructuredRowsEditor layout={slide.layout as "bar-chart" | "donut-chart" | "timeline" | "flow-diagram" | "org-chart"} rows={slide.bullets} onChange={(bullets) => updateSlide({ bullets })} />
+                    ) : (
+                      <label className="research-field"><span>{supportLabel}</span><textarea aria-label="Supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /><small className="slide-designer-format-help">{slide.layout === "table" ? "Example: Region | Revenue | Growth" : "The preview updates as you type."}</small></label>
+                    )}
                   </div> : <div className="presentation-copilot-visual">
                     <label className="presentation-copilot-toggle">
                       <input type="checkbox" aria-label="Generate an original visual" checked={slide.imageRequired} onChange={(event) => updateSlide({ imageRequired: event.target.checked, regenerateImage: false })} />
@@ -557,7 +626,7 @@ export function MarkdownSlideDesigner({
               <button className="btn" onClick={close}>Cancel</button>
               {step === "content" ? <button className="btn primary" disabled={!deck || loading || !!error} onClick={() => setStep("design")}>Continue to design</button>
               : step === "design" ? <button className="btn primary" disabled={!deck || loading || !!error} onClick={() => setStep("review")}>Review deck</button>
-              : <button className="btn primary" disabled={!deck || loading || !!error || !preflight.passed} onClick={() => { if (deck) onCreate(buildMarkdownSlideDesignerPrompt(path, deck, templateId)); close(); }}>Create in composer</button>}
+              : <button className="btn primary" disabled={!deck || loading || (!!error && preflight.passed)} onClick={createInComposer}>Create in composer</button>}
             </footer>
           </section>
         </div>,

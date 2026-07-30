@@ -103,7 +103,27 @@ Choose the first investment.`);
     fireEvent.click(screen.getByRole("button", { name: "Review deck" }));
     fireEvent.click(screen.getByRole("button", { name: "Create in composer" }));
     await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(onCreate.mock.calls[0][0]).toContain('"layout": "two-column"');
+  });
+
+  it("explains blocked creation instead of leaving an inert composer button", async () => {
+    vi.spyOn(api, "readArtifact").mockResolvedValue({
+      ok: true,
+      path: "reports/strategy.md",
+      kind: "markdown",
+      content: "# Strategy\n## Evidence\nOne message.",
+    });
+    render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
+    await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
+    fireEvent.click(screen.getByLabelText("Generate an original visual"));
+    fireEvent.click(screen.getByRole("button", { name: "Review deck" }));
+    const create = screen.getByRole("button", { name: "Create in composer" });
+    expect((create as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(create);
+    expect(screen.getByText("Resolve the required review items before creating the presentation.")).toBeTruthy();
   });
 
   it("applies template tokens to the preview and offers twenty-eight slide styles", async () => {
@@ -156,7 +176,7 @@ Choose the first investment.`);
     await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Auto-design deck" }));
     expect(screen.getByTestId("slide-preview").className).toContain("layout-bar-chart");
-    expect(screen.getByText("Data (Label | Value, one per line)")).toBeTruthy();
+    expect(screen.getByText("Chart data")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
   });
 
@@ -172,9 +192,15 @@ Choose the first investment.`);
     await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Bar chart Compare values" }));
     expect(screen.getByTestId("slide-preview").className).toContain("layout-bar-chart");
-    expect(screen.getByText("Data (Label | Value, one per line)")).toBeTruthy();
-    expect(screen.getByText("Example: Enterprise | 64")).toBeTruthy();
-    expect((screen.getByLabelText("Supporting points") as HTMLTextAreaElement).value).toBe("Enterprise | 64\nConsumer | 36");
+    expect(screen.getByText("Chart data")).toBeTruthy();
+    expect((screen.getByLabelText("Label 1") as HTMLInputElement).value).toBe("Enterprise");
+    expect((screen.getByLabelText("Value 1") as HTMLInputElement).value).toBe("64");
+    fireEvent.change(screen.getByLabelText("Value 1"), { target: { value: "72" } });
+    expect(screen.getByTestId("slide-preview").textContent).toContain("72");
+    fireEvent.click(screen.getByRole("button", { name: "+ Add data row" }));
+    expect(screen.getByLabelText("Label 3")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Remove row 3"));
+    expect(screen.queryByLabelText("Label 3")).toBeNull();
   });
 
   it("shows a transparent image budget and keeps paid generation approval-gated", async () => {
