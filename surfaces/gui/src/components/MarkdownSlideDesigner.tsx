@@ -40,6 +40,9 @@ export interface MarkdownSlide {
   takeaway: string;
   bullets: string[];
   layout: SlideLayout;
+  imageRequired: boolean;
+  imagePrompt: string;
+  regenerateImage: boolean;
 }
 
 export interface ParsedMarkdownDeck {
@@ -81,6 +84,7 @@ const LAYOUTS: { id: SlideLayout; label: string; description: string; category: 
 const IMAGE_LAYOUTS: SlideLayout[] = [
   "image-left", "image-right", "image-background", "image-top", "image-bottom",
 ];
+const GEMINI_IMAGE_ESTIMATE_USD = 0.0336;
 
 function cleanInline(value: string): string {
   return value
@@ -144,6 +148,9 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
       takeaway,
       bullets: [...bullets, ...paragraphs].slice(0, 8),
       layout: "auto" as SlideLayout,
+      imageRequired: false,
+      imagePrompt: "",
+      regenerateImage: false,
     };
   });
 
@@ -151,8 +158,48 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
     title: title || fallbackTitle,
     slides: slides.length
       ? slides
-      : [{ id: "slide-1", title, takeaway: "", bullets: [], layout: "auto" }],
+      : [{ id: "slide-1", title, takeaway: "", bullets: [], layout: "auto", imageRequired: false, imagePrompt: "", regenerateImage: false }],
   };
+}
+
+export function presentationImageEstimate(deck: ParsedMarkdownDeck): {
+  images: number;
+  estimatedCostUsd: number;
+} {
+  const images = deck.slides.filter((slide) => slide.imageRequired).length;
+  return { images, estimatedCostUsd: images * GEMINI_IMAGE_ESTIMATE_USD };
+}
+
+export function presentationPreflight(deck: ParsedMarkdownDeck): {
+  passed: boolean;
+  issues: string[];
+  warnings: string[];
+} {
+  const issues: string[] = [];
+  const warnings: string[] = [];
+  deck.slides.forEach((slide, index) => {
+    const number = index + 1;
+    if (!slide.title.trim()) issues.push(`Slide ${number} needs a title.`);
+    if (slide.imageRequired && !slide.imagePrompt.trim()) {
+      issues.push(`Slide ${number} needs visual direction before image generation.`);
+    }
+    if (slide.title.length > 82) warnings.push(`Slide ${number} title may wrap excessively.`);
+    if ((slide.layout === "bar-chart" || slide.layout === "donut-chart")
+      && slide.bullets.filter((row) => row.includes("|") && Number.isFinite(Number(row.split("|").pop()?.trim().replace(/[%,$]/g, "")))).length < 2) {
+      issues.push(`Slide ${number} needs at least two chart rows formatted as Label | Value.`);
+    }
+    if (slide.layout === "table" && slide.bullets.filter((row) => row.includes("|")).length < 2) {
+      issues.push(`Slide ${number} needs a header and at least one table row.`);
+    }
+  });
+  for (let index = 2; index < deck.slides.length; index += 1) {
+    if (deck.slides[index].layout === deck.slides[index - 1].layout
+      && deck.slides[index].layout === deck.slides[index - 2].layout) {
+      warnings.push(`Slides ${index - 1}-${index + 1} repeat the same layout.`);
+      break;
+    }
+  }
+  return { passed: issues.length === 0, issues, warnings };
 }
 
 export function suggestSlideLayout(slide: MarkdownSlide, index = 0): SlideLayout {
@@ -183,18 +230,20 @@ export function buildMarkdownSlideDesignerPrompt(
   templateId: string,
 ): string {
   const selectedTemplate = templateById(templateId);
-  const visualSlides = deck.slides.filter((slide) =>
-    IMAGE_LAYOUTS.includes(slide.layout),
-  ).length;
-  const specification = deck.slides.map(({ id: _id, ...slide }) => ({
+  const visualSlides = deck.slides.filter((slide) => slide.imageRequired).length;
+  const estimate = presentationImageEstimate(deck);
+  const specification = deck.slides.map(({ id: _id, imageRequired, imagePrompt, regenerateImage, ...slide }) => ({
     ...slide,
-    image_required: IMAGE_LAYOUTS.includes(slide.layout),
+    image_required: imageRequired,
+    image_prompt: imagePrompt,
+    regenerate_image: regenerateImage,
   }));
   return `Create an editable presentation from this existing Markdown artifact:
 
 Source: ${path}
 Deck title: ${deck.title}
 Editable template: ${selectedTemplate.name} (template_id="${selectedTemplate.id}")
+Approved image budget: up to ${estimate.images} image calls, estimated at USD ${estimate.estimatedCostUsd.toFixed(4)} before provider taxes or pricing changes.
 
 The user reviewed every slide in Slide Designer. Treat the following JSON as the locked content and layout specification:
 ${JSON.stringify(specification, null, 2)}
@@ -204,7 +253,8 @@ Requirements:
 - Preserve the approved slide order, titles, takeaways, bullets, and layout values. Do not silently replace a selected layout.
 - Run the presentation-studio skill. Build an editable widescreen PPTX and matching slide PDF with build_presentation.
 - Use template_id="${selectedTemplate.id}" and call build_presentation with minimum_images=${visualSlides}.
-- For every image layout (image-left, image-right, image-background, image-top, or image-bottom), generate one original slide-specific visual with Gemini Nano Banana 2 Lite at 1K, then copy its exact result.path into image_path and keep image_required=true.
+- Generate images only where image_required=true. Use each approved image_prompt as the art direction. If regenerate_image=true, create a new candidate instead of reusing a prior asset.
+- Before the first paid call, present the approved call count and estimated ceiling above for confirmation. Never exceed it without new user approval.
 - ${selectedTemplate.composition ? `Generate a separate widescreen cover visual composed specifically for the "${selectedTemplate.composition}" template treatment. Preserve intentional negative space for the title, and pass its exact result.path as cover_image_path.` : "Keep the template's native typographic cover."}
 - For non-image layouts, keep image_required=false unless the user explicitly adds an image later.
 - Preserve semantic rows exactly: tables use pipe-separated cells, charts use "Label | Value", and org charts use "Parent > Child".
@@ -328,6 +378,7 @@ export function MarkdownSlideDesigner({
   const [deck, setDeck] = useState<ParsedMarkdownDeck | null>(null);
   const [selected, setSelected] = useState(0);
   const [templateId, setTemplateId] = useState("atlas");
+  const [step, setStep] = useState<"content" | "design" | "review">("content");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -346,6 +397,7 @@ export function MarkdownSlideDesigner({
         if (!result.ok || typeof result.content !== "string") throw new Error(result.error || "Unable to read this Markdown artifact.");
         setDeck(parseMarkdownDeck(result.content, path.replace(/^.*\//, "").replace(/\.(md|markdown)$/i, "")));
         setSelected(0);
+        setStep("content");
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : "Unable to read this Markdown artifact."))
       .finally(() => active && setLoading(false));
@@ -354,6 +406,8 @@ export function MarkdownSlideDesigner({
 
   if (!markdown.length) return null;
   const slide = deck?.slides[selected];
+  const imageEstimate = deck ? presentationImageEstimate(deck) : { images: 0, estimatedCostUsd: 0 };
+  const preflight = deck ? presentationPreflight(deck) : { passed: false, issues: [], warnings: [] };
   const supportLabel = slide?.layout === "table"
     ? "Rows (pipe-separated cells; first row is header)"
     : slide?.layout === "bar-chart" || slide?.layout === "donut-chart"
@@ -382,10 +436,17 @@ export function MarkdownSlideDesigner({
               <div>
                 <span className="research-modal-eyebrow">Artifact Studio</span>
                 <h2 id="slide-designer-title">Slide Designer</h2>
-                <p>Preview real Markdown content and choose a composition for every slide.</p>
+                <p>Create a polished deck in three guided steps.</p>
               </div>
               <button className="artifact-icon-btn" onClick={close} aria-label="Close"><Icon name="x" size={17} /></button>
             </header>
+            <nav className="presentation-copilot-steps" aria-label="Presentation steps">
+              {(["content", "design", "review"] as const).map((item, index) => (
+                <button key={item} className={step === item ? "selected" : ""} onClick={() => setStep(item)} disabled={!deck || loading}>
+                  <b>{index + 1}</b><span>{item[0].toUpperCase() + item.slice(1)}</span>
+                </button>
+              ))}
+            </nav>
             <div className="slide-designer-toolbar">
               <label className="research-field"><span>Markdown artifact</span><select aria-label="Markdown artifact" value={path} onChange={(event) => setPath(event.target.value)}>{markdown.map((artifact) => <option key={artifact.path} value={artifact.path}>{artifact.path}</option>)}</select></label>
               <label className="research-field">
@@ -401,30 +462,66 @@ export function MarkdownSlideDesigner({
             </div>
             {error && <div className="research-modal-error">{error}</div>}
             {loading && <p className="slide-designer-loading">Reading the Markdown artifact…</p>}
-            {deck && slide && !loading && (
+            {deck && slide && !loading && step !== "review" && (
               <div className="slide-designer-workspace">
                 <nav className="slide-designer-slide-list" aria-label="Slides">
                   {deck.slides.map((item, index) => <button key={item.id} className={index === selected ? "selected" : ""} onClick={() => setSelected(index)}><span>{index + 1}</span><strong>{item.title}</strong><small>{LAYOUTS.find((layout) => layout.id === item.layout)?.label}</small></button>)}
                 </nav>
                 <div className="slide-designer-stage">
                   <SlidePreview slide={slide} templateId={templateId} />
-                  <div className="slide-designer-edit-fields">
+                  {step === "content" ? <div className="slide-designer-edit-fields">
                     <label className="research-field"><span>Slide title</span><input aria-label="Slide title" value={slide.title} onChange={(event) => updateSlide({ title: event.target.value })} /></label>
                     <label className="research-field"><span>Key message</span><textarea aria-label="Key message" rows={2} value={slide.takeaway} onChange={(event) => updateSlide({ takeaway: event.target.value })} /></label>
                     <label className="research-field"><span>{supportLabel}</span><textarea aria-label="Supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /></label>
-                  </div>
+                  </div> : <div className="presentation-copilot-visual">
+                    <label className="presentation-copilot-toggle">
+                      <input type="checkbox" aria-label="Generate an original visual" checked={slide.imageRequired} onChange={(event) => updateSlide({ imageRequired: event.target.checked, regenerateImage: false })} />
+                      <span><b>Generate an original visual</b><small>Nano Banana 2 Lite · approval required before the paid call</small></span>
+                    </label>
+                    {slide.imageRequired && <>
+                      <label className="research-field"><span>Visual direction</span><textarea aria-label="Visual direction" rows={3} placeholder="Describe the subject, composition, mood, and intentional negative space." value={slide.imagePrompt} onChange={(event) => updateSlide({ imagePrompt: event.target.value })} /></label>
+                      <label className="presentation-copilot-toggle compact">
+                        <input type="checkbox" aria-label="Regenerate this visual" checked={slide.regenerateImage} onChange={(event) => updateSlide({ regenerateImage: event.target.checked })} />
+                        <span><b>Regenerate this visual</b><small>Create a fresh candidate instead of reusing an existing asset.</small></span>
+                      </label>
+                    </>}
+                  </div>}
                 </div>
-                <aside className="slide-designer-layouts" aria-label="Slide styles">
+                {step === "design" ? <aside className="slide-designer-layouts" aria-label="Slide styles">
                   <strong>Choose a style</strong>
                   <span>The preview updates immediately.</span>
-                  {LAYOUTS.map((layout, index) => <div className="slide-designer-layout-option" key={layout.id}>{index === 0 || LAYOUTS[index - 1].category !== layout.category ? <h4>{layout.category}</h4> : null}<button className={slide.layout === layout.id ? "selected" : ""} aria-pressed={slide.layout === layout.id} onClick={() => updateSlide({ layout: layout.id })}><strong>{layout.label}</strong><small>{layout.description}</small></button></div>)}
-                </aside>
+                  {LAYOUTS.map((layout, index) => <div className="slide-designer-layout-option" key={layout.id}>{index === 0 || LAYOUTS[index - 1].category !== layout.category ? <h4>{layout.category}</h4> : null}<button className={slide.layout === layout.id ? "selected" : ""} aria-pressed={slide.layout === layout.id} onClick={() => updateSlide({ layout: layout.id, imageRequired: IMAGE_LAYOUTS.includes(layout.id) || slide.imageRequired })}><strong>{layout.label}</strong><small>{layout.description}</small></button></div>)}
+                </aside> : <aside className="presentation-copilot-guidance">
+                  <strong>Content check</strong>
+                  <span>Keep one message per slide. Shorten copy before reducing type size.</span>
+                  <dl><div><dt>Slides</dt><dd>{deck.slides.length}</dd></div><div><dt>Current words</dt><dd>{[slide.title, slide.takeaway, ...slide.bullets].join(" ").split(/\s+/).filter(Boolean).length}</dd></div></dl>
+                </aside>}
               </div>
+            )}
+            {deck && !loading && step === "review" && (
+              <section className="presentation-copilot-review">
+                <div className="presentation-copilot-review-summary">
+                  <div><span>Slides</span><b>{deck.slides.length}</b></div>
+                  <div><span>Original visuals</span><b>{imageEstimate.images}</b></div>
+                  <div><span>Estimated image cost</span><b>USD {imageEstimate.estimatedCostUsd.toFixed(4)}</b></div>
+                  <div><span>Quality gate</span><b>{preflight.passed ? "Ready" : "Needs attention"}</b></div>
+                </div>
+                <p className="presentation-copilot-budget-note">No paid image call happens in this screen. The composer must request your approval before generation and may not exceed this estimate without new approval.</p>
+                {(preflight.issues.length > 0 || preflight.warnings.length > 0) && <div className="presentation-copilot-quality">
+                  {preflight.issues.map((issue) => <span className="critical" key={issue}>{issue}</span>)}
+                  {preflight.warnings.map((warning) => <span key={warning}>{warning}</span>)}
+                </div>}
+                <div className="presentation-copilot-review-list">
+                  {deck.slides.map((item, index) => <button key={item.id} onClick={() => { setSelected(index); setStep("design"); }}><b>{index + 1}</b><span><strong>{item.title}</strong><small>{LAYOUTS.find((layout) => layout.id === item.layout)?.label}{item.imageRequired ? " · Original visual" : ""}</small></span><em>Edit</em></button>)}
+                </div>
+              </section>
             )}
             <footer className="research-modal-actions">
               <button className="btn" disabled={!deck || loading} onClick={() => { if (deck) setDeck({ ...deck, slides: deck.slides.map((item, index) => ({ ...item, layout: suggestSlideLayout(item, index) })) }); }}>Auto-design deck</button>
               <button className="btn" onClick={close}>Cancel</button>
-              <button className="btn primary" disabled={!deck || loading || !!error} onClick={() => { if (deck) onCreate(buildMarkdownSlideDesignerPrompt(path, deck, templateId)); close(); }}>Review in composer</button>
+              {step === "content" ? <button className="btn primary" disabled={!deck || loading || !!error} onClick={() => setStep("design")}>Continue to design</button>
+              : step === "design" ? <button className="btn primary" disabled={!deck || loading || !!error} onClick={() => setStep("review")}>Review deck</button>
+              : <button className="btn primary" disabled={!deck || loading || !!error || !preflight.passed} onClick={() => { if (deck) onCreate(buildMarkdownSlideDesignerPrompt(path, deck, templateId)); close(); }}>Create in composer</button>}
             </footer>
           </section>
         </div>,

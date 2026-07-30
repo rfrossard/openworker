@@ -29,6 +29,10 @@ through every phase.
    imagery. Use the native `generate_image` tool, which is configured for Gemini Nano
    Banana 2 Lite at 1K, and request 1536×1024 for a widescreen aspect ratio. Never invent
    charts, people, quotes, logos, or documentary evidence.
+   When the request comes from Presentation Copilot, honor its per-slide `image_prompt`
+   and `regenerate_image` values. Show the approved image count and estimated ceiling
+   before the first paid call, request approval, and never exceed that ceiling without
+   new approval. A slide with `image_required: false` must not trigger image generation.
    Copy the exact successful tool `path` into the slide's `image_path`; a planned visual
    remains incomplete until that workspace file exists. If generation is unavailable,
    use a sourced visual with provenance rather than silently dropping the asset.

@@ -836,6 +836,44 @@ button.btn.danger { color: var(--accent); }
 .slide-designer-layouts button strong { font-size: 11px; }
 .slide-designer-layouts button small { color: var(--faint); font-size: 9.5px; line-height: 1.25; }
 .slide-designer-template-note { min-height: 15px; }
+.presentation-copilot-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 18px 12px; }
+.presentation-copilot-steps button { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; color: var(--faint); background: var(--panel); cursor: pointer; }
+.presentation-copilot-steps button.selected { color: var(--ink); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+.presentation-copilot-steps button:disabled { opacity: .55; cursor: default; }
+.presentation-copilot-steps b { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; color: var(--panel); background: var(--faint); font-size: 10px; }
+.presentation-copilot-steps button.selected b { background: var(--accent); }
+.presentation-copilot-steps span { font-size: 11px; font-weight: 750; }
+.presentation-copilot-guidance { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.presentation-copilot-guidance > strong { font-size: 12px; }
+.presentation-copilot-guidance > span { color: var(--faint); font-size: 10px; line-height: 1.45; }
+.presentation-copilot-guidance dl { display: grid; gap: 7px; margin: 0; }
+.presentation-copilot-guidance dl div { display: flex; justify-content: space-between; padding-top: 7px; border-top: 1px solid var(--line); font-size: 10px; }
+.presentation-copilot-guidance dd { margin: 0; color: var(--ink); font-weight: 750; }
+.presentation-copilot-visual { display: grid; gap: 10px; }
+.presentation-copilot-toggle { display: flex; align-items: flex-start; gap: 10px; padding: 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+.presentation-copilot-toggle.compact { padding: 8px 10px; }
+.presentation-copilot-toggle input { margin-top: 2px; accent-color: var(--accent); }
+.presentation-copilot-toggle span { display: grid; gap: 3px; }
+.presentation-copilot-toggle b { font-size: 11px; }
+.presentation-copilot-toggle small { color: var(--faint); font-size: 9.5px; line-height: 1.35; }
+.presentation-copilot-review { display: grid; gap: 14px; max-height: 590px; overflow-y: auto; padding: 4px 18px 14px; }
+.presentation-copilot-review-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
+.presentation-copilot-review-summary > div { display: grid; gap: 6px; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.presentation-copilot-review-summary span { color: var(--faint); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
+.presentation-copilot-review-summary b { font-size: 16px; }
+.presentation-copilot-budget-note { margin: 0; padding: 11px 13px; border-radius: 9px; color: var(--muted); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); font-size: 10px; line-height: 1.45; }
+.presentation-copilot-quality { display: grid; gap: 5px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+.presentation-copilot-quality span { color: var(--muted); font-size: 10px; }
+.presentation-copilot-quality span::before { content: "Review · "; color: var(--warning, #b77800); font-weight: 750; }
+.presentation-copilot-quality span.critical { color: var(--danger, #c23434); }
+.presentation-copilot-quality span.critical::before { content: "Required · "; color: inherit; }
+.presentation-copilot-review-list { display: grid; gap: 6px; }
+.presentation-copilot-review-list button { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 9px; width: 100%; padding: 10px; text-align: left; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--panel); cursor: pointer; }
+.presentation-copilot-review-list button > b { color: var(--accent); font-size: 10px; }
+.presentation-copilot-review-list button > span { display: grid; gap: 3px; }
+.presentation-copilot-review-list strong { font-size: 11px; }
+.presentation-copilot-review-list small { color: var(--faint); font-size: 9.5px; }
+.presentation-copilot-review-list em { color: var(--accent); font-size: 9.5px; font-style: normal; }
 @keyframes slide-template-fade { from { filter: saturate(.88); } to { filter: saturate(1.12); } }
 @keyframes slide-template-gradient { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
 @keyframes slide-template-wipe { from { background-position: 0% 0%; } to { background-position: 80% 100%; } }

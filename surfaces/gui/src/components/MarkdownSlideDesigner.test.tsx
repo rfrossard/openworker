@@ -5,6 +5,8 @@ import {
   buildMarkdownSlideDesignerPrompt,
   MarkdownSlideDesigner,
   parseMarkdownDeck,
+  presentationImageEstimate,
+  presentationPreflight,
 } from "./MarkdownSlideDesigner";
 
 afterEach(() => {
@@ -55,10 +57,14 @@ Choose the first investment.`);
   it("locks the reviewed layouts and image requirements into the composer brief", () => {
     const deck = parseMarkdownDeck("# Plan\n## Opportunity\nA new market.");
     deck.slides[0].layout = "image-right";
+    deck.slides[0].imageRequired = true;
+    deck.slides[0].imagePrompt = "Editorial market scene with negative space on the left";
     const prompt = buildMarkdownSlideDesignerPrompt("reports/plan.md", deck, "atlas");
     expect(prompt).toContain('"layout": "image-right"');
     expect(prompt).toContain('"image_required": true');
     expect(prompt).toContain("minimum_images=1");
+    expect(prompt).toContain("estimated at USD 0.0336");
+    expect(prompt).toContain('"image_prompt": "Editorial market scene');
     expect(prompt).toContain("Do not silently replace a selected layout");
     const photographicPrompt = buildMarkdownSlideDesignerPrompt("reports/plan.md", deck, "science-studio");
     expect(photographicPrompt).toContain("cover_image_path");
@@ -76,11 +82,13 @@ Choose the first investment.`);
     render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={onCreate} />);
     fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
     await waitFor(() => expect(screen.getAllByText("The choice").length).toBeGreaterThan(0));
-    fireEvent.click(screen.getByRole("button", { name: /Two columns/i }));
-    expect(screen.getByTestId("slide-preview").className).toContain("layout-two-column");
     fireEvent.change(screen.getByLabelText("Slide title"), { target: { value: "A better choice" } });
     expect(screen.getByTestId("slide-preview").textContent).toContain("A better choice");
-    fireEvent.click(screen.getByRole("button", { name: "Review in composer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
+    fireEvent.click(screen.getByRole("button", { name: /Two columns/i }));
+    expect(screen.getByTestId("slide-preview").className).toContain("layout-two-column");
+    fireEvent.click(screen.getByRole("button", { name: "Review deck" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create in composer" }));
     await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
     expect(onCreate.mock.calls[0][0]).toContain('"layout": "two-column"');
   });
@@ -95,6 +103,7 @@ Choose the first investment.`);
     render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
     await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
     const preview = screen.getByTestId("slide-preview");
     expect(preview.dataset.template).toBe("atlas");
     const atlasStyle = preview.getAttribute("style");
@@ -135,5 +144,41 @@ Choose the first investment.`);
     fireEvent.click(screen.getByRole("button", { name: "Auto-design deck" }));
     expect(screen.getByTestId("slide-preview").className).toContain("layout-bar-chart");
     expect(screen.getByText("Data (Label | Value, one per line)")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
+  });
+
+  it("shows a transparent image budget and keeps paid generation approval-gated", async () => {
+    vi.spyOn(api, "readArtifact").mockResolvedValue({
+      ok: true,
+      path: "reports/strategy.md",
+      kind: "markdown",
+      content: "# Strategy\n## The choice\nAct this quarter.",
+    });
+    render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
+    await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
+    fireEvent.click(screen.getByLabelText("Generate an original visual"));
+    fireEvent.change(screen.getByLabelText("Visual direction"), { target: { value: "A calm editorial scene" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review deck" }));
+    expect(screen.getByText("USD 0.0336")).toBeTruthy();
+    expect(screen.getByText(/No paid image call happens in this screen/i)).toBeTruthy();
+  });
+
+  it("calculates the image ceiling from approved visual slides only", () => {
+    const deck = parseMarkdownDeck("# Deck\n## One\nFirst\n## Two\nSecond");
+    deck.slides[1].imageRequired = true;
+    expect(presentationImageEstimate(deck)).toEqual({ images: 1, estimatedCostUsd: 0.0336 });
+  });
+
+  it("blocks creation when a paid visual has no approved direction", () => {
+    const deck = parseMarkdownDeck("# Deck\n## Visual proof\nOne message");
+    deck.slides[0].imageRequired = true;
+    expect(presentationPreflight(deck)).toMatchObject({
+      passed: false,
+      issues: ["Slide 1 needs visual direction before image generation."],
+    });
+    deck.slides[0].imagePrompt = "A documentary-style close-up with negative space";
+    expect(presentationPreflight(deck).passed).toBe(true);
   });
 });
