@@ -181,4 +181,23 @@ Choose the first investment.`);
     deck.slides[0].imagePrompt = "A documentary-style close-up with negative space";
     expect(presentationPreflight(deck).passed).toBe(true);
   });
+
+  it("keeps footer actions outside and after the scrollable style workspace", async () => {
+    vi.spyOn(api, "readArtifact").mockResolvedValue({
+      ok: true,
+      path: "reports/strategy.md",
+      kind: "markdown",
+      content: "# Strategy\n## One clear choice\nAct this quarter.",
+    });
+    render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
+    await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
+    const styles = screen.getByLabelText("Slide styles");
+    const footer = screen.getByRole("button", { name: "Review deck" }).closest("footer");
+    expect(footer).toBeTruthy();
+    expect(styles.closest(".slide-designer-workspace")).toBeTruthy();
+    expect(footer?.contains(styles)).toBe(false);
+    expect(styles.compareDocumentPosition(footer as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
