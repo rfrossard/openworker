@@ -26,7 +26,13 @@ export type SlideLayout =
   | "image-top"
   | "image-bottom"
   | "agenda"
-  | "conclusion";
+  | "conclusion"
+  | "table"
+  | "bar-chart"
+  | "donut-chart"
+  | "flow-diagram"
+  | "org-chart"
+  | "roadmap";
 
 export interface MarkdownSlide {
   id: string;
@@ -57,9 +63,15 @@ const LAYOUTS: { id: SlideLayout; label: string; description: string; category: 
   { id: "timeline", label: "Timeline", description: "Events in chronological order", category: "Narrative" },
   { id: "process", label: "Process", description: "A connected sequence of steps", category: "Narrative" },
   { id: "agenda", label: "Agenda", description: "Numbered presentation roadmap", category: "Narrative" },
+  { id: "roadmap", label: "Roadmap", description: "Milestones across a visual path", category: "Narrative" },
+  { id: "flow-diagram", label: "Flow diagram", description: "Connected stages or decisions", category: "Narrative" },
+  { id: "org-chart", label: "Org chart", description: "Editable reporting relationships", category: "Narrative" },
   { id: "comparison", label: "Comparison", description: "Side-by-side alternatives", category: "Narrative" },
   { id: "pros-cons", label: "Pros and cons", description: "Balanced benefits and tradeoffs", category: "Narrative" },
   { id: "big-number", label: "Big number", description: "Lead with one important metric", category: "Data" },
+  { id: "table", label: "Table", description: "Structured rows and columns", category: "Data" },
+  { id: "bar-chart", label: "Bar chart", description: "Compare values across categories", category: "Data" },
+  { id: "donut-chart", label: "Donut chart", description: "Show composition or share", category: "Data" },
   { id: "metric-grid", label: "Metric grid", description: "Multiple headline indicators", category: "Data" },
   { id: "three-columns", label: "Three columns", description: "Three parallel themes", category: "Data" },
   { id: "four-cards", label: "Four cards", description: "Four concise ideas or features", category: "Data" },
@@ -114,6 +126,10 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
         flush();
         const cleaned = cleanInline(bullet[1]);
         if (cleaned) bullets.push(cleaned);
+      } else if (line.includes("|") && !/^\s*\|?[\s:|-]+\|?\s*$/.test(line)) {
+        flush();
+        const cells = line.split("|").map(cleanInline).filter(Boolean);
+        if (cells.length > 1) bullets.push(cells.join(" | "));
       } else if (!line.trim()) {
         flush();
       } else if (!/^```/.test(line)) {
@@ -137,6 +153,28 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
       ? slides
       : [{ id: "slide-1", title, takeaway: "", bullets: [], layout: "auto" }],
   };
+}
+
+export function suggestSlideLayout(slide: MarkdownSlide, index = 0): SlideLayout {
+  const values = slide.bullets;
+  const title = `${slide.title} ${slide.takeaway}`.toLowerCase();
+  const pipeRows = values.filter((value) => value.includes("|"));
+  const numericRows = pipeRows.filter((value) => {
+    const parts = value.split("|");
+    const part = parts[parts.length - 1]?.trim().replace(/[%,$]/g, "") || "";
+    return part !== "" && Number.isFinite(Number(part));
+  });
+  if (values.some((value) => value.includes(">"))) return "org-chart";
+  if (pipeRows.length >= 2 && numericRows.length === pipeRows.length) return "bar-chart";
+  if (pipeRows.length >= 2) return "table";
+  if (/\b(roadmap|milestone|quarter|phase)\b/.test(title)) return "roadmap";
+  if (/\b(process|workflow|flow|steps?)\b/.test(title) && values.length >= 2) return "flow-diagram";
+  if (/\b(timeline|history|evolution)\b/.test(title)) return "timeline";
+  if (/^[“"].+[”"]$/.test(slide.takeaway.trim())) return "quote";
+  if (/^\s*[$€£]?\d[\d,.]*%?\s*$/.test(values[0] || "")) return "big-number";
+  if (values.length === 4 && values.every((value) => /\d/.test(value))) return "metric-grid";
+  if (values.length === 0 && slide.takeaway) return "statement";
+  return index % 3 === 1 && values.length >= 2 ? "two-column" : "auto";
 }
 
 export function buildMarkdownSlideDesignerPrompt(
@@ -169,6 +207,8 @@ Requirements:
 - For every image layout (image-left, image-right, image-background, image-top, or image-bottom), generate one original slide-specific visual with Gemini Nano Banana 2 Lite at 1K, then copy its exact result.path into image_path and keep image_required=true.
 - ${selectedTemplate.composition ? `Generate a separate widescreen cover visual composed specifically for the "${selectedTemplate.composition}" template treatment. Preserve intentional negative space for the title, and pass its exact result.path as cover_image_path.` : "Keep the template's native typographic cover."}
 - For non-image layouts, keep image_required=false unless the user explicitly adds an image later.
+- Preserve semantic rows exactly: tables use pipe-separated cells, charts use "Label | Value", and org charts use "Parent > Child".
+- Run the presentation quality gate and resolve every critical issue before finishing. Report its score and any remaining warnings.
 - Write the files beside the source with descriptive .pptx and .pdf names. Also keep the structured slide specification as a .presentation.json artifact.
 - Inspect all rendered slide previews and the contact sheet. Fix clipping, overflow, weak contrast, missing images, and layout mismatches before finishing.
 - Finish with clickable links to the PPTX, PDF, contact sheet, and presentation JSON.`;
@@ -235,6 +275,16 @@ function SlidePreview({
         <div className="slide-designer-checklist">{slide.bullets.map((item) => <span key={item}>✓ {item}</span>)}</div>
       ) : slide.layout === "timeline" || slide.layout === "process" ? (
         <div className={`slide-designer-sequence ${slide.layout}`}>{slide.bullets.slice(0, 5).map((item, index) => <div key={item}><b>{index + 1}</b><span>{item}</span></div>)}</div>
+      ) : slide.layout === "flow-diagram" || slide.layout === "roadmap" ? (
+        <div className={`slide-designer-semantic-flow ${slide.layout}`}>{slide.bullets.slice(0, 6).map((item, index) => <div key={`${item}-${index}`}><b>{index + 1}</b><span>{item}</span></div>)}</div>
+      ) : slide.layout === "org-chart" ? (
+        <div className="slide-designer-org-chart"><b>{slide.bullets[0]?.split(">")[0]?.trim() || slide.title}</b><div>{slide.bullets.slice(0, 4).map((item, index) => { const parts = item.split(">"); return <span key={`${item}-${index}`}>{parts[parts.length - 1]?.trim()}</span>; })}</div></div>
+      ) : slide.layout === "table" ? (
+        <div className="slide-designer-table">{slide.bullets.slice(0, 6).map((row, index) => <div key={`${row}-${index}`}>{row.split("|").map((cell, cellIndex) => <span key={`${cell}-${cellIndex}`}>{cell.trim()}</span>)}</div>)}</div>
+      ) : slide.layout === "bar-chart" ? (
+        <div className="slide-designer-bar-chart">{slide.bullets.slice(0, 6).map((row, index) => { const [label, raw] = row.split("|"); const value = Math.max(8, Math.min(100, Number(raw?.replace(/[%,$]/g, "")) || (index + 1) * 18)); return <div key={`${row}-${index}`}><span>{label?.trim()}</span><i style={{ width: `${value}%` }} /><b>{raw?.trim()}</b></div>; })}</div>
+      ) : slide.layout === "donut-chart" ? (
+        <div className="slide-designer-donut-chart"><i /><div>{slide.bullets.slice(0, 5).map((row, index) => <span key={`${row}-${index}`}>{row.split("|")[0]?.trim()}</span>)}</div></div>
       ) : slide.layout === "comparison" || slide.layout === "pros-cons" ? (
         <div className="slide-designer-comparison"><div><b>{slide.layout === "pros-cons" ? "Pros" : "Option A"}</b>{bullets(slide.bullets.slice(0, midpoint))}</div><div><b>{slide.layout === "pros-cons" ? "Cons" : "Option B"}</b>{bullets(slide.bullets.slice(midpoint))}</div></div>
       ) : slide.layout === "three-columns" ? cards(3)
@@ -304,6 +354,15 @@ export function MarkdownSlideDesigner({
 
   if (!markdown.length) return null;
   const slide = deck?.slides[selected];
+  const supportLabel = slide?.layout === "table"
+    ? "Rows (pipe-separated cells; first row is header)"
+    : slide?.layout === "bar-chart" || slide?.layout === "donut-chart"
+      ? "Data (Label | Value, one per line)"
+      : slide?.layout === "org-chart"
+        ? "Relationships (Parent > Child, one per line)"
+        : slide?.layout === "flow-diagram" || slide?.layout === "roadmap"
+          ? "Steps or milestones (one per line)"
+          : "Supporting points (one per line)";
   const updateSlide = (patch: Partial<MarkdownSlide>) => {
     if (!deck || !slide) return;
     setDeck({ ...deck, slides: deck.slides.map((item, index) => index === selected ? { ...item, ...patch } : item) });
@@ -352,7 +411,7 @@ export function MarkdownSlideDesigner({
                   <div className="slide-designer-edit-fields">
                     <label className="research-field"><span>Slide title</span><input aria-label="Slide title" value={slide.title} onChange={(event) => updateSlide({ title: event.target.value })} /></label>
                     <label className="research-field"><span>Key message</span><textarea aria-label="Key message" rows={2} value={slide.takeaway} onChange={(event) => updateSlide({ takeaway: event.target.value })} /></label>
-                    <label className="research-field"><span>Supporting points (one per line)</span><textarea aria-label="Supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /></label>
+                    <label className="research-field"><span>{supportLabel}</span><textarea aria-label="Supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /></label>
                   </div>
                 </div>
                 <aside className="slide-designer-layouts" aria-label="Slide styles">
@@ -362,7 +421,11 @@ export function MarkdownSlideDesigner({
                 </aside>
               </div>
             )}
-            <footer className="research-modal-actions"><button className="btn" onClick={close}>Cancel</button><button className="btn primary" disabled={!deck || loading || !!error} onClick={() => { if (deck) onCreate(buildMarkdownSlideDesignerPrompt(path, deck, templateId)); close(); }}>Review in composer</button></footer>
+            <footer className="research-modal-actions">
+              <button className="btn" disabled={!deck || loading} onClick={() => { if (deck) setDeck({ ...deck, slides: deck.slides.map((item, index) => ({ ...item, layout: suggestSlideLayout(item, index) })) }); }}>Auto-design deck</button>
+              <button className="btn" onClick={close}>Cancel</button>
+              <button className="btn primary" disabled={!deck || loading || !!error} onClick={() => { if (deck) onCreate(buildMarkdownSlideDesignerPrompt(path, deck, templateId)); close(); }}>Review in composer</button>
+            </footer>
           </section>
         </div>,
         document.body,

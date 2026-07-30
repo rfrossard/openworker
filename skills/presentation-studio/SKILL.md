@@ -59,6 +59,10 @@ through every phase.
   missing instead of quietly producing an incomplete deck.
 - Select `image-left`, `image-right`, or `statement` layouts when they strengthen the
    narrative; use `auto` only when no deliberate alternative is warranted.
+- Prefer editable semantic visuals over text that merely describes them: `table` uses
+  pipe-separated cells with the first row as headers; `bar-chart` and `donut-chart`
+  use `Label | Value`; `org-chart` uses `Parent > Child`; `flow-diagram` and `roadmap`
+  use one connected step per bullet. Add source URLs to every data slide.
 - Never repeat one layout more than twice consecutively. Keep card grids below 20% of
   the deck and alternate text-led, visual-led, data-led, and transition silhouettes.
 - Use one image at most once unless it is an intentional background.
@@ -73,6 +77,9 @@ through every phase.
 - `reports/<name>.sources.md`: source and image provenance by slide.
 - `reports/<name>.claims.json`: atomic factual claims and supporting URLs.
 - `reports/<name>-previews/`: rendered PNG slides and a contact sheet for visual review.
+
+The `build_presentation` result must include `quality_gate.passed: true`. Resolve critical
+issues and review every warning before presenting the artifact to the user.
 
 Never create the PDF with a Markdown writer or plain-text converter. Never mark the task
 complete based only on file extensions.

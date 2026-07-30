@@ -133,6 +133,55 @@ def test_build_presentation_supports_extended_designer_layouts(tmp_path):
     assert len(PdfReader(tmp_path / "extended-designer.pdf").pages) == 16
 
 
+def test_build_presentation_supports_editable_semantic_visuals(tmp_path):
+    tool = make_build_presentation_tool(workspace=tmp_path)
+    result = tool(
+        title="Semantic visual language",
+        slides=[
+            {"title": "A comparison table", "layout": "table", "bullets": ["Option | Cost | Speed", "A | 10 | Fast", "B | 15 | Medium"], "sources": ["https://example.com/table"]},
+            {"title": "Growth by segment", "layout": "bar-chart", "bullets": ["Core | 72", "New | 44", "Partner | 28"], "sources": ["https://example.com/chart"]},
+            {"title": "Revenue mix", "layout": "donut-chart", "bullets": ["Product | 55", "Services | 30", "Other | 15"], "sources": ["https://example.com/mix"]},
+            {"title": "Decision flow", "layout": "flow-diagram", "bullets": ["Discover", "Validate", "Build", "Measure"]},
+            {"title": "Accountable team", "layout": "org-chart", "bullets": ["CEO > Product", "CEO > Engineering", "CEO > Sales"]},
+            {"title": "Delivery roadmap", "layout": "roadmap", "bullets": ["Q1 Research", "Q2 Pilot", "Q3 Launch", "Q4 Scale"]},
+        ],
+        pptx_path="semantic.pptx",
+        pdf_path="semantic.pdf",
+    )
+
+    assert result["ok"] is True
+    assert result["quality_gate"]["passed"] is True
+    assert result["quality_gate"]["score"] == 100
+    presentation = Presentation(tmp_path / "semantic.pptx")
+    assert len(presentation.slides) == 7
+    assert any(shape.has_table for shape in presentation.slides[1].shapes)
+    assert presentation.slides[2].has_notes_slide
+    assert "[Sources]" in presentation.slides[2].notes_slide.notes_text_frame.text
+    assert any(getattr(shape, "has_chart", False) for shape in presentation.slides[2].shapes)
+    assert any(getattr(shape, "has_chart", False) for shape in presentation.slides[3].shapes)
+    assert len(PdfReader(tmp_path / "semantic.pdf").pages) == 7
+
+
+def test_build_presentation_rejects_incomplete_semantic_data(tmp_path):
+    tool = make_build_presentation_tool(workspace=tmp_path)
+    chart = tool(
+        title="Invalid chart",
+        slides=[{"title": "Not enough data", "layout": "bar-chart", "bullets": ["Only | 1"]}],
+        pptx_path="invalid-chart.pptx",
+        pdf_path="invalid-chart.pdf",
+    )
+    table = tool(
+        title="Invalid table",
+        slides=[{"title": "Not enough rows", "layout": "table", "bullets": ["A | B"]}],
+        pptx_path="invalid-table.pptx",
+        pdf_path="invalid-table.pdf",
+    )
+    assert chart["ok"] is False
+    assert "at least two chart rows" in chart["error"]
+    assert table["ok"] is False
+    assert "header and at least one" in table["error"]
+
+
 def test_build_presentation_rejects_path_escape_and_missing_image(tmp_path):
     tool = make_build_presentation_tool(workspace=tmp_path)
     escaped = tool(

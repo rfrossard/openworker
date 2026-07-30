@@ -21,7 +21,8 @@ _LAYOUTS = {
     "auto", "image-right", "image-left", "statement", "two-column", "quote", "section",
     "title-only", "big-number", "checklist", "timeline", "process", "comparison",
     "pros-cons", "three-columns", "four-cards", "metric-grid", "image-background",
-    "image-top", "image-bottom", "agenda", "conclusion",
+    "image-top", "image-bottom", "agenda", "conclusion", "table", "bar-chart",
+    "donut-chart", "flow-diagram", "org-chart", "roadmap",
 }
 _TEMPLATES = {
     "atlas": {"background": "F7F8FA", "ink": "1A1F2C", "muted": "5B6577", "accent": "2F6BFF", "cover": "1A1F2C"},
@@ -101,6 +102,10 @@ _SCHEMA = {
                             "bullets": {
                                 "type": "array",
                                 "items": {"type": "string"},
+                                "description": (
+                                    "Content rows. Use Label | Value for charts, pipe-separated "
+                                    "cells for tables, and Parent > Child for org charts."
+                                ),
                             },
                             "image_path": {
                                 "type": "string",
@@ -309,7 +314,91 @@ def _normalize_slides(root: Path, slides: list[dict[str, Any]]) -> list[dict[str
             raise ValueError(f"Slide {index} has an unsupported image focus.")
         if normalized[-1]["image_required"] and not normalized[-1]["image"]:
             raise ValueError(f"Slide {index} requires its planned image before rendering.")
+        layout = normalized[-1]["layout"]
+        if layout in {"bar-chart", "donut-chart"} and len(_chart_values(bullets)) < 2:
+            raise ValueError(
+                f"Slide {index} needs at least two chart rows formatted as Label | Value."
+            )
+        if layout == "table":
+            rows = _table_rows(bullets)
+            if len(rows) < 2 or max((len(row) for row in rows), default=0) < 2:
+                raise ValueError(
+                    f"Slide {index} needs a header and at least one pipe-separated table row."
+                )
+        if layout in {"flow-diagram", "org-chart", "roadmap"} and len(bullets) < 2:
+            raise ValueError(f"Slide {index} needs at least two connected items.")
     return normalized
+
+
+def _split_semantic_row(value: str) -> list[str]:
+    return [part.strip() for part in str(value).split("|") if part.strip()]
+
+
+def _chart_values(values: list[str]) -> list[tuple[str, float]]:
+    parsed: list[tuple[str, float]] = []
+    for value in values[:6]:
+        parts = _split_semantic_row(value)
+        if len(parts) < 2:
+            parts = [part.strip() for part in str(value).rsplit(":", 1)]
+        if len(parts) < 2:
+            continue
+        try:
+            number = float(parts[-1].replace("%", "").replace(",", ""))
+        except ValueError:
+            continue
+        parsed.append((parts[0][:50], number))
+    return parsed
+
+
+def _table_rows(values: list[str]) -> list[list[str]]:
+    rows = [_split_semantic_row(value)[:5] for value in values[:6]]
+    return [row for row in rows if row]
+
+
+def _org_edges(values: list[str]) -> list[tuple[str, str]]:
+    edges: list[tuple[str, str]] = []
+    for value in values[:6]:
+        if ">" not in value:
+            continue
+        parent, child = (part.strip() for part in value.split(">", 1))
+        if parent and child:
+            edges.append((parent[:50], child[:50]))
+    return edges
+
+
+def _quality_gate(slides: list[dict[str, Any]]) -> dict[str, Any]:
+    warnings: list[str] = []
+    checks = {
+        "semantic_data_valid": True,
+        "visual_plan_complete": all(
+            not slide["image_required"] or bool(slide["image"]) for slide in slides
+        ),
+        "titles_concise": True,
+        "layout_variety": True,
+        "data_sources_present": True,
+    }
+    for index, slide in enumerate(slides, 1):
+        if len(slide["title"]) > 82:
+            checks["titles_concise"] = False
+            warnings.append(f"Slide {index} title may wrap excessively.")
+        if slide["layout"] in {"table", "bar-chart", "donut-chart"} and not slide["sources"]:
+            checks["data_sources_present"] = False
+            warnings.append(f"Slide {index} presents data without a source.")
+    for index in range(2, len(slides)):
+        if slides[index]["layout"] == slides[index - 1]["layout"] == slides[index - 2]["layout"]:
+            checks["layout_variety"] = False
+            warnings.append(
+                f"Slides {index - 1}-{index + 1} repeat the same layout; consider varying the rhythm."
+            )
+            break
+    score = max(0, 100 - 8 * len(warnings))
+    critical = not checks["semantic_data_valid"] or not checks["visual_plan_complete"]
+    return {
+        "passed": not critical,
+        "score": score,
+        "checks": checks,
+        "warnings": warnings,
+    }
 
 
 def _add_pptx(
@@ -323,7 +412,10 @@ def _add_pptx(
     template: Path | None = None,
 ) -> None:
     from pptx import Presentation
+    from pptx.chart.data import ChartData
     from pptx.dml.color import RGBColor
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+    from pptx.enum.shapes import MSO_CONNECTOR
     from pptx.enum.text import PP_ALIGN
     from pptx.oxml.xmlchemy import OxmlElement
     from pptx.util import Inches, Pt
@@ -396,6 +488,14 @@ def _add_pptx(
                 effect.set("dir", "out")
             transition.append(effect)
             slide._element.append(transition)
+
+    def attach_sources(slide, sources):
+        if not sources:
+            return
+        try:
+            slide.notes_slide.notes_text_frame.text = "[Sources]\n" + "\n".join(sources)
+        except (AttributeError, NotImplementedError):
+            pass
 
     cover = deck.slides.add_slide(blank_layout)
     cover.background.fill.solid()
@@ -535,6 +635,108 @@ def _add_pptx(
             textbox(slide, metric, 0.78, 2.0, 5.2, 2.3, 62, accent_rgb, True)
             textbox(slide, spec["takeaway"] or spec["title"], 6.0, 2.25, 6.0, 2.0, 24, ink, True)
             textbox(slide, str(number), 12.25, 7.0, 0.4, 0.22, 9, muted)
+            continue
+        if layout == "table":
+            rows = _table_rows(spec["bullets"])
+            columns = max(len(row) for row in rows)
+            table_shape = slide.shapes.add_table(
+                len(rows), columns, Inches(0.78), Inches(2.05), Inches(11.75), Inches(4.35)
+            )
+            table = table_shape.table
+            for row_index, row in enumerate(rows):
+                for column_index in range(columns):
+                    cell = table.cell(row_index, column_index)
+                    cell.text = row[column_index] if column_index < len(row) else ""
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = accent_rgb if row_index == 0 else background
+                    for paragraph in cell.text_frame.paragraphs:
+                        paragraph.font.name = "Aptos"
+                        paragraph.font.size = Pt(15 if row_index else 16)
+                        paragraph.font.bold = row_index == 0
+                        paragraph.font.color.rgb = RGBColor(255, 255, 255) if row_index == 0 else ink
+            attach_sources(slide, spec["sources"])
+            continue
+        if layout in {"bar-chart", "donut-chart"}:
+            values = _chart_values(spec["bullets"])
+            chart_data = ChartData()
+            chart_data.categories = [label for label, _ in values]
+            chart_data.add_series(spec["takeaway"] or "Value", [value for _, value in values])
+            chart_type = (
+                XL_CHART_TYPE.DOUGHNUT
+                if layout == "donut-chart"
+                else XL_CHART_TYPE.COLUMN_CLUSTERED
+            )
+            chart = slide.shapes.add_chart(
+                chart_type,
+                Inches(0.85),
+                Inches(2.0),
+                Inches(11.6),
+                Inches(4.45),
+                chart_data,
+            ).chart
+            chart.has_title = False
+            chart.has_legend = layout == "donut-chart"
+            if chart.has_legend:
+                chart.legend.position = XL_LEGEND_POSITION.RIGHT
+                chart.legend.include_in_layout = False
+            if layout == "bar-chart":
+                chart.value_axis.has_major_gridlines = True
+                chart.category_axis.tick_labels.font.size = Pt(13)
+            chart.series[0].format.fill.solid()
+            chart.series[0].format.fill.fore_color.rgb = accent_rgb
+            attach_sources(slide, spec["sources"])
+            continue
+        if layout in {"flow-diagram", "roadmap"}:
+            values = spec["bullets"][:6]
+            node_width = min(2.1, 10.9 / len(values))
+            gap = (11.65 - node_width * len(values)) / max(1, len(values) - 1)
+            xs = [0.82 + index * (node_width + gap) for index in range(len(values))]
+            for index in range(len(values) - 1):
+                y = 3.45 if layout == "flow-diagram" else 4.05 - (index % 2) * 1.35
+                next_y = 3.45 if layout == "flow-diagram" else 4.05 - ((index + 1) % 2) * 1.35
+                connector = slide.shapes.add_connector(
+                    MSO_CONNECTOR.STRAIGHT,
+                    Inches(xs[index] + node_width),
+                    Inches(y + 0.55),
+                    Inches(xs[index + 1]),
+                    Inches(next_y + 0.55),
+                )
+                connector.line.color.rgb = accent_rgb
+                connector.line.width = Pt(2)
+            for index, value in enumerate(values):
+                y = 3.45 if layout == "flow-diagram" else 4.05 - (index % 2) * 1.35
+                panel(slide, xs[index], y, node_width, 1.1)
+                textbox(slide, str(index + 1), xs[index] + 0.12, y + 0.13, 0.35, 0.28, 11, accent_rgb, True)
+                textbox(slide, value, xs[index] + 0.48, y + 0.14, node_width - 0.57, 0.75, 14, ink, True)
+            attach_sources(slide, spec["sources"])
+            continue
+        if layout == "org-chart":
+            edges = _org_edges(spec["bullets"])
+            root = edges[0][0] if edges else spec["bullets"][0]
+            children = list(dict.fromkeys(
+                [child for parent, child in edges if parent == root]
+                or spec["bullets"][1:5]
+            ))[:4]
+            child_width = min(2.45, 10.9 / max(1, len(children)))
+            gap = (11.1 - child_width * len(children)) / max(1, len(children) - 1)
+            child_xs = [1.1 + index * (child_width + gap) for index in range(len(children))]
+            for child_x in child_xs:
+                connector = slide.shapes.add_connector(
+                    MSO_CONNECTOR.STRAIGHT,
+                    Inches(6.65),
+                    Inches(3.15),
+                    Inches(child_x + child_width / 2),
+                    Inches(4.3),
+                )
+                connector.line.color.rgb = muted
+                connector.line.width = Pt(1.5)
+            root_panel = panel(slide, 5.25, 2.15, 2.8, 1.0, accent_rgb)
+            root_panel.line.fill.background()
+            textbox(slide, root, 5.5, 2.38, 2.3, 0.5, 17, RGBColor(255, 255, 255), True)
+            for child_x, child in zip(child_xs, children):
+                panel(slide, child_x, 4.3, child_width, 1.15)
+                textbox(slide, child, child_x + 0.18, 4.58, child_width - 0.36, 0.55, 15, ink, True)
+            attach_sources(slide, spec["sources"])
             continue
         if layout in {"comparison", "pros-cons"}:
             midpoint = max(1, (len(spec["bullets"]) + 1) // 2)
@@ -790,6 +992,108 @@ def _add_pdf(
             canvas.rect(62, 95, 115, 7, stroke=0, fill=1)
             canvas.showPage()
             continue
+        if layout == "table":
+            rows = _table_rows(spec["bullets"])
+            columns = max(len(row) for row in rows)
+            x, top, total_width = 58, 385, 842
+            row_height = min(46, 270 / len(rows))
+            column_width = total_width / columns
+            for row_index, row in enumerate(rows):
+                y = top - (row_index + 1) * row_height
+                canvas.setFillColor(accent_color if row_index == 0 else background)
+                canvas.rect(x, y, total_width, row_height, stroke=1, fill=1)
+                for column_index in range(columns):
+                    cell_x = x + column_index * column_width
+                    canvas.line(cell_x, y, cell_x, y + row_height)
+                    value = row[column_index] if column_index < len(row) else ""
+                    text(
+                        value,
+                        cell_x + 9,
+                        y + row_height / 2 - 4,
+                        11,
+                        HexColor("#FFFFFF") if row_index == 0 else ink,
+                        "Helvetica-Bold" if row_index == 0 else "Helvetica",
+                        column_width - 18,
+                    )
+            canvas.showPage()
+            continue
+        if layout == "bar-chart":
+            values = _chart_values(spec["bullets"])
+            max_value = max(value for _, value in values) or 1
+            chart_x, chart_y, chart_w, chart_h = 85, 105, 790, 275
+            slot = chart_w / len(values)
+            canvas.setStrokeColor(muted)
+            canvas.line(chart_x, chart_y, chart_x + chart_w, chart_y)
+            for index, (label, value) in enumerate(values):
+                bar_height = chart_h * max(0, value) / max_value
+                bar_x = chart_x + index * slot + slot * 0.2
+                canvas.setFillColor(accent_color)
+                canvas.roundRect(bar_x, chart_y, slot * 0.6, bar_height, 4, stroke=0, fill=1)
+                text(f"{value:g}", bar_x, chart_y + bar_height + 10, 10, ink, "Helvetica-Bold", slot * 0.6)
+                text(label, bar_x, chart_y - 28, 9, muted, max_width=slot * 0.72)
+            canvas.showPage()
+            continue
+        if layout == "donut-chart":
+            values = _chart_values(spec["bullets"])
+            total = sum(max(0, value) for _, value in values) or 1
+            palette = [accent_color, ink, muted, HexColor("#94A3B8"), HexColor("#CBD5E1"), HexColor("#E2E8F0")]
+            angle = 90.0
+            for index, (_, value) in enumerate(values):
+                extent = 360.0 * max(0, value) / total
+                canvas.setFillColor(palette[index % len(palette)])
+                canvas.wedge(100, 105, 430, 435, angle, extent, stroke=0, fill=1)
+                angle += extent
+            canvas.setFillColor(background)
+            canvas.circle(265, 270, 88, stroke=0, fill=1)
+            legend_y = 360
+            for index, (label, value) in enumerate(values):
+                canvas.setFillColor(palette[index % len(palette)])
+                canvas.circle(540, legend_y + 4, 5, stroke=0, fill=1)
+                text(f"{label}  {value:g}", 555, legend_y, 12, ink, "Helvetica-Bold", 290)
+                legend_y -= 43
+            canvas.showPage()
+            continue
+        if layout in {"flow-diagram", "roadmap"}:
+            values = spec["bullets"][:6]
+            node_width = min(145, 750 / len(values))
+            gap = (820 - node_width * len(values)) / max(1, len(values) - 1)
+            xs = [65 + index * (node_width + gap) for index in range(len(values))]
+            for index in range(len(values) - 1):
+                y = 245 if layout == "flow-diagram" else 265 - (index % 2) * 90
+                next_y = 245 if layout == "flow-diagram" else 265 - ((index + 1) % 2) * 90
+                canvas.setStrokeColor(accent_color)
+                canvas.setLineWidth(2)
+                canvas.line(xs[index] + node_width, y + 35, xs[index + 1], next_y + 35)
+            for index, value in enumerate(values):
+                y = 245 if layout == "flow-diagram" else 265 - (index % 2) * 90
+                canvas.setFillColor(background)
+                canvas.roundRect(xs[index], y, node_width, 70, 8, stroke=1, fill=1)
+                text(str(index + 1), xs[index] + 10, y + 43, 10, accent_color, "Helvetica-Bold")
+                text(value, xs[index] + 30, y + 43, 10, ink, "Helvetica-Bold", node_width - 38)
+            canvas.showPage()
+            continue
+        if layout == "org-chart":
+            edges = _org_edges(spec["bullets"])
+            root = edges[0][0] if edges else spec["bullets"][0]
+            children = list(dict.fromkeys(
+                [child for parent, child in edges if parent == root]
+                or spec["bullets"][1:5]
+            ))[:4]
+            child_width = min(170, 760 / max(1, len(children)))
+            gap = (820 - child_width * len(children)) / max(1, len(children) - 1)
+            child_xs = [65 + index * (child_width + gap) for index in range(len(children))]
+            for child_x in child_xs:
+                canvas.setStrokeColor(muted)
+                canvas.line(480, 310, child_x + child_width / 2, 225)
+            canvas.setFillColor(accent_color)
+            canvas.roundRect(370, 310, 220, 65, 8, stroke=0, fill=1)
+            text(root, 390, 340, 14, HexColor("#FFFFFF"), "Helvetica-Bold", 180)
+            for child_x, child in zip(child_xs, children):
+                canvas.setFillColor(background)
+                canvas.roundRect(child_x, 160, child_width, 65, 8, stroke=1, fill=1)
+                text(child, child_x + 12, 190, 11, ink, "Helvetica-Bold", child_width - 24)
+            canvas.showPage()
+            continue
         if layout == "title-only":
             text(spec["title"], 70, 310, 36, ink, "Helvetica-Bold", 810)
             canvas.setFillColor(accent_color)
@@ -1026,6 +1330,7 @@ def make_build_presentation_tool(*, workspace: Path | str):
         except (TypeError, OverflowError):
             return {"ok": False, "error": "Minimum images must be a whole number."}
         embedded_images = sum(bool(item["image"]) for item in normalized)
+        quality_gate = _quality_gate(normalized)
         if embedded_images < required_images:
             return {
                 "ok": False,
@@ -1087,6 +1392,7 @@ def make_build_presentation_tool(*, workspace: Path | str):
             "preview_paths": [str(path.relative_to(root)) for path in preview_paths],
             "contact_sheet_path": str(contact_sheet.relative_to(root)),
             "visual_review_required": True,
+            "quality_gate": quality_gate,
             "template_id": selected_template,
             "template_path": str(custom_template.relative_to(root)) if custom_template else None,
             "operation_usage": {

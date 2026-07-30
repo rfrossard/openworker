@@ -13,6 +13,9 @@
 - Imagery is relevant, legible, consistently art-directed, and properly captioned.
 - No image is stretched, blurry, misleading, or reused without purpose.
 - Charts use verified data and label units, period, and source.
+- Tables, charts, flows, roadmaps, and org charts remain native editable objects in PPTX.
+- Semantic visuals have enough structured data to communicate without reconstructing
+  their meaning from prose.
 - Slides are compositions, not repetitive dashboard-card grids.
 - No layout repeats more than twice consecutively; card grids occupy no more than 20%.
 - Adjacent slides vary silhouette deliberately without changing the visual system.
@@ -35,3 +38,5 @@
 - PDF begins with `%PDF-`, has the same page count as the PPTX slide count, and shows
   the same slide structure and images.
 - Storyboard, source manifest, and claim ledger exist beside the deck.
+- The renderer returns `quality_gate.passed: true`; remaining warnings are explicitly
+  reviewed rather than silently ignored.

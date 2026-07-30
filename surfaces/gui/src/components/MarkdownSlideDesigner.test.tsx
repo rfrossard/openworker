@@ -42,6 +42,16 @@ Choose the first investment.`);
     });
   });
 
+  it("preserves Markdown tables and suggests semantic layouts", () => {
+    const deck = parseMarkdownDeck(`# Results
+## Comparison
+| Option | Cost |
+| --- | --- |
+| A | 10 |
+| B | 20 |`);
+    expect(deck.slides[0].bullets).toEqual(["Option | Cost", "A | 10", "B | 20"]);
+  });
+
   it("locks the reviewed layouts and image requirements into the composer brief", () => {
     const deck = parseMarkdownDeck("# Plan\n## Opportunity\nA new market.");
     deck.slides[0].layout = "image-right";
@@ -75,7 +85,7 @@ Choose the first investment.`);
     expect(onCreate.mock.calls[0][0]).toContain('"layout": "two-column"');
   });
 
-  it("applies template tokens to the preview and offers twenty-two slide styles", async () => {
+  it("applies template tokens to the preview and offers twenty-eight slide styles", async () => {
     vi.spyOn(api, "readArtifact").mockResolvedValue({
       ok: true,
       path: "reports/strategy.md",
@@ -103,12 +113,27 @@ Choose the first investment.`);
     expect(screen.getByText(/torn-paper edge/i)).toBeTruthy();
     expect(screen.getByLabelText("Presentation template").querySelectorAll("option")).toHaveLength(47);
     expect(screen.getByLabelText("Presentation template").querySelectorAll("optgroup")).toHaveLength(5);
-    expect(screen.getByLabelText("Slide styles").querySelectorAll("button")).toHaveLength(22);
+    expect(screen.getByLabelText("Slide styles").querySelectorAll("button")).toHaveLength(28);
     expect(screen.getByText("Core")).toBeTruthy();
     expect(screen.getByText("Visual")).toBeTruthy();
     expect(screen.getByText("Narrative")).toBeTruthy();
     expect(screen.getByText("Data")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Image background/i }));
     expect(preview.className).toContain("layout-image-background");
+  });
+
+  it("auto-designs semantic rows and previews an editable chart", async () => {
+    vi.spyOn(api, "readArtifact").mockResolvedValue({
+      ok: true,
+      path: "reports/strategy.md",
+      kind: "markdown",
+      content: "# Strategy\n## Segment growth\n- Core | 72\n- New | 44\n- Partner | 28",
+    });
+    render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
+    await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Auto-design deck" }));
+    expect(screen.getByTestId("slide-preview").className).toContain("layout-bar-chart");
+    expect(screen.getByText("Data (Label | Value, one per line)")).toBeTruthy();
   });
 });
