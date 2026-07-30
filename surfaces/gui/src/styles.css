@@ -868,11 +868,30 @@ button.btn.danger { color: var(--accent); }
   border-radius: 7px; outline: 0; color: var(--ink); background: var(--panel); font: inherit; font-size: 10px;
 }
 .slide-designer-row-editor input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent); }
-.slide-designer-row-editor > div button, .slide-designer-add-row {
+.slide-designer-row-editor > div button, .slide-designer-add-row, .slide-designer-table-editor button {
   padding: 7px 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: var(--panel); font: inherit; font-size: 9px; cursor: pointer;
 }
 .slide-designer-row-editor > div button:hover { color: var(--danger, #b73e3e); border-color: color-mix(in srgb, var(--danger, #b73e3e) 50%, var(--line)); }
+.slide-designer-row-editor button:disabled, .slide-designer-table-editor button:disabled { opacity: .38; cursor: default; }
+.slide-designer-row-actions { display: flex; gap: 3px; }
+.slide-designer-row-actions button { padding-inline: 6px; }
 .slide-designer-add-row { justify-self: start; color: var(--accent); }
+.slide-designer-table-editor {
+  grid-column: 1 / -1; min-width: 0; display: grid; gap: 7px; margin: 0; padding: 10px;
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.slide-designer-table-editor legend { padding: 0 5px; color: var(--ink); font-size: 11px; font-weight: 750; }
+.slide-designer-table-editor > span { color: var(--faint); font-size: 8.5px; }
+.slide-designer-table-matrix { min-width: 0; display: grid; gap: 5px; overflow-x: auto; }
+.slide-designer-table-matrix > div { min-width: 420px; display: grid; grid-template-columns: repeat(var(--table-columns), minmax(92px, 1fr)) auto; gap: 5px; }
+.slide-designer-table-matrix input {
+  min-width: 0; width: 100%; box-sizing: border-box; padding: 7px 8px; border: 1px solid var(--line);
+  border-radius: 7px; outline: 0; color: var(--ink); background: var(--panel); font: inherit; font-size: 10px;
+}
+.slide-designer-table-matrix .header input { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); font-weight: 700; }
+.slide-designer-table-matrix input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent); }
+.slide-designer-table-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.slide-designer-table-actions button:first-child, .slide-designer-table-actions button:nth-child(2) { color: var(--accent); }
 .slide-designer-layouts { display: flex; flex-direction: column; gap: 6px; }
 .slide-designer-layouts > strong { font-size: 12px; }
 .slide-designer-layouts > span { margin-bottom: 3px; color: var(--faint); font-size: 10px; }

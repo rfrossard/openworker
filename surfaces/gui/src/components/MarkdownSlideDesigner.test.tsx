@@ -55,6 +55,26 @@ Choose the first investment.`);
     expect(deck.slides[0].bullets).toEqual(["Option | Cost", "A | 10", "B | 20"]);
   });
 
+  it("edits a Markdown table as cells while preserving pipe-separated rows", async () => {
+    vi.spyOn(api, "readArtifact").mockResolvedValue({
+      ok: true,
+      path: "reports/strategy.md",
+      kind: "markdown",
+      content: "# Results\n## Comparison\n| Option | Cost |\n| --- | --- |\n| A | 10 |\n| B | 20 |",
+    });
+    render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
+    await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Table Rows and columns" }));
+    expect((screen.getByLabelText("Row 1 column 1") as HTMLInputElement).value).toBe("Option");
+    fireEvent.change(screen.getByLabelText("Row 2 column 2"), { target: { value: "12" } });
+    expect(screen.getByTestId("slide-preview").textContent).toContain("12");
+    fireEvent.click(screen.getByRole("button", { name: "+ Add column" }));
+    expect(screen.getByLabelText("Row 1 column 3")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "− Remove last column" }));
+    expect(screen.queryByLabelText("Row 1 column 3")).toBeNull();
+  });
+
   it("applies a structured element without replacing the user's content", () => {
     const deck = parseMarkdownDeck("# Plan\n## Sequence\nKeep this message.\n- Discover\n- Decide");
     deck.slides[0].imageRequired = true;
@@ -199,6 +219,8 @@ Choose the first investment.`);
     expect(screen.getByTestId("slide-preview").textContent).toContain("72");
     fireEvent.click(screen.getByRole("button", { name: "+ Add data row" }));
     expect(screen.getByLabelText("Label 3")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Move row 2 up"));
+    expect((screen.getByLabelText("Label 1") as HTMLInputElement).value).toBe("Consumer");
     fireEvent.click(screen.getByLabelText("Remove row 3"));
     expect(screen.queryByLabelText("Label 3")).toBeNull();
   });

@@ -404,6 +404,13 @@ function StructuredRowsEditor({
   };
   const add = () => onChange([...rows, separator ? ` ${separator} ` : ""]);
   const remove = (index: number) => onChange(rows.filter((_, rowIndex) => rowIndex !== index));
+  const move = (index: number, offset: number) => {
+    const target = index + offset;
+    if (target < 0 || target >= rows.length) return;
+    const next = [...rows];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  };
   const firstLabel = chart ? "Label" : organization ? "Parent" : "Step";
   const secondLabel = chart ? "Value" : "Child";
 
@@ -417,12 +424,74 @@ function StructuredRowsEditor({
             <div className={separator ? "has-pair" : ""} key={`${index}-${row}`}>
               <label><span>{firstLabel} {index + 1}</span><input aria-label={`${firstLabel} ${index + 1}`} value={values[0] || ""} onChange={(event) => update(index, 0, event.target.value)} /></label>
               {separator && <label><span>{secondLabel}</span><input aria-label={`${secondLabel} ${index + 1}`} inputMode={chart ? "decimal" : "text"} value={values[1] || ""} onChange={(event) => update(index, 1, event.target.value)} /></label>}
-              <button type="button" aria-label={`Remove row ${index + 1}`} onClick={() => remove(index)}>Remove</button>
+              <span className="slide-designer-row-actions">
+                <button type="button" aria-label={`Move row ${index + 1} up`} disabled={index === 0} onClick={() => move(index, -1)}>↑</button>
+                <button type="button" aria-label={`Move row ${index + 1} down`} disabled={index === rows.length - 1} onClick={() => move(index, 1)}>↓</button>
+                <button type="button" aria-label={`Remove row ${index + 1}`} onClick={() => remove(index)}>Remove</button>
+              </span>
             </div>
           );
         })}
       </div>
       <button type="button" className="slide-designer-add-row" onClick={add}>+ Add {organization ? "relationship" : chart ? "data row" : "step"}</button>
+    </fieldset>
+  );
+}
+
+function TableEditor({
+  rows,
+  onChange,
+}: {
+  rows: string[];
+  onChange: (rows: string[]) => void;
+}) {
+  const columnCount = Math.max(2, Math.min(6, ...rows.map((row) => row.split("|").length)));
+  const matrix = rows.map((row) => {
+    const cells = row.split("|").map((cell) => cell.trim()).slice(0, columnCount);
+    return [...cells, ...Array.from({ length: columnCount - cells.length }, () => "")];
+  });
+  const serialize = (next: string[][]) => onChange(next.map((cells) => cells.join(" | ")));
+  const update = (rowIndex: number, columnIndex: number, value: string) => {
+    const next = matrix.map((row) => [...row]);
+    next[rowIndex][columnIndex] = value;
+    serialize(next);
+  };
+  const addRow = () => serialize([...matrix, Array.from({ length: columnCount }, () => "")]);
+  const removeRow = (rowIndex: number) => serialize(matrix.filter((_, index) => index !== rowIndex));
+  const addColumn = () => {
+    if (columnCount >= 6) return;
+    serialize(matrix.map((row) => [...row, ""]));
+  };
+  const removeColumn = () => {
+    if (columnCount <= 2) return;
+    serialize(matrix.map((row) => row.slice(0, -1)));
+  };
+
+  return (
+    <fieldset className="slide-designer-table-editor">
+      <legend>Table cells</legend>
+      <span>The first row becomes the table header.</span>
+      <div className="slide-designer-table-matrix" style={{ "--table-columns": columnCount } as CSSProperties}>
+        {matrix.map((row, rowIndex) => (
+          <div key={`${rowIndex}-${row.join("|")}`} className={rowIndex === 0 ? "header" : ""}>
+            {row.map((cell, columnIndex) => (
+              <input
+                key={columnIndex}
+                aria-label={`Row ${rowIndex + 1} column ${columnIndex + 1}`}
+                placeholder={rowIndex === 0 ? `Header ${columnIndex + 1}` : `Cell ${rowIndex + 1}.${columnIndex + 1}`}
+                value={cell}
+                onChange={(event) => update(rowIndex, columnIndex, event.target.value)}
+              />
+            ))}
+            <button type="button" aria-label={`Remove table row ${rowIndex + 1}`} onClick={() => removeRow(rowIndex)}>Remove</button>
+          </div>
+        ))}
+      </div>
+      <div className="slide-designer-table-actions">
+        <button type="button" onClick={addRow}>+ Add row</button>
+        <button type="button" onClick={addColumn} disabled={columnCount >= 6}>+ Add column</button>
+        <button type="button" onClick={removeColumn} disabled={columnCount <= 2}>− Remove last column</button>
+      </div>
     </fieldset>
   );
 }
@@ -573,10 +642,12 @@ export function MarkdownSlideDesigner({
                     </fieldset>
                     <label className="research-field"><span>Slide title</span><input aria-label="Slide title" value={slide.title} onChange={(event) => updateSlide({ title: event.target.value })} /></label>
                     <label className="research-field"><span>Key message</span><textarea aria-label="Key message" rows={2} value={slide.takeaway} onChange={(event) => updateSlide({ takeaway: event.target.value })} /></label>
-                    {structuredRows ? (
+                    {slide.layout === "table" ? (
+                      <TableEditor rows={slide.bullets} onChange={(bullets) => updateSlide({ bullets })} />
+                    ) : structuredRows ? (
                       <StructuredRowsEditor layout={slide.layout as "bar-chart" | "donut-chart" | "timeline" | "flow-diagram" | "org-chart"} rows={slide.bullets} onChange={(bullets) => updateSlide({ bullets })} />
                     ) : (
-                      <label className="research-field"><span>{supportLabel}</span><textarea aria-label="Supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /><small className="slide-designer-format-help">{slide.layout === "table" ? "Example: Region | Revenue | Growth" : "The preview updates as you type."}</small></label>
+                      <label className="research-field"><span>{supportLabel}</span><textarea aria-label="Supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /><small className="slide-designer-format-help">The preview updates as you type.</small></label>
                     )}
                   </div> : <div className="presentation-copilot-visual">
                     <label className="presentation-copilot-toggle">
