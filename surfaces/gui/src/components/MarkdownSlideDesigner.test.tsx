@@ -4,11 +4,13 @@ import * as api from "../api";
 import {
   applyContentElement,
   applyResearchVisualPlan,
+  autoFixPresentation,
   buildMarkdownSlideDesignerPrompt,
   MarkdownSlideDesigner,
   parseMarkdownDeck,
   presentationImageEstimate,
   presentationPreflight,
+  presentationQualityReport,
 } from "./MarkdownSlideDesigner";
 
 afterEach(() => {
@@ -221,6 +223,7 @@ Original visual.`);
     deck.slides[0].imageRequired = true;
     deck.slides[0].imagePrompt = "Editorial market scene with negative space on the left";
     deck.slides[0].claimIds = ["C1"];
+    deck.slides[0].sourceUrls = ["https://example.com/source"];
     deck.slides[0].visualPlanData = { series: [{ label: "Market", value: 42, claim_ids: ["C1"] }] };
     deck.slides[0].visualReferences = [{
       url: "https://example.com/reference",
@@ -235,6 +238,8 @@ Original visual.`);
     expect(prompt).toContain('"image_required": true');
     expect(prompt).toContain("minimum_images=1");
     expect(prompt).toContain("estimated at USD 0.0336");
+    expect(prompt).toContain("Slide Designer quality score: 100/100");
+    expect(prompt).toContain("Render-time checks still required");
     expect(prompt).toContain('"image_prompt": "Editorial market scene');
     expect(prompt).toContain("Do not silently replace a selected layout");
     expect(prompt).toContain("13.333 × 7.5 inches (16:9)");
@@ -463,6 +468,70 @@ Original visual.`);
     });
     deck.slides[0].imagePrompt = "A documentary-style close-up with negative space";
     expect(presentationPreflight(deck).passed).toBe(true);
+  });
+
+  it("scores content, evidence, structure, visuals, and pending render checks", () => {
+    const deck = parseMarkdownDeck("# Deck\n## Evidence\nA sourced claim.\n- Segment A | 42");
+    deck.slides[0].layout = "bar-chart";
+    deck.slides[0].claimIds = ["C1"];
+    deck.slides[0].imageRequired = true;
+    const report = presentationQualityReport(deck, "atlas");
+    expect(report.passed).toBe(false);
+    expect(report.score).toBeLessThan(100);
+    expect(report.metrics).toMatchObject({
+      slides: 1,
+      structuredSlides: 1,
+      claims: 1,
+      unsourcedClaims: 1,
+      plannedImages: 1,
+      readyImages: 0,
+    });
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: "Data", severity: "critical", autoFixable: true }),
+      expect.objectContaining({ category: "Evidence", severity: "critical", autoFixable: false }),
+      expect.objectContaining({ category: "Visuals", severity: "critical", autoFixable: true }),
+    ]));
+    expect(report.renderChecks).toContain("Overlap, clipping, and off-canvas objects");
+  });
+
+  it("applies only safe automatic fixes without inventing evidence or chart data", () => {
+    const deck = parseMarkdownDeck("# Deck\n## Placeholder\nA decision supported by one row.\n- Segment A | 42");
+    deck.slides[0].title = "";
+    deck.slides[0].layout = "bar-chart";
+    deck.slides[0].imageRequired = true;
+    deck.slides[0].claimIds = ["C1"];
+    const fixed = autoFixPresentation(deck);
+    expect(fixed.deck.slides[0].title).toContain("A decision supported");
+    expect(fixed.deck.slides[0].layout).toBe("auto");
+    expect(fixed.deck.slides[0].imagePrompt).toContain("Original editorial 16:9 visual");
+    expect(fixed.deck.slides[0].sourceUrls).toEqual([]);
+    expect(fixed.deck.slides[0].bullets).toEqual(["Segment A | 42"]);
+    expect(fixed.fixes).toHaveLength(3);
+    expect(presentationQualityReport(fixed.deck).findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: "Evidence", autoFixable: false }),
+    ]));
+  });
+
+  it("shows the quality score and fixes safe findings from the review step", async () => {
+    vi.spyOn(api, "readArtifact").mockResolvedValue({
+      ok: true,
+      path: "reports/strategy.md",
+      kind: "markdown",
+      content: "# Strategy\n## Evidence\nOne message.",
+    });
+    render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
+    await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Bar chart Compare values" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
+    fireEvent.click(screen.getByLabelText("Generate an original visual"));
+    fireEvent.click(screen.getByRole("button", { name: "Review deck" }));
+    expect(screen.getByRole("region", { name: "Presentation quality check" })).toBeTruthy();
+    expect(screen.getByText("Presentation Quality Check")).toBeTruthy();
+    expect(screen.getByText("0/1")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Fix automatically" }));
+    expect(screen.getByText(/safe fixes applied/i)).toBeTruthy();
+    expect(screen.getByText("All editable-content checks passed.")).toBeTruthy();
   });
 
   it("keeps footer actions outside and after the scrollable style workspace", async () => {

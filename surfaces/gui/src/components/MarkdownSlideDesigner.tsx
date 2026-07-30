@@ -84,6 +84,39 @@ export interface ResearchVisualPlanResult {
   warning: string;
 }
 
+export type PresentationQualitySeverity = "critical" | "warning";
+
+export interface PresentationQualityFinding {
+  id: string;
+  category: "Content" | "Evidence" | "Data" | "Visuals" | "Design";
+  severity: PresentationQualitySeverity;
+  message: string;
+  slideIndex?: number;
+  autoFixable: boolean;
+}
+
+export interface PresentationQualityReport {
+  score: number;
+  passed: boolean;
+  findings: PresentationQualityFinding[];
+  metrics: {
+    slides: number;
+    structuredSlides: number;
+    structuredTypes: string[];
+    claims: number;
+    unsourcedClaims: number;
+    plannedImages: number;
+    readyImages: number;
+    estimatedImageCostUsd: number;
+  };
+  renderChecks: string[];
+}
+
+export interface PresentationAutoFixResult {
+  deck: ParsedMarkdownDeck;
+  fixes: string[];
+}
+
 const LAYOUTS: { id: SlideLayout; label: string; description: string; category: string }[] = [
   { id: "auto", label: "Standard", description: "Clear title and supporting points", category: "Core" },
   { id: "statement", label: "Statement", description: "One memorable idea", category: "Core" },
@@ -362,36 +395,209 @@ export function presentationImageEstimate(deck: ParsedMarkdownDeck): {
   return { images, estimatedCostUsd: images * GEMINI_IMAGE_ESTIMATE_USD };
 }
 
+const STRUCTURED_LAYOUTS = new Set<SlideLayout>([
+  "table", "bar-chart", "donut-chart", "timeline", "process", "roadmap",
+  "flow-diagram", "org-chart", "quote", "comparison", "metric-grid",
+]);
+
+function wordCount(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function parseHexColor(value: string): [number, number, number] | null {
+  const normalized = value.trim().replace(/^#/, "");
+  if (!/^[0-9a-f]{3}([0-9a-f]{3})?$/i.test(normalized)) return null;
+  const expanded = normalized.length === 3
+    ? normalized.split("").map((item) => `${item}${item}`).join("")
+    : normalized;
+  return [
+    Number.parseInt(expanded.slice(0, 2), 16),
+    Number.parseInt(expanded.slice(2, 4), 16),
+    Number.parseInt(expanded.slice(4, 6), 16),
+  ];
+}
+
+function contrastRatio(foreground: string, background: string): number | null {
+  const colors = [parseHexColor(foreground), parseHexColor(background)];
+  if (!colors[0] || !colors[1]) return null;
+  const luminance = (rgb: [number, number, number]) => {
+    const channels = rgb.map((value) => {
+      const normalized = value / 255;
+      return normalized <= 0.03928
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  };
+  const values = [
+    luminance(colors[0] as [number, number, number]),
+    luminance(colors[1] as [number, number, number]),
+  ].sort((a, b) => b - a);
+  return (values[0] + 0.05) / (values[1] + 0.05);
+}
+
+export function presentationQualityReport(
+  deck: ParsedMarkdownDeck,
+  templateId = "atlas",
+): PresentationQualityReport {
+  const findings: PresentationQualityFinding[] = [];
+  const add = (
+    id: string,
+    category: PresentationQualityFinding["category"],
+    severity: PresentationQualitySeverity,
+    message: string,
+    slideIndex: number | undefined,
+    autoFixable: boolean,
+  ) => findings.push({ id, category, severity, message, slideIndex, autoFixable });
+
+  deck.slides.forEach((slide, index) => {
+    const number = index + 1;
+    if (!slide.title.trim()) add(`title-${index}`, "Content", "critical", `Slide ${number} needs a title.`, index, true);
+    if (!slide.takeaway.trim() && slide.bullets.length === 0) {
+      add(`empty-${index}`, "Content", "critical", `Slide ${number} needs a message or supporting content.`, index, false);
+    }
+    if (slide.imageRequired && !slide.imagePrompt.trim()) {
+      add(`image-direction-${index}`, "Visuals", "critical", `Slide ${number} needs visual direction before image generation.`, index, true);
+    }
+    if (slide.title.length > 82) {
+      add(`long-title-${index}`, "Content", "warning", `Slide ${number} title may wrap excessively.`, index, false);
+    }
+    if (wordCount([slide.title, slide.takeaway, ...slide.bullets].join(" ")) > 110) {
+      add(`dense-${index}`, "Content", "warning", `Slide ${number} is dense; shorten copy or split the idea.`, index, false);
+    }
+    const numericRows = slide.bullets.filter((row) =>
+      row.includes("|")
+      && Number.isFinite(Number(row.split("|").pop()?.trim().replace(/[%,$]/g, ""))),
+    );
+    if ((slide.layout === "bar-chart" || slide.layout === "donut-chart") && numericRows.length < 2) {
+      add(`chart-${index}`, "Data", "critical", `Slide ${number} needs at least two chart rows formatted as Label | Value.`, index, true);
+    }
+    if (slide.layout === "table" && slide.bullets.filter((row) => row.includes("|")).length < 2) {
+      add(`table-${index}`, "Data", "critical", `Slide ${number} needs a header and at least one table row.`, index, true);
+    }
+    if (slide.claimIds.length > 0 && slide.sourceUrls.length === 0) {
+      add(`sources-${index}`, "Evidence", "critical", `Slide ${number} has claim IDs but no source URL.`, index, false);
+    }
+  });
+
+  for (let index = 2; index < deck.slides.length; index += 1) {
+    if (deck.slides[index].layout === deck.slides[index - 1].layout
+      && deck.slides[index].layout === deck.slides[index - 2].layout) {
+      add(
+        `repeated-layout-${index}`,
+        "Design",
+        "warning",
+        `Slides ${index - 1}-${index + 1} repeat the same layout.`,
+        index,
+        true,
+      );
+      break;
+    }
+  }
+
+  const template = templateById(templateId);
+  const ratio = contrastRatio(template.colors[0], template.colors[2]);
+  if (ratio !== null && ratio < 4.5) {
+    add("template-contrast", "Design", "warning", `The selected template has low base text contrast (${ratio.toFixed(1)}:1).`, undefined, false);
+  }
+
+  const imageEstimate = presentationImageEstimate(deck);
+  const structuredTypes = Array.from(new Set(
+    deck.slides.filter((slide) => STRUCTURED_LAYOUTS.has(slide.layout)).map((slide) => slide.layout),
+  ));
+  const claims = deck.slides.reduce((total, slide) => total + slide.claimIds.length, 0);
+  const unsourcedClaims = deck.slides.reduce(
+    (total, slide) => total + (slide.sourceUrls.length ? 0 : slide.claimIds.length),
+    0,
+  );
+  const critical = findings.filter((finding) => finding.severity === "critical").length;
+  const warnings = findings.length - critical;
+  return {
+    score: Math.max(0, 100 - critical * 15 - warnings * 5),
+    passed: critical === 0,
+    findings,
+    metrics: {
+      slides: deck.slides.length,
+      structuredSlides: deck.slides.filter((slide) => STRUCTURED_LAYOUTS.has(slide.layout)).length,
+      structuredTypes,
+      claims,
+      unsourcedClaims,
+      plannedImages: imageEstimate.images,
+      readyImages: deck.slides.filter((slide) => slide.imageRequired && slide.imagePrompt.trim()).length,
+      estimatedImageCostUsd: imageEstimate.estimatedCostUsd,
+    },
+    renderChecks: [
+      "Overlap, clipping, and off-canvas objects",
+      "Image crop, resolution, and focal point",
+      "PowerPoint font substitution and text wrapping",
+      "Speaker-note sources and final file integrity",
+    ],
+  };
+}
+
+function fallbackTitle(slide: MarkdownSlide, index: number): string {
+  const source = cleanInline(slide.takeaway || slide.bullets[0] || "");
+  if (!source) return `Slide ${index + 1}`;
+  const words = source.split(/\s+/).slice(0, 8).join(" ");
+  return source.split(/\s+/).length > 8 ? `${words}…` : words;
+}
+
+export function autoFixPresentation(deck: ParsedMarkdownDeck): PresentationAutoFixResult {
+  const fixes: string[] = [];
+  const slides = deck.slides.map((slide, index) => {
+    let updated = { ...slide };
+    if (!updated.title.trim()) {
+      updated.title = fallbackTitle(updated, index);
+      fixes.push(`Added a title to slide ${index + 1}.`);
+    }
+    if (updated.imageRequired && !updated.imagePrompt.trim()) {
+      const reference = updated.visualReferences
+        .map((item) => [item.description, item.purpose].filter(Boolean).join(". "))
+        .filter(Boolean)
+        .join("; ");
+      updated.imagePrompt = reference
+        || `Original editorial 16:9 visual illustrating "${updated.title}", with a clear focal subject and intentional negative space for slide copy. Do not include text, logos, or UI.`;
+      fixes.push(`Added visual direction to slide ${index + 1}.`);
+    }
+    if ((updated.layout === "bar-chart" || updated.layout === "donut-chart")
+      && updated.bullets.filter((row) =>
+        row.includes("|")
+        && Number.isFinite(Number(row.split("|").pop()?.trim().replace(/[%,$]/g, ""))),
+      ).length < 2) {
+      updated.layout = "auto";
+      fixes.push(`Changed slide ${index + 1} to a text layout because its data cannot support a chart.`);
+    }
+    if (updated.layout === "table" && updated.bullets.filter((row) => row.includes("|")).length < 2) {
+      updated.layout = "auto";
+      fixes.push(`Changed slide ${index + 1} to a text layout because its data cannot support a table.`);
+    }
+    return updated;
+  });
+  for (let index = 2; index < slides.length; index += 1) {
+    if (slides[index].layout === slides[index - 1].layout
+      && slides[index].layout === slides[index - 2].layout) {
+      const suggested = suggestSlideLayout(slides[index], index);
+      slides[index] = {
+        ...slides[index],
+        layout: suggested === slides[index].layout ? "two-column" : suggested,
+      };
+      fixes.push(`Varied the layout on slide ${index + 1}.`);
+    }
+  }
+  return { deck: { ...deck, slides }, fixes };
+}
+
 export function presentationPreflight(deck: ParsedMarkdownDeck): {
   passed: boolean;
   issues: string[];
   warnings: string[];
 } {
-  const issues: string[] = [];
-  const warnings: string[] = [];
-  deck.slides.forEach((slide, index) => {
-    const number = index + 1;
-    if (!slide.title.trim()) issues.push(`Slide ${number} needs a title.`);
-    if (slide.imageRequired && !slide.imagePrompt.trim()) {
-      issues.push(`Slide ${number} needs visual direction before image generation.`);
-    }
-    if (slide.title.length > 82) warnings.push(`Slide ${number} title may wrap excessively.`);
-    if ((slide.layout === "bar-chart" || slide.layout === "donut-chart")
-      && slide.bullets.filter((row) => row.includes("|") && Number.isFinite(Number(row.split("|").pop()?.trim().replace(/[%,$]/g, "")))).length < 2) {
-      issues.push(`Slide ${number} needs at least two chart rows formatted as Label | Value.`);
-    }
-    if (slide.layout === "table" && slide.bullets.filter((row) => row.includes("|")).length < 2) {
-      issues.push(`Slide ${number} needs a header and at least one table row.`);
-    }
-  });
-  for (let index = 2; index < deck.slides.length; index += 1) {
-    if (deck.slides[index].layout === deck.slides[index - 1].layout
-      && deck.slides[index].layout === deck.slides[index - 2].layout) {
-      warnings.push(`Slides ${index - 1}-${index + 1} repeat the same layout.`);
-      break;
-    }
-  }
-  return { passed: issues.length === 0, issues, warnings };
+  const report = presentationQualityReport(deck);
+  return {
+    passed: report.passed,
+    issues: report.findings.filter((finding) => finding.severity === "critical").map((finding) => finding.message),
+    warnings: report.findings.filter((finding) => finding.severity === "warning").map((finding) => finding.message),
+  };
 }
 
 export function suggestSlideLayout(slide: MarkdownSlide, index = 0): SlideLayout {
@@ -433,6 +639,7 @@ export function buildMarkdownSlideDesignerPrompt(
   const selectedTemplate = templateById(templateId);
   const visualSlides = deck.slides.filter((slide) => slide.imageRequired).length;
   const estimate = presentationImageEstimate(deck);
+  const quality = presentationQualityReport(deck, templateId);
   const specification = deck.slides.map(({
     id: _id,
     imageRequired,
@@ -465,6 +672,17 @@ Source: ${path}
 Deck title: ${deck.title}
 Editable template: ${selectedTemplate.name} (template_id="${selectedTemplate.id}")
 Approved image budget: up to ${estimate.images} image calls, estimated at USD ${estimate.estimatedCostUsd.toFixed(4)} before provider taxes or pricing changes.
+Slide Designer quality score: ${quality.score}/100.
+Unresolved review findings:
+${JSON.stringify(quality.findings.map(({ id, category, severity, message, slideIndex }) => ({
+    id,
+    category,
+    severity,
+    message,
+    slide_number: slideIndex === undefined ? null : slideIndex + 1,
+  })), null, 2)}
+Render-time checks still required:
+${quality.renderChecks.map((check) => `- ${check}`).join("\n")}
 
 The user reviewed every slide in Slide Designer. Treat the following JSON as the locked content and layout specification:
 ${JSON.stringify(specification, null, 2)}
@@ -727,6 +945,7 @@ export function MarkdownSlideDesigner({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [visualPlanNotice, setVisualPlanNotice] = useState("");
+  const [qualityFixNotice, setQualityFixNotice] = useState("");
 
   useEffect(() => {
     if (!markdown.some((artifact) => artifact.path === path)) setPath(markdown[0]?.path || "");
@@ -738,6 +957,7 @@ export function MarkdownSlideDesigner({
     setLoading(true);
     setError("");
     setVisualPlanNotice("");
+    setQualityFixNotice("");
     const companionPath = path.replace(/\.(md|markdown)$/i, ".claims.json");
     const companion = artifacts.find((artifact) => artifact.path === companionPath);
     Promise.all([
@@ -769,7 +989,14 @@ export function MarkdownSlideDesigner({
   if (!markdown.length) return null;
   const slide = deck?.slides[selected];
   const imageEstimate = deck ? presentationImageEstimate(deck) : { images: 0, estimatedCostUsd: 0 };
-  const preflight = deck ? presentationPreflight(deck) : { passed: false, issues: [], warnings: [] };
+  const qualityReport = deck ? presentationQualityReport(deck, templateId) : null;
+  const preflight = qualityReport
+    ? {
+        passed: qualityReport.passed,
+        issues: qualityReport.findings.filter((finding) => finding.severity === "critical").map((finding) => finding.message),
+        warnings: qualityReport.findings.filter((finding) => finding.severity === "warning").map((finding) => finding.message),
+      }
+    : { passed: false, issues: [], warnings: [] };
   const supportLabel = slide?.layout === "table"
     ? "Rows (pipe-separated cells; first row is header)"
     : slide?.layout === "bar-chart" || slide?.layout === "donut-chart"
@@ -790,6 +1017,17 @@ export function MarkdownSlideDesigner({
     setDeck({ ...deck, slides: deck.slides.map((item, index) => index === selected ? { ...item, ...patch } : item) });
   };
   const close = () => setOpen(false);
+  const fixAutomatically = () => {
+    if (!deck) return;
+    const result = autoFixPresentation(deck);
+    setDeck(result.deck);
+    setError("");
+    setQualityFixNotice(
+      result.fixes.length
+        ? `${result.fixes.length} safe fix${result.fixes.length === 1 ? "" : "es"} applied. Review the remaining findings.`
+        : "No safe automatic fixes are available. Remaining findings need evidence or editorial review.",
+    );
+  };
   const createInComposer = () => {
     if (!deck || loading || error) return;
     if (!preflight.passed) {
@@ -930,16 +1168,62 @@ export function MarkdownSlideDesigner({
             {deck && !loading && step === "review" && (
               <section className="presentation-copilot-review">
                 <div className="presentation-copilot-review-summary">
-                  <div><span>Slides</span><b>{deck.slides.length}</b></div>
-                  <div><span>Original visuals</span><b>{imageEstimate.images}</b></div>
+                  <div><span>Quality score</span><b>{qualityReport?.score ?? 0}/100</b></div>
+                  <div><span>Structured slides</span><b>{qualityReport?.metrics.structuredSlides ?? 0}</b></div>
+                  <div><span>Images ready</span><b>{qualityReport?.metrics.readyImages ?? 0}/{imageEstimate.images}</b></div>
                   <div><span>Estimated image cost</span><b>USD {imageEstimate.estimatedCostUsd.toFixed(4)}</b></div>
-                  <div><span>Quality gate</span><b>{preflight.passed ? "Ready" : "Needs attention"}</b></div>
                 </div>
                 <p className="presentation-copilot-budget-note">No paid image call happens in this screen. The composer must request your approval before generation and may not exceed this estimate without new approval.</p>
-                {(preflight.issues.length > 0 || preflight.warnings.length > 0) && <div className="presentation-copilot-quality">
-                  {preflight.issues.map((issue) => <span className="critical" key={issue}>{issue}</span>)}
-                  {preflight.warnings.map((warning) => <span key={warning}>{warning}</span>)}
-                </div>}
+                {qualityFixNotice && <div className="presentation-quality-fix-notice">{qualityFixNotice}</div>}
+                <section className="presentation-quality-panel" aria-label="Presentation quality check">
+                  <header>
+                    <div>
+                      <strong>Presentation Quality Check</strong>
+                      <span>{preflight.passed ? "Ready for render-time verification" : "Resolve required findings before creation"}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={fixAutomatically}
+                      disabled={!qualityReport?.findings.some((finding) => finding.autoFixable)}
+                    >
+                      Fix automatically
+                    </button>
+                  </header>
+                  <div className="presentation-quality-metrics">
+                    <span>{qualityReport?.metrics.claims ?? 0} claim links</span>
+                    <span>{qualityReport?.metrics.unsourcedClaims ?? 0} unsourced</span>
+                    <span>{qualityReport?.metrics.structuredTypes.length
+                      ? qualityReport.metrics.structuredTypes.map((type) => LAYOUTS.find((layout) => layout.id === type)?.label || type).join(" · ")
+                      : "No structured elements"}</span>
+                  </div>
+                  {qualityReport && qualityReport.findings.length > 0 ? (
+                    <div className="presentation-copilot-quality">
+                      {qualityReport.findings.map((finding) => (
+                        <button
+                          type="button"
+                          className={finding.severity}
+                          key={finding.id}
+                          onClick={() => {
+                            if (finding.slideIndex === undefined) return;
+                            setSelected(finding.slideIndex);
+                            setStep(finding.category === "Visuals" || finding.category === "Design" ? "design" : "content");
+                          }}
+                        >
+                          <b>{finding.category}</b>
+                          <span>{finding.message}</span>
+                          <em>{finding.autoFixable ? "Auto-fix available" : "Review required"}</em>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="presentation-quality-passed">All editable-content checks passed.</div>
+                  )}
+                  <details className="presentation-quality-render">
+                    <summary>Checks completed after rendering</summary>
+                    <ul>{qualityReport?.renderChecks.map((check) => <li key={check}>{check}</li>)}</ul>
+                  </details>
+                </section>
                 <div className="presentation-copilot-review-list">
                   {deck.slides.map((item, index) => <button key={item.id} onClick={() => { setSelected(index); setStep("design"); }}><b>{index + 1}</b><span><strong>{item.title}</strong><small>{LAYOUTS.find((layout) => layout.id === item.layout)?.label}{item.imageRequired ? " · Original visual" : ""}</small></span><em>Edit</em></button>)}
                 </div>
