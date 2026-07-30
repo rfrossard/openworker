@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api";
 import {
+  applyContentElement,
   buildMarkdownSlideDesignerPrompt,
   MarkdownSlideDesigner,
   parseMarkdownDeck,
@@ -52,6 +53,18 @@ Choose the first investment.`);
 | A | 10 |
 | B | 20 |`);
     expect(deck.slides[0].bullets).toEqual(["Option | Cost", "A | 10", "B | 20"]);
+  });
+
+  it("applies a structured element without replacing the user's content", () => {
+    const deck = parseMarkdownDeck("# Plan\n## Sequence\nKeep this message.\n- Discover\n- Decide");
+    deck.slides[0].imageRequired = true;
+    const result = applyContentElement(deck.slides[0], "timeline");
+    expect(result).toMatchObject({
+      layout: "timeline",
+      takeaway: "Keep this message.",
+      bullets: ["Discover", "Decide"],
+      imageRequired: false,
+    });
   });
 
   it("locks the reviewed layouts and image requirements into the composer brief", () => {
@@ -145,6 +158,23 @@ Choose the first investment.`);
     expect(screen.getByTestId("slide-preview").className).toContain("layout-bar-chart");
     expect(screen.getByText("Data (Label | Value, one per line)")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
+  });
+
+  it("offers structured elements in the content step and updates guidance immediately", async () => {
+    vi.spyOn(api, "readArtifact").mockResolvedValue({
+      ok: true,
+      path: "reports/strategy.md",
+      kind: "markdown",
+      content: "# Strategy\n## Growth\nKeep the source content.\n- Enterprise | 64\n- Consumer | 36",
+    });
+    render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
+    await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Bar chart Compare values" }));
+    expect(screen.getByTestId("slide-preview").className).toContain("layout-bar-chart");
+    expect(screen.getByText("Data (Label | Value, one per line)")).toBeTruthy();
+    expect(screen.getByText("Example: Enterprise | 64")).toBeTruthy();
+    expect((screen.getByLabelText("Supporting points") as HTMLTextAreaElement).value).toBe("Enterprise | 64\nConsumer | 36");
   });
 
   it("shows a transparent image budget and keeps paid generation approval-gated", async () => {

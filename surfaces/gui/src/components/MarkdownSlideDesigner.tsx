@@ -84,6 +84,15 @@ const LAYOUTS: { id: SlideLayout; label: string; description: string; category: 
 const IMAGE_LAYOUTS: SlideLayout[] = [
   "image-left", "image-right", "image-background", "image-top", "image-bottom",
 ];
+const CONTENT_ELEMENTS: { id: SlideLayout; label: string; hint: string }[] = [
+  { id: "table", label: "Table", hint: "Rows and columns" },
+  { id: "bar-chart", label: "Bar chart", hint: "Compare values" },
+  { id: "donut-chart", label: "Donut chart", hint: "Show a share" },
+  { id: "timeline", label: "Timeline", hint: "Order events" },
+  { id: "flow-diagram", label: "Flow diagram", hint: "Connect steps" },
+  { id: "org-chart", label: "Org chart", hint: "Show relationships" },
+  { id: "quote", label: "Quote", hint: "Feature a voice" },
+];
 const GEMINI_IMAGE_ESTIMATE_USD = 0.0336;
 
 function cleanInline(value: string): string {
@@ -222,6 +231,15 @@ export function suggestSlideLayout(slide: MarkdownSlide, index = 0): SlideLayout
   if (values.length === 4 && values.every((value) => /\d/.test(value))) return "metric-grid";
   if (values.length === 0 && slide.takeaway) return "statement";
   return index % 3 === 1 && values.length >= 2 ? "two-column" : "auto";
+}
+
+export function applyContentElement(slide: MarkdownSlide, layout: SlideLayout): MarkdownSlide {
+  return {
+    ...slide,
+    layout,
+    imageRequired: IMAGE_LAYOUTS.includes(layout) ? slide.imageRequired : false,
+    regenerateImage: IMAGE_LAYOUTS.includes(layout) ? slide.regenerateImage : false,
+  };
 }
 
 export function buildMarkdownSlideDesignerPrompt(
@@ -470,9 +488,27 @@ export function MarkdownSlideDesigner({
                 <div className="slide-designer-stage">
                   <SlidePreview slide={slide} templateId={templateId} />
                   {step === "content" ? <div className="slide-designer-edit-fields">
+                    <fieldset className="slide-designer-element-picker">
+                      <legend>Add a structured element</legend>
+                      <span>Choose a format, then enter its content below.</span>
+                      <div>
+                        {CONTENT_ELEMENTS.map((element) => (
+                          <button
+                            type="button"
+                            key={element.id}
+                            className={slide.layout === element.id ? "selected" : ""}
+                            aria-pressed={slide.layout === element.id}
+                            onClick={() => updateSlide(applyContentElement(slide, element.id))}
+                          >
+                            <strong>{element.label}</strong>
+                            <small>{element.hint}</small>
+                          </button>
+                        ))}
+                      </div>
+                    </fieldset>
                     <label className="research-field"><span>Slide title</span><input aria-label="Slide title" value={slide.title} onChange={(event) => updateSlide({ title: event.target.value })} /></label>
                     <label className="research-field"><span>Key message</span><textarea aria-label="Key message" rows={2} value={slide.takeaway} onChange={(event) => updateSlide({ takeaway: event.target.value })} /></label>
-                    <label className="research-field"><span>{supportLabel}</span><textarea aria-label="Supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /></label>
+                    <label className="research-field"><span>{supportLabel}</span><textarea aria-label="Supporting points" rows={4} value={slide.bullets.join("\n")} onChange={(event) => updateSlide({ bullets: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /><small className="slide-designer-format-help">{slide.layout === "table" ? "Example: Region | Revenue | Growth" : slide.layout === "bar-chart" || slide.layout === "donut-chart" ? "Example: Enterprise | 64" : slide.layout === "org-chart" ? "Example: CEO > Product" : slide.layout === "timeline" || slide.layout === "flow-diagram" ? "Use one event or step per line." : "The preview updates as you type."}</small></label>
                   </div> : <div className="presentation-copilot-visual">
                     <label className="presentation-copilot-toggle">
                       <input type="checkbox" aria-label="Generate an original visual" checked={slide.imageRequired} onChange={(event) => updateSlide({ imageRequired: event.target.checked, regenerateImage: false })} />
