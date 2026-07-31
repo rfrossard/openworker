@@ -38,3 +38,10 @@ Apply relevant rows to every milestone and add newly observed failure modes.
 12. Finish an agent browser task with the browser still open; verify the current
     session's rail becomes visible, can be hidden, and can be restored from an
     explicit Browser affordance without changing pages or crossing sessions.
+13. Take control of an active in-app browser, click, scroll, type, navigate, and
+    return control; agent browser actions and proposals must fail closed throughout
+    user ownership, and the page/session must remain unchanged at handoff.
+14. Try takeover with a pending approval, a closed browser, and a second session;
+    verify safe rejection and no ownership, action, cookie, or preview leakage.
+15. Reload or temporarily hide the UI during user ownership; verify the control
+    surface can be resumed and control can still be returned to the agent.

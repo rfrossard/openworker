@@ -748,6 +748,18 @@ def test_browser_rest_routes_actions_to_the_requested_session(tmp_path, monkeypa
     )
     monkeypatch.setattr(
         manager,
+        "browser_control",
+        lambda session_id, owner: calls.append(("control", session_id))
+        or {"ok": True, "control_owner": owner},
+    )
+    monkeypatch.setattr(
+        manager,
+        "browser_human_action",
+        lambda session_id, action, arguments: calls.append(("human-action", session_id))
+        or {"ok": True, "action": action, **arguments},
+    )
+    monkeypatch.setattr(
+        manager,
         "browser_policy",
         lambda session_id="", **policy: calls.append(("policy", session_id))
         or {"ok": True, **policy},
@@ -793,6 +805,18 @@ def test_browser_rest_routes_actions_to_the_requested_session(tmp_path, monkeypa
     assert client.post(
         "/v1/browser/close", params={"session_id": "ops-c"}
     ).status_code == 200
+    control = client.post(
+        "/v1/browser/control",
+        params={"session_id": "ops-c"},
+        json={"owner": "user"},
+    ).json()
+    assert control["control_owner"] == "user"
+    human_action = client.post(
+        "/v1/browser/human-action",
+        params={"session_id": "ops-c"},
+        json={"action": "click", "x": 20, "y": 30},
+    ).json()
+    assert human_action == {"ok": True, "action": "click", "x": 20, "y": 30}
     policy = client.post(
         "/v1/browser/policy",
         params={"session_id": "research-d"},
@@ -833,6 +857,8 @@ def test_browser_rest_routes_actions_to_the_requested_session(tmp_path, monkeypa
         ("state", "chat-a"),
         ("screenshot", "code-b"),
         ("close", "ops-c"),
+        ("control", "ops-c"),
+        ("human-action", "ops-c"),
         ("policy", "research-d"),
         ("download", "research-d"),
         ("analyze-stream", "research-d"),

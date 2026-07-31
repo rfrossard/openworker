@@ -11,8 +11,10 @@ import {
   getBrowserState,
   getResearchRuns,
   getSettings,
+  performBrowserHumanAction,
   readArtifact,
   revealArtifact,
+  setBrowserControl,
   setBrowserPolicy,
   takeBrowserScreenshot,
   type ArtifactContent,
@@ -383,6 +385,10 @@ function BrowserOperator({
   const [selectedMediaId, setSelectedMediaId] = useState("");
   const [subtitleLanguage, setSubtitleLanguage] = useState<"" | "en" | "pt" | "es">("");
   const [downloadMessage, setDownloadMessage] = useState("");
+  const [controlOpen, setControlOpen] = useState(false);
+  const [controlAddress, setControlAddress] = useState("");
+  const [controlText, setControlText] = useState("");
+  const [controlError, setControlError] = useState("");
   const captureInFlight = useRef(false);
   const browserUsed = toolNames.some((name) => name.startsWith("browser_"));
 
@@ -436,6 +442,55 @@ function BrowserOperator({
     try {
       const next = await takeBrowserScreenshot(sessionId);
       setState(next);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const takeControl = async () => {
+    setBusy(true);
+    setControlError("");
+    try {
+      const result = await setBrowserControl(sessionId, "user");
+      if (result.error) {
+        setControlError(result.error);
+        return;
+      }
+      const next = await takeBrowserScreenshot(sessionId);
+      setState(next);
+      setControlAddress(next.url || "");
+      setControlOpen(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const returnControl = async () => {
+    setBusy(true);
+    setControlError("");
+    try {
+      const result = await setBrowserControl(sessionId, "agent");
+      if (result.error) {
+        setControlError(result.error);
+        return;
+      }
+      setControlOpen(false);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const humanAction = async (
+    action: Parameters<typeof performBrowserHumanAction>[1],
+  ) => {
+    setBusy(true);
+    setControlError("");
+    try {
+      const next = await performBrowserHumanAction(sessionId, action);
+      if (next.error) {
+        setControlError(next.error);
+        return;
+      }
+      setState(next);
+      setControlAddress(next.url || controlAddress);
     } finally {
       setBusy(false);
     }
@@ -536,6 +591,7 @@ function BrowserOperator({
   };
 
   return (
+    <>
     <RailSection
       title="Secure Browser"
       open={open}
@@ -789,6 +845,25 @@ function BrowserOperator({
         )}
         {state?.open && (
           <div className="rail-actions">
+            <button
+              className="btn primary"
+              onClick={() => {
+                if (state.control_owner === "user") {
+                  setControlAddress(state.url || "");
+                  setControlOpen(true);
+                } else {
+                  takeControl();
+                }
+              }}
+              disabled={busy || (state.control_owner !== "user" && !!state.pending_action?.tool_name)}
+              title={
+                state.pending_action?.tool_name
+                  ? "Resolve the pending browser approval first"
+                  : "Interact with this browser inside OpenWorker"
+              }
+            >
+              {state.control_owner === "user" ? "Resume control" : "Take control"}
+            </button>
             <button className="btn secondary" onClick={capture} disabled={busy}>
               Refresh preview
             </button>
@@ -799,6 +874,103 @@ function BrowserOperator({
         )}
       </div>
     </RailSection>
+    {controlOpen && state?.open && (
+      <div className="browser-control-backdrop" role="presentation">
+        <section
+          className="browser-control-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Interactive Secure Browser"
+        >
+          <header className="browser-control-header">
+            <div>
+              <strong>Secure Browser</strong>
+              <span><i /> You are in control</span>
+            </div>
+            <button className="btn primary" onClick={returnControl} disabled={busy}>
+              Return to agent
+            </button>
+          </header>
+          <div className="browser-control-toolbar">
+            <button aria-label="Go back" title="Back" onClick={() => humanAction({ action: "back" })} disabled={busy}>←</button>
+            <button aria-label="Go forward" title="Forward" onClick={() => humanAction({ action: "forward" })} disabled={busy}>→</button>
+            <button aria-label="Reload page" title="Reload" onClick={() => humanAction({ action: "reload" })} disabled={busy}>↻</button>
+            <input
+              value={controlAddress}
+              onChange={(event) => setControlAddress(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && controlAddress.trim()) {
+                  humanAction({ action: "open_url", url: controlAddress.trim() });
+                }
+              }}
+              aria-label="Browser address"
+            />
+            <button
+              onClick={() => humanAction({ action: "open_url", url: controlAddress.trim() })}
+              disabled={busy || !controlAddress.trim()}
+            >
+              Go
+            </button>
+          </div>
+          <div className="browser-control-canvas">
+            {state.screenshot_data_url ? (
+              <img
+                src={state.screenshot_data_url}
+                alt="Interactive browser preview"
+                onClick={(event) => {
+                  const bounds = event.currentTarget.getBoundingClientRect();
+                  humanAction({
+                    action: "click",
+                    x: ((event.clientX - bounds.left) / bounds.width) * 1280,
+                    y: ((event.clientY - bounds.top) / bounds.height) * 900,
+                  });
+                }}
+              />
+            ) : (
+              <div className="rail-muted">The live preview is not available yet.</div>
+            )}
+          </div>
+          <div className="browser-control-inputs">
+            <div className="browser-control-scroll">
+              <button onClick={() => humanAction({ action: "scroll", delta_y: -650 })} disabled={busy}>Scroll up</button>
+              <button onClick={() => humanAction({ action: "scroll", delta_y: 650 })} disabled={busy}>Scroll down</button>
+            </div>
+            <div className="browser-control-type">
+              <input
+                value={controlText}
+                onChange={(event) => setControlText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && controlText) {
+                    humanAction({ action: "type", text: controlText });
+                    setControlText("");
+                  }
+                }}
+                placeholder="Click a field, then type here"
+                aria-label="Text to type into the focused browser field"
+              />
+              <button
+                onClick={() => {
+                  humanAction({ action: "type", text: controlText });
+                  setControlText("");
+                }}
+                disabled={busy || !controlText}
+              >
+                Type
+              </button>
+              <button onClick={() => humanAction({ action: "key", key: "Tab" })} disabled={busy}>Tab</button>
+              <button onClick={() => humanAction({ action: "key", key: "Enter" })} disabled={busy}>Enter</button>
+              <button onClick={() => humanAction({ action: "key", key: "Backspace" })} disabled={busy}>⌫</button>
+            </div>
+          </div>
+          {controlError && <div className="browser-error">{controlError}</div>}
+          <footer>
+            Click the preview to focus or activate page elements. Your actions are applied
+            to the same isolated session the agent uses.
+          </footer>
+        </section>
+      </div>
+    )}
+    </>
   );
 }
 

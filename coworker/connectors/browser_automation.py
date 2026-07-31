@@ -158,6 +158,8 @@ class _BrowserController:
             "streaming_media_error": "",
             "streaming_media_progress": {},
             "pending_action": {},
+            "control_owner": "agent",
+            "control_changed_at": None,
         }
 
     def _touch(self, **changes: Any) -> None:
@@ -422,6 +424,8 @@ class _BrowserController:
                     controls=[],
                     media=[],
                     pending_action={},
+                    control_owner="agent",
+                    control_changed_at=None,
                 )
             return {"ok": True}
 
@@ -463,6 +467,13 @@ class _BrowserController:
     def call(self, action: str, fn: Callable[[Any], dict[str, Any]]) -> dict[str, Any]:
         def run() -> dict[str, Any]:
             with self._lock:
+                if self._state.get("control_owner") == "user":
+                    return {
+                        "error": (
+                            "The user is controlling Secure Browser. Wait until they "
+                            "return control to the agent."
+                        )
+                    }
                 page, err = self.page()
                 if err:
                     return err
@@ -495,6 +506,115 @@ class _BrowserController:
 
         return self._submit(run)
 
+    def set_control_owner(self, owner: str) -> dict[str, Any]:
+        normalized = str(owner or "").strip().lower()
+        if normalized not in {"agent", "user"}:
+            return {"error": "control_owner must be agent or user"}
+
+        def run() -> dict[str, Any]:
+            with self._lock:
+                if normalized == "user" and self._page is None:
+                    return {"error": "Open a page before taking control."}
+                if normalized == "user" and self._state.get("pending_action"):
+                    return {
+                        "error": (
+                            "Resolve the pending browser approval before taking control."
+                        )
+                    }
+                changed_at = time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+                )
+                self._touch(
+                    control_owner=normalized,
+                    control_changed_at=changed_at,
+                    last_action=(
+                        "user_take_control"
+                        if normalized == "user"
+                        else "return_control_to_agent"
+                    ),
+                    last_result="ok",
+                    last_error="",
+                )
+                return {
+                    "ok": True,
+                    "control_owner": normalized,
+                    "control_changed_at": changed_at,
+                }
+
+        return self._submit(run)
+
+    def human_action(self, action: str, **arguments: Any) -> dict[str, Any]:
+        allowed = {
+            "click",
+            "scroll",
+            "type",
+            "key",
+            "back",
+            "forward",
+            "reload",
+            "open_url",
+        }
+        if action not in allowed:
+            return {"error": "Unsupported browser control action."}
+
+        def run() -> dict[str, Any]:
+            with self._lock:
+                if self._state.get("control_owner") != "user":
+                    return {"error": "Take control before interacting with the page."}
+                page, err = self.page()
+                if err:
+                    return err
+                previous_url = page.url
+                try:
+                    if action == "click":
+                        x = max(0.0, min(float(arguments.get("x", 0)), 1280.0))
+                        y = max(0.0, min(float(arguments.get("y", 0)), 900.0))
+                        page.mouse.click(x, y)
+                    elif action == "scroll":
+                        page.mouse.wheel(0, max(-4000, min(int(arguments.get("delta_y", 0)), 4000)))
+                    elif action == "type":
+                        text = str(arguments.get("text") or "")
+                        if len(text) > 10000:
+                            return {"error": "Text is too long."}
+                        page.keyboard.type(text)
+                    elif action == "key":
+                        key = str(arguments.get("key") or "")
+                        if key not in {"Enter", "Tab", "Escape", "Backspace", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"}:
+                            return {"error": "That key is not supported."}
+                        page.keyboard.press(key)
+                    elif action == "back":
+                        page.go_back(wait_until="domcontentloaded", timeout=30000)
+                    elif action == "forward":
+                        page.go_forward(wait_until="domcontentloaded", timeout=30000)
+                    elif action == "reload":
+                        page.reload(wait_until="domcontentloaded", timeout=30000)
+                    elif action == "open_url":
+                        safe_url = validate_public_url(str(arguments.get("url") or ""))
+                        if not self._navigation_allowed(safe_url):
+                            return {"error": "That domain is not allowed for this session."}
+                        page.goto(safe_url, wait_until="domcontentloaded", timeout=30000)
+                    page.wait_for_timeout(150)
+                    self._refresh_page_state()
+                    if previous_url != page.url:
+                        self._sensitive_targets.clear()
+                    self._capture_preview()
+                    self._record_evidence(f"human_{action}")
+                    self._touch(
+                        last_action=f"human_{action}",
+                        last_result="ok",
+                        last_error="",
+                    )
+                    return {"ok": True, **self._state_locked()}
+                except Exception as exc:
+                    self._touch(
+                        last_action=f"human_{action}",
+                        last_result="error",
+                        last_error=str(exc),
+                    )
+                    return {"error": str(exc)}
+
+        return self._submit(run)
+
     def propose_action(
         self,
         *,
@@ -506,6 +626,13 @@ class _BrowserController:
 
         def run() -> dict[str, Any]:
             with self._lock:
+                if self._state.get("control_owner") == "user":
+                    return {
+                        "error": (
+                            "The user is controlling Secure Browser. Wait until they "
+                            "return control to the agent."
+                        )
+                    }
                 existing = dict(self._state.get("pending_action") or {})
                 if tool_call_id and existing.get("tool_call_id") == tool_call_id:
                     return _public_action(existing)
@@ -732,6 +859,16 @@ def browser_close_session(session_id: str = "") -> dict[str, Any]:
     with _BROWSERS_LOCK:
         controller = _BROWSERS.get(session_id or "__default__")
     return controller.close() if controller is not None else {"ok": True}
+
+
+def browser_set_control_owner(session_id: str, owner: str) -> dict[str, Any]:
+    return _browser_for(session_id).set_control_owner(owner)
+
+
+def browser_human_action(
+    session_id: str, action: str, **arguments: Any
+) -> dict[str, Any]:
+    return _browser_for(session_id).human_action(action, **arguments)
 
 
 def browser_set_policy(

@@ -1214,6 +1214,19 @@ def create_app(manager: SessionManager) -> FastAPI:
     def browser_close_post(session_id: str = "") -> dict[str, Any]:
         return manager.browser_close(session_id)
 
+    @app.post("/v1/browser/control")
+    def browser_control_post(body: dict, session_id: str = "") -> dict[str, Any]:
+        owner = str((body or {}).get("owner", "")).strip().lower()
+        return manager.browser_control(session_id, owner)
+
+    @app.post("/v1/browser/human-action")
+    def browser_human_action_post(
+        body: dict, session_id: str = ""
+    ) -> dict[str, Any]:
+        values = dict(body or {})
+        action = str(values.pop("action", "")).strip().lower()
+        return manager.browser_human_action(session_id, action, values)
+
     @app.post("/v1/browser/policy")
     def browser_policy_post(body: dict, session_id: str = "") -> dict[str, Any]:
         values = (body or {}).get("allowed_domains", [])

@@ -54,10 +54,12 @@ from ..connectors import (
 )
 from ..connectors.browser_automation import (
     browser_close_session,
+    browser_human_action,
     browser_media_context,
     browser_media_source,
     browser_propose_action,
     browser_resolve_action,
+    browser_set_control_owner,
     browser_set_streaming_media,
     browser_set_policy,
     browser_state,
@@ -1140,6 +1142,14 @@ class SessionManager:
 
     def browser_close(self, session_id: str = "") -> dict[str, Any]:
         return browser_close_session(session_id)
+
+    def browser_control(self, session_id: str, owner: str) -> dict[str, Any]:
+        return browser_set_control_owner(session_id, owner)
+
+    def browser_human_action(
+        self, session_id: str, action: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
+        return browser_human_action(session_id, action, **arguments)
 
     def browser_policy(
         self,

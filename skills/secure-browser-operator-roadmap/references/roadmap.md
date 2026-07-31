@@ -54,6 +54,11 @@ Progress:
 - M1.4 keeps an active browser observable after the agent finishes. The current
   session automatically reveals its rail, and a hidden rail retains a visible
   Browser affordance that restores the same live preview.
+- M1.5 adds an explicit in-app control handoff. The user can expand the same
+  isolated session, navigate, click, scroll, type into a focused field, use
+  common keys, and return control to the agent. Agent browser actions fail closed
+  while the user owns the session, pending approvals prevent takeover, and an
+  interrupted UI can resume user control without opening external Chromium.
 - The existing durable approval flow remains the single source of consent.
 
 Remaining:
@@ -62,12 +67,12 @@ Remaining:
 - Add direct approve/deny affordances beside the preview without duplicating
   or racing the durable approval record.
 - Complete cancellation, restart, two-session, iframe, and accessibility scenarios.
-- Add an explicit in-app human-control handoff without opening an external Chromium
-  window or confusing a periodically refreshed screenshot with an interactive page.
+- Complete keyboard focus order, screen-reader announcements, and narrow-window
+  visual checks for the in-app human-control surface.
 
-Next smallest action: design and validate the minimal in-app human-control handoff
-(large live view, navigation controls, clear agent/user ownership, and safe return
-to agent control). Then resume the inspected `browser_upload_file` slice.
+Next smallest action: resume the inspected `browser_upload_file` slice, including
+the exact destination field, file identity, size/type summary, explicit approval,
+workspace-bound path checks, and post-upload verification.
 
 ### M2 — Reliable Actions
 

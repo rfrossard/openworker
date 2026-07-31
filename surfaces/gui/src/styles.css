@@ -628,6 +628,56 @@ button.btn.danger { color: var(--accent); }
 .browser-history-item span { grid-column: 1 / -1; color: var(--faint); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .browser-history-item time { color: var(--faint); font-size: 10px; }
 .browser-error { padding: 8px 9px; border-radius: 8px; color: var(--danger, #b73e3e); background: color-mix(in srgb, var(--danger, #d85858) 9%, transparent); font-size: 11.5px; line-height: 1.4; }
+.browser-control-backdrop {
+  position: fixed; inset: 0; z-index: 180; display: grid; place-items: center; padding: 24px;
+  background: color-mix(in srgb, #05070b 68%, transparent); backdrop-filter: blur(7px);
+}
+.browser-control-modal {
+  width: min(1180px, 100%); max-height: calc(100vh - 48px); overflow: auto;
+  display: flex; flex-direction: column; gap: 10px; padding: 14px;
+  border: 1px solid var(--line); border-radius: 16px; background: var(--surface);
+  box-shadow: 0 28px 80px color-mix(in srgb, #000 45%, transparent);
+}
+.browser-control-header, .browser-control-header > div, .browser-control-toolbar,
+.browser-control-inputs, .browser-control-scroll, .browser-control-type {
+  display: flex; align-items: center; gap: 8px;
+}
+.browser-control-header { justify-content: space-between; }
+.browser-control-header > div { align-items: baseline; }
+.browser-control-header strong { color: var(--ink); font-size: 15px; }
+.browser-control-header span { color: var(--success, #3da66b); font-size: 12px; }
+.browser-control-header i { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 99px; background: currentColor; }
+.browser-control-toolbar, .browser-control-inputs {
+  padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+}
+.browser-control-toolbar input, .browser-control-type input {
+  min-width: 0; flex: 1; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); color: var(--ink); padding: 8px 10px; font: inherit; font-size: 12px;
+}
+.browser-control-toolbar button, .browser-control-inputs button {
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink);
+  padding: 7px 10px; font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.browser-control-toolbar button:disabled, .browser-control-inputs button:disabled { opacity: .45; cursor: default; }
+.browser-control-canvas {
+  display: grid; place-items: center; min-height: 320px; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 11px; background: #090b10;
+}
+.browser-control-canvas img {
+  display: block; width: 100%; max-height: calc(100vh - 280px); object-fit: contain; cursor: crosshair;
+}
+.browser-control-inputs { justify-content: space-between; flex-wrap: wrap; }
+.browser-control-type { flex: 1 1 540px; }
+.browser-control-modal footer { color: var(--faint); font-size: 11.5px; line-height: 1.4; }
+@media (max-width: 760px) {
+  .browser-control-backdrop { padding: 8px; }
+  .browser-control-modal { max-height: calc(100vh - 16px); }
+  .browser-control-header > div { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .browser-control-toolbar { flex-wrap: wrap; }
+  .browser-control-toolbar input { order: 2; flex-basis: calc(100% - 54px); }
+  .browser-control-inputs { align-items: stretch; }
+  .browser-control-scroll, .browser-control-type { width: 100%; }
+}
 .artifact-list { display: flex; flex-direction: column; gap: 7px; }
 .artifact-row {
   display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 9px;

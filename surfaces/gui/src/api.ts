@@ -861,6 +861,8 @@ export interface BrowserState {
     box?: { x: number; y: number; width: number; height: number };
     viewport?: { width: number; height: number };
   };
+  control_owner: "agent" | "user";
+  control_changed_at: string | null;
 }
 
 export async function getBrowserState(sessionId: string): Promise<BrowserState> {
@@ -878,6 +880,40 @@ export async function takeBrowserScreenshot(sessionId: string): Promise<BrowserS
 export async function closeBrowser(sessionId: string): Promise<{ ok?: boolean; error?: string }> {
   const q = new URLSearchParams({ session_id: sessionId });
   const res = await fetch(`${httpBase()}/v1/browser/close?${q}`, { method: "POST" });
+  return res.json();
+}
+
+export async function setBrowserControl(
+  sessionId: string,
+  owner: "agent" | "user",
+): Promise<{ ok?: boolean; error?: string; control_owner?: "agent" | "user"; control_changed_at?: string }> {
+  const q = new URLSearchParams({ session_id: sessionId });
+  const res = await fetch(`${httpBase()}/v1/browser/control?${q}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ owner }),
+  });
+  return res.json();
+}
+
+export type BrowserHumanAction =
+  | { action: "click"; x: number; y: number }
+  | { action: "scroll"; delta_y: number }
+  | { action: "type"; text: string }
+  | { action: "key"; key: "Enter" | "Tab" | "Escape" | "Backspace" | "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" }
+  | { action: "back" | "forward" | "reload" }
+  | { action: "open_url"; url: string };
+
+export async function performBrowserHumanAction(
+  sessionId: string,
+  action: BrowserHumanAction,
+): Promise<BrowserState & { ok?: boolean; error?: string }> {
+  const q = new URLSearchParams({ session_id: sessionId });
+  const res = await fetch(`${httpBase()}/v1/browser/human-action?${q}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(action),
+  });
   return res.json();
 }
 

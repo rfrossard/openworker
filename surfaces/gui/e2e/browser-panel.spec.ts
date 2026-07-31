@@ -22,6 +22,8 @@ const OPEN_BROWSER = {
   streaming_media_error: "",
   streaming_media_progress: {},
   pending_action: {},
+  control_owner: "agent",
+  control_changed_at: null,
 };
 
 test("an active Secure Browser remains recoverable after the side panel is hidden", async ({
@@ -46,4 +48,73 @@ test("an active Secure Browser remains recoverable after the side panel is hidde
   await browserButton.click();
   await expect(page.getByText("Isolated session active")).toBeVisible();
   await expect(page.getByText("Web form", { exact: true })).toBeVisible();
+});
+
+test("the user can take control of the active browser and return it to the agent", async ({
+  page,
+}) => {
+  let owner: "agent" | "user" = "agent";
+  const actions: Array<Record<string, unknown>> = [];
+  const browserState = () => ({
+    ...OPEN_BROWSER,
+    control_owner: owner,
+    control_changed_at: owner === "user" ? "2026-07-31T02:01:00Z" : null,
+    screenshot_data_url:
+      "data:image/svg+xml;base64," +
+      Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="900"><rect width="1280" height="900" fill="#fff"/><rect x="120" y="100" width="240" height="80" fill="#4f8cff"/></svg>',
+      ).toString("base64"),
+  });
+  await page.route("**/v1/browser/state?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(browserState()),
+    }),
+  );
+  await page.route("**/v1/browser/screenshot?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, ...browserState() }),
+    }),
+  );
+  await page.route("**/v1/browser/control?**", async (route) => {
+    const body = route.request().postDataJSON();
+    owner = body.owner;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, control_owner: owner }),
+    });
+  });
+  await page.route("**/v1/browser/human-action?**", async (route) => {
+    actions.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, ...browserState() }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Take control" }).click();
+
+  await expect(page.getByRole("dialog", { name: "Interactive Secure Browser" })).toBeVisible();
+  await expect(page.getByText("You are in control")).toBeVisible();
+  await page.getByRole("img", { name: "Interactive browser preview" }).click({
+    position: { x: 100, y: 80 },
+  });
+  await page.getByRole("textbox", { name: "Text to type into the focused browser field" }).fill("Two");
+  await page.getByRole("button", { name: "Type", exact: true }).click();
+  await page.getByRole("button", { name: "Scroll down" }).click();
+
+  await expect.poll(() => actions.map((action) => action.action)).toEqual([
+    "click",
+    "type",
+    "scroll",
+  ]);
+  await page.getByRole("button", { name: "Return to agent" }).click();
+  await expect(page.getByRole("dialog", { name: "Interactive Secure Browser" })).toBeHidden();
+  expect(owner).toBe("agent");
 });

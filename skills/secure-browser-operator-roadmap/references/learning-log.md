@@ -1,5 +1,22 @@
 # Secure Browser Operator Learning Log
 
+## 2026-07-30 — In-app human-control handoff
+
+- Observation: retaining a browser preview after an agent task was not sufficient;
+  the user could inspect the page but could not interact with or assume the same
+  isolated session.
+- Decision: model browser ownership explicitly as `agent` or `user`. During user
+  ownership, agent actions and new approval proposals fail closed. The expanded
+  in-app control surface maps preview clicks to the fixed browser viewport and
+  offers bounded navigation, scrolling, typing, and common keys.
+- Recovery detail: if the UI is hidden or refreshed while the user owns control,
+  the rail offers **Resume control**; returning control preserves the current page.
+- Validation evidence: backend ownership/action tests, REST routing tests, the
+  production frontend build, and the focused Chromium E2E handoff test pass.
+- Roadmap or validation change: M1.5 records the handoff; inspected file upload is
+  again the next smallest milestone slice.
+- Related commit/tag: planned for `local-v0.1.7.58`.
+
 Append entries only when observed evidence changes an assumption, rule, test, architecture, or priority. Keep entries concise and do not include credentials, cookies, private page content, or sensitive screenshots.
 
 ## Entry format

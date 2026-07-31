@@ -269,6 +269,117 @@ class _ActionPage:
         return "Example form"
 
 
+class _HumanMouse:
+    def __init__(self):
+        self.clicks = []
+        self.scrolls = []
+
+    def click(self, x, y):
+        self.clicks.append((x, y))
+
+    def wheel(self, x, y):
+        self.scrolls.append((x, y))
+
+
+class _HumanKeyboard:
+    def __init__(self):
+        self.typed = []
+        self.pressed = []
+
+    def type(self, text):
+        self.typed.append(text)
+
+    def press(self, key):
+        self.pressed.append(key)
+
+
+class _HumanPage:
+    url = "https://example.com/form"
+
+    def __init__(self):
+        self.mouse = _HumanMouse()
+        self.keyboard = _HumanKeyboard()
+
+    def title(self):
+        return "Human control form"
+
+    def evaluate(self, _script):
+        return {
+            "title": self.title(),
+            "url": self.url,
+            "text": "Example",
+            "controls": [],
+            "media": [],
+        }
+
+    def screenshot(self, full_page=False, mask=None, mask_color=None):
+        return b"preview"
+
+    def wait_for_timeout(self, _milliseconds):
+        return None
+
+
+def test_human_control_blocks_agent_actions_until_returned():
+    from coworker.connectors.browser_automation import _BrowserController
+
+    controller = _BrowserController()
+    controller._page = _HumanPage()
+
+    assert controller.set_control_owner("user")["control_owner"] == "user"
+    blocked = controller.call("agent_click", lambda _page: {"ok": True})
+    assert blocked["error"].startswith("The user is controlling Secure Browser.")
+    blocked_proposal = controller.propose_action(
+        tool_call_id="call-blocked",
+        tool_name="browser_click",
+        arguments={"target": "#save"},
+    )
+    assert blocked_proposal["error"].startswith(
+        "The user is controlling Secure Browser."
+    )
+    assert controller.set_control_owner("agent")["control_owner"] == "agent"
+    assert controller.call("agent_read", lambda _page: {"ok": True}) == {"ok": True}
+
+
+def test_human_control_applies_click_scroll_type_and_key_to_same_page():
+    from coworker.connectors.browser_automation import _BrowserController
+
+    page = _HumanPage()
+    controller = _BrowserController()
+    controller._page = page
+
+    assert controller.human_action("click", x=20, y=30)["error"].startswith(
+        "Take control"
+    )
+    controller.set_control_owner("user")
+
+    assert controller.human_action("click", x=1400, y=-20)["ok"] is True
+    assert controller.human_action("scroll", delta_y=700)["ok"] is True
+    assert controller.human_action("type", text="Hello")["ok"] is True
+    assert controller.human_action("key", key="Tab")["ok"] is True
+
+    assert page.mouse.clicks == [(1280.0, 0.0)]
+    assert page.mouse.scrolls == [(0, 700)]
+    assert page.keyboard.typed == ["Hello"]
+    assert page.keyboard.pressed == ["Tab"]
+    assert controller.state()["control_owner"] == "user"
+    assert controller._state["evidence"][-1]["action"] == "human_key"
+
+
+def test_taking_control_requires_open_page_and_no_pending_approval():
+    from coworker.connectors.browser_automation import _BrowserController
+
+    controller = _BrowserController()
+    assert controller.set_control_owner("user") == {
+        "error": "Open a page before taking control."
+    }
+
+    controller._page = _HumanPage()
+    controller._touch(pending_action={"tool_call_id": "pending"})
+    assert controller.set_control_owner("user") == {
+        "error": "Resolve the pending browser approval before taking control."
+    }
+
+
 def test_browser_click_rejects_a_target_that_changed_after_approval():
     from coworker.connectors.browser_automation import _BrowserController
 
