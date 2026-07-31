@@ -852,6 +852,9 @@ export interface BrowserState {
     risk?: string;
     expected_result?: string;
     content_summary?: string;
+    direction?: string;
+    distance?: string;
+    area?: string;
     sensitive?: boolean;
     status?: "pending" | "approved" | "stale";
     error?: string;

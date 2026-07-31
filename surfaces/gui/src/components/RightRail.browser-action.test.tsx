@@ -160,4 +160,31 @@ describe("BrowserActionInspector", () => {
     expect(screen.getByText("File disclosure")).toBeTruthy();
     expect(container.textContent).not.toContain("/Users/");
   });
+
+  it("shows the direction, distance, area, and outcome before scrolling", () => {
+    render(
+      <BrowserActionInspector
+        action={{
+          tool_name: "browser_scroll",
+          action: "Scroll",
+          label: "Main page",
+          domain: "example.com",
+          direction: "Down",
+          distance: "650 px",
+          area: "Main page",
+          risk: "Page navigation",
+          expected_result: "Content about 650 px down in Main page becomes visible.",
+          status: "pending",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Scroll")).toBeTruthy();
+    expect(screen.getByText("Down")).toBeTruthy();
+    expect(screen.getByText("650 px")).toBeTruthy();
+    expect(screen.getAllByText("Main page")).toHaveLength(2);
+    expect(
+      screen.getByText("Content about 650 px down in Main page becomes visible."),
+    ).toBeTruthy();
+  });
 });

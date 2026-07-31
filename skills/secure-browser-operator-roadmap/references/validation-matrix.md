@@ -61,3 +61,8 @@ Apply relevant rows to every milestone and add newly observed failure modes.
     Verify both controls address the same live composer approval, only appear for
     the matching browser tool, lock after the first decision, produce exactly one
     tool result, and cannot race a second click into duplicate execution.
+19. Propose page and container scrolling in both directions. Show exact distance,
+    affected area, and expected visible outcome. Reject a changed distance, URL,
+    page/container scroll position, stale container, zero/oversized distance, denied
+    action, reused approval, and approval from another session; no rejected case may
+    move the page.

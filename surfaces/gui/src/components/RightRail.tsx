@@ -1128,6 +1128,9 @@ export function BrowserActionInspector({
       )}
       <dl>
         <div><dt>Site</dt><dd>{action.domain || "Current page"}</dd></div>
+        {action.direction && <div><dt>Direction</dt><dd>{action.direction}</dd></div>}
+        {action.distance && <div><dt>Distance</dt><dd>{action.distance}</dd></div>}
+        {action.area && <div><dt>Area</dt><dd>{action.area}</dd></div>}
         <div><dt>Risk</dt><dd>{action.risk || "Page interaction"}</dd></div>
         <div><dt>Expected</dt><dd>{action.expected_result || "The page changes as described."}</dd></div>
       </dl>

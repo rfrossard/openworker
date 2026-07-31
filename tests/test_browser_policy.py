@@ -323,6 +323,120 @@ class _HumanPage:
         return None
 
 
+class _ScrollPage:
+    url = "https://example.com/long-page"
+
+    def __init__(self):
+        self.scroll_y = 100
+        self.scroll_height = 5000
+        self.client_height = 900
+        self.scrolls = []
+
+    def evaluate(self, script, argument=None):
+        if "window.scrollBy" in script:
+            self.scroll_y += int(argument)
+            self.scrolls.append(int(argument))
+            return None
+        if "scrollY: window.scrollY" in script:
+            return {
+                "scrollY": self.scroll_y,
+                "scrollHeight": self.scroll_height,
+                "clientHeight": self.client_height,
+            }
+        return {
+            "title": self.title(),
+            "url": self.url,
+            "text": "Long page",
+            "controls": [],
+            "media": [],
+        }
+
+    def screenshot(self, full_page=False, mask=None, mask_color=None):
+        return b"preview"
+
+    def title(self):
+        return "Long page"
+
+    def wait_for_timeout(self, _milliseconds):
+        return None
+
+
+def test_inspected_scroll_explains_and_executes_the_approved_distance_once():
+    from coworker.connectors.browser_automation import (
+        _browser_for,
+        make_browser_automation_tools,
+    )
+
+    session_id = "inspected-scroll"
+    page = _ScrollPage()
+    controller = _browser_for(session_id)
+    controller._page = page
+    tools = {
+        tool.__name__: tool
+        for tool in make_browser_automation_tools(session_id=session_id)
+    }
+
+    proposal = controller.propose_action(
+        tool_call_id="call-scroll",
+        tool_name="browser_scroll",
+        arguments={"delta_y": 650},
+    )
+
+    assert proposal["action"] == "Scroll"
+    assert proposal["direction"] == "Down"
+    assert proposal["distance"] == "650 px"
+    assert proposal["area"] == "Main page"
+    assert proposal["expected_result"] == (
+        "Content about 650 px down in Main page becomes visible."
+    )
+    controller.resolve_action("call-scroll", "once")
+
+    assert tools["browser_scroll"](650)["ok"] is True
+    assert page.scrolls == [650]
+    assert controller._state["pending_action"] == {}
+
+    # Replaying the tool does not reuse the consumed approval.
+    replay = tools["browser_scroll"](650)
+    assert replay["error"].startswith(
+        "This browser action has no inspected approval."
+    )
+    assert page.scrolls == [650]
+
+
+def test_inspected_scroll_rejects_changed_position_and_distance():
+    from coworker.connectors.browser_automation import _BrowserController
+
+    page = _ScrollPage()
+    controller = _BrowserController()
+    controller._page = page
+    controller.propose_action(
+        tool_call_id="call-scroll-stale",
+        tool_name="browser_scroll",
+        arguments={"delta_y": -400},
+    )
+    controller.resolve_action("call-scroll-stale", "once")
+
+    assert controller.validate_action(
+        "browser_scroll", "", action_value="-401"
+    ) == {
+        "error": (
+            "The scroll distance differs from the approved proposal. "
+            "Review and approve it again."
+        )
+    }
+
+    page.scroll_y = 250
+    assert controller.validate_action(
+        "browser_scroll", "", action_value="-400"
+    ) == {
+        "error": (
+            "The page changed before the action ran. Review the new target "
+            "and approve it again."
+        )
+    }
+    assert page.scrolls == []
+
+
 def test_human_control_blocks_agent_actions_until_returned():
     from coworker.connectors.browser_automation import _BrowserController
 

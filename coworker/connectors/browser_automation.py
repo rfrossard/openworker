@@ -644,8 +644,15 @@ class _BrowserController:
                 page, err = self.page()
                 if err:
                     return err
+                is_scroll = tool_name == "browser_scroll"
                 target = str(arguments.get("target") or "").strip()
-                inspected = _inspect_target(page, target)
+                scroll_target = target or "Main page"
+                scroll_delta = int(arguments.get("delta_y") or 0) if is_scroll else 0
+                inspected = (
+                    _inspect_scroll_target(page, target)
+                    if is_scroll
+                    else _inspect_target(page, target)
+                )
                 is_type = tool_name == "browser_type"
                 is_select = tool_name == "browser_select"
                 is_upload = tool_name == "browser_upload_file"
@@ -696,24 +703,48 @@ class _BrowserController:
                     except (BrowserPolicyError, OSError) as exc:
                         upload_error = str(exc)
                 action_name = (
-                    "Upload"
-                    if is_upload
-                    else ("Select" if is_select else ("Type" if is_type else "Click"))
-                )
-                risk = (
-                    "File disclosure"
-                    if is_upload
+                    "Scroll"
+                    if is_scroll
                     else (
-                        "Sensitive input"
-                        if sensitive
+                        "Upload"
+                        if is_upload
                         else (
-                            "Form selection"
+                            "Select"
                             if is_select
-                            else ("Form input" if is_type else "Page interaction")
+                            else ("Type" if is_type else "Click")
                         )
                     )
                 )
-                if is_upload:
+                risk = (
+                    "Page navigation"
+                    if is_scroll
+                    else (
+                        "File disclosure"
+                        if is_upload
+                        else (
+                            "Sensitive input"
+                            if sensitive
+                            else (
+                                "Form selection"
+                                if is_select
+                                else (
+                                    "Form input" if is_type else "Page interaction"
+                                )
+                            )
+                        )
+                    )
+                )
+                if is_scroll:
+                    direction = "Down" if scroll_delta > 0 else "Up"
+                    distance = abs(scroll_delta)
+                    expected_result = (
+                        f"Content about {distance} px {direction.lower()} in "
+                        f"{scroll_target} becomes visible."
+                    )
+                    content_summary = (
+                        f"{direction} · {distance} px · {scroll_target}"
+                    )
+                elif is_upload:
                     expected_result = (
                         f'“{upload_name or "The selected file"}” is attached to '
                         "this field."
@@ -755,6 +786,12 @@ class _BrowserController:
                     "expected_result": expected_result,
                     "content_summary": content_summary,
                     "sensitive": sensitive,
+                    "direction": (
+                        ("Down" if scroll_delta > 0 else "Up") if is_scroll else ""
+                    ),
+                    "distance": f"{abs(scroll_delta)} px" if is_scroll else "",
+                    "area": scroll_target if is_scroll else "",
+                    "_scroll_delta_y": scroll_delta if is_scroll else 0,
                     "_requested_value": requested_value if is_select else "",
                     "_option_value": option_value if is_select else "",
                     "_upload_path": upload_path if is_upload else "",
@@ -780,6 +817,10 @@ class _BrowserController:
                     )
                 if upload_error:
                     proposal["error"] = upload_error
+                if is_scroll and (scroll_delta == 0 or abs(scroll_delta) > 5000):
+                    proposal["error"] = (
+                        "Scroll distance must be between 1 and 5000 pixels."
+                    )
                 self._capture_preview()
                 self._touch(pending_action=proposal)
                 return _public_action(proposal)
@@ -817,12 +858,22 @@ class _BrowserController:
             with self._lock:
                 proposal = dict(self._state.get("pending_action") or {})
                 if not proposal:
-                    return None
+                    return {
+                        "error": (
+                            "This browser action has no inspected approval. "
+                            "Review and approve it before execution."
+                        )
+                    }
                 if (
                     proposal.get("tool_name") != tool_name
                     or proposal.get("target") != target
                 ):
-                    return None
+                    return {
+                        "error": (
+                            "This browser action differs from the inspected approval. "
+                            "Review and approve it again."
+                        )
+                    }
                 if proposal.get("status") != "approved":
                     return {"error": "The browser action has not been approved."}
                 if proposal.get("error"):
@@ -846,6 +897,17 @@ class _BrowserController:
                     return {
                         "error": (
                             "The file differs from the approved proposal. "
+                            "Review and approve it again."
+                        )
+                    }
+                if (
+                    tool_name == "browser_scroll"
+                    and int(proposal.get("_scroll_delta_y") or 0)
+                    != int(action_value or 0)
+                ):
+                    return {
+                        "error": (
+                            "The scroll distance differs from the approved proposal. "
                             "Review and approve it again."
                         )
                     }
@@ -873,7 +935,11 @@ class _BrowserController:
                 page, err = self.page()
                 if err:
                     return err
-                current = _inspect_target(page, target)
+                current = (
+                    _inspect_scroll_target(page, target)
+                    if tool_name == "browser_scroll"
+                    else _inspect_target(page, target)
+                )
                 if current.get("error") or current.get("fingerprint") != proposal.get(
                     "fingerprint"
                 ):
@@ -1005,6 +1071,7 @@ def browser_propose_action(
 ) -> dict[str, Any]:
     if tool_name not in {
         "browser_click",
+        "browser_scroll",
         "browser_type",
         "browser_select",
         "browser_upload_file",
@@ -1199,6 +1266,61 @@ def _inspect_target(page, target: str) -> dict[str, Any]:
         "_selected_values": selected_values,
         "_tag": descriptor.get("tag") or "",
         "_type": descriptor.get("type") or "",
+    }
+
+
+def _inspect_scroll_target(page, target: str) -> dict[str, Any]:
+    """Freeze the page or scroll container before an approved scroll."""
+    if target:
+        inspected = _inspect_target(page, target)
+        if inspected.get("error"):
+            return inspected
+        try:
+            scroll_state = _target_locator(page, target).evaluate(
+                """(el) => ({
+                    scrollTop: el.scrollTop,
+                    scrollHeight: el.scrollHeight,
+                    clientHeight: el.clientHeight
+                })"""
+            )
+        except Exception as exc:
+            return {"error": str(exc)}
+        if int(scroll_state.get("scrollHeight") or 0) <= int(
+            scroll_state.get("clientHeight") or 0
+        ):
+            return {"error": "The proposed area is not scrollable."}
+        identity = {
+            "url": page.url,
+            "target": target,
+            **scroll_state,
+            "fingerprint": inspected.get("fingerprint"),
+        }
+        inspected["fingerprint"] = hashlib.sha256(
+            json.dumps(identity, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        return inspected
+    try:
+        state = page.evaluate(
+            """() => ({
+                scrollY: window.scrollY,
+                scrollHeight: document.documentElement.scrollHeight,
+                clientHeight: window.innerHeight
+            })"""
+        )
+    except Exception as exc:
+        return {"error": str(exc)}
+    identity = {"url": page.url, **state}
+    return {
+        "label": "Main page",
+        "fingerprint": hashlib.sha256(
+            json.dumps(identity, sort_keys=True).encode("utf-8")
+        ).hexdigest(),
+        "match_count": 1,
+        "sensitive": False,
+        "viewport": {
+            "width": 1280,
+            "height": int(state.get("clientHeight") or 900),
+        },
     }
 
 
@@ -1445,6 +1567,51 @@ def make_browser_automation_tools(
                 "Click a visible page element by CSS selector, text=label, role=button:Name, or text fallback. Requires approval.",
                 {"target": {"type": "string"}},
                 ["target"],
+            ),
+            approval=True,
+        )
+    )
+
+    def browser_scroll(delta_y: int, target: str = "") -> dict[str, Any]:
+        normalized_delta = int(delta_y or 0)
+        validation_error = controller.validate_action(
+            "browser_scroll", target, action_value=str(normalized_delta)
+        )
+        if validation_error:
+            return validation_error
+
+        def run(page):
+            if target:
+                _target_locator(page, target).evaluate(
+                    "(el, delta) => el.scrollBy(0, delta)", normalized_delta
+                )
+            else:
+                page.evaluate("(delta) => window.scrollBy(0, delta)", normalized_delta)
+            page.wait_for_timeout(150)
+            return {"ok": True, "url": page.url, "delta_y": normalized_delta}
+
+        result = controller.call("scroll", run)
+        controller.finish_action(
+            "browser_scroll", target, succeeded="error" not in result
+        )
+        return result
+
+    browser_scroll.__name__ = "browser_scroll"
+    tools.append(
+        _attach(
+            browser_scroll,
+            _schema(
+                "browser_scroll",
+                "Scroll the main page or a specific scrollable element by an exact pixel distance. Positive values move down; negative values move up. Requires approval.",
+                {
+                    "delta_y": {
+                        "type": "integer",
+                        "minimum": -5000,
+                        "maximum": 5000,
+                    },
+                    "target": {"type": "string"},
+                },
+                ["delta_y"],
             ),
             approval=True,
         )

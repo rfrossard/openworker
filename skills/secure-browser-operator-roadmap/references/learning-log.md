@@ -1,5 +1,17 @@
 # Secure Browser Operator Learning Log
 
+## 2026-07-30 — Scroll needs the same inspected contract as clicking
+
+- Evidence: agent scrolling previously had no tool or reviewable proposal; only
+  direct human-control wheel input existed.
+- Impact: an agent could not safely reveal more content while preserving a clear
+  operator decision and exactly-once execution boundary.
+- Decision: add an inspected scroll action that freezes URL, position, geometry,
+  target container, direction, and distance; reject stale or reused approvals.
+- Roadmap or validation change: M1.9 completes inspected scrolling and makes
+  inspected download the next smallest action.
+- Related commit/tag: planned for `local-v0.1.7.64`.
+
 ## 2026-07-30 — Approval proximity must not create a second consent system
 
 - Evidence: the highlighted browser target and its explanation were visible beside

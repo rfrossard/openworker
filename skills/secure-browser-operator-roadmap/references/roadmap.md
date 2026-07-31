@@ -71,18 +71,21 @@ Progress:
   controls resolve the same live approval record as the composer, appear only when
   the pending browser tool matches that record, and lock after the first decision
   to prevent duplicate execution.
+- M1.9 adds inspected agent scrolling. Approval shows direction, exact pixel
+  distance, affected page/container, and expected visible outcome. Execution
+  rejects a changed distance, URL, scroll position, container, or reused approval.
 - The existing durable approval flow remains the single source of consent.
 
 Remaining:
 
-- Extend the proposal contract to scroll and download.
+- Extend the proposal contract to download.
 - Complete cancellation, restart, two-session, iframe, and accessibility scenarios.
 - Complete keyboard focus order, screen-reader announcements, and narrow-window
   visual checks for the in-app human-control surface.
 
-Next smallest action: extend the inspected action contract to scrolling, including
-direction, distance, target container, expected visible outcome, stale-page
-rejection, and exactly-once approval handling.
+Next smallest action: extend the inspected action contract to downloads, including
+the source, output type, destination, size estimate, overwrite behavior, progress,
+cancellation, and final artifact evidence.
 
 ### M2 — Reliable Actions
 
