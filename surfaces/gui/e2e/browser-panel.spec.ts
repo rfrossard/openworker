@@ -107,8 +107,32 @@ test("the user can take control of the active browser and return it to the agent
   await expect.poll(async () => {
     const box = await dialog.boundingBox();
     return { width: Math.round(box?.width || 0), height: Math.round(box?.height || 0) };
-  }).toEqual({ width: 1480, height: 960 });
+  }).toEqual({ width: 1180, height: 820 });
+  await expect.poll(() =>
+    page.locator(".browser-control-backdrop").evaluate((element) => element.parentElement === document.body),
+  ).toBe(true);
   await expect(dialog).toHaveCSS("resize", "both");
+
+  const header = dialog.locator(".browser-control-header");
+  const beforeDrag = await dialog.boundingBox();
+  const headerBox = await header.boundingBox();
+  expect(beforeDrag).not.toBeNull();
+  expect(headerBox).not.toBeNull();
+  await page.mouse.move(headerBox!.x + 180, headerBox!.y + 18);
+  await page.mouse.down();
+  await page.mouse.move(headerBox!.x + 80, headerBox!.y + 78, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => {
+    const box = await dialog.boundingBox();
+    return {
+      x: Math.round(box?.x || 0),
+      y: Math.round(box?.y || 0),
+    };
+  }).toEqual({
+    x: Math.round(beforeDrag!.x - 100),
+    y: Math.round(beforeDrag!.y + 60),
+  });
+
   await page.getByRole("button", { name: "Maximize browser" }).click();
   await expect.poll(async () => {
     const box = await dialog.boundingBox();

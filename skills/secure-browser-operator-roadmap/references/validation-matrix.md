@@ -49,7 +49,10 @@ Apply relevant rows to every milestone and add newly observed failure modes.
     large, can be resized and maximized/restored, keeps the full page aspect ratio,
     and maps preview clicks to the same browser coordinates at every size. Repeat
     with tall page content and verify the header, footer, controls, preview bounds,
-    resize corner, and Maximize action all remain visible.
+    resize corner, and Maximize action all remain visible. Verify the window is
+    portaled outside the right rail, opens over the central workspace, can be moved
+    by its title bar, and is clamped fully into view after dragging or resizing the
+    OpenWorker window.
 17. Propose a workspace file upload and show the exact destination field plus only
     the file name and size. Reject an outside-workspace path, non-file input,
     ambiguous or changed target, substituted path, and file modified after approval;

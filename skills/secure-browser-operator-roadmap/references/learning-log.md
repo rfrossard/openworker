@@ -1,5 +1,19 @@
 # Secure Browser Operator Learning Log
 
+## 2026-07-30 — A fixed popup can still inherit the side rail's visual boundary
+
+- Evidence: the human-control surface was mounted inside the right rail, so a wide
+  popup remained visually associated with the narrow inspector and could extend
+  beyond the usable OpenWorker window.
+- Impact: the page preview was hidden at the edge and the user could not place the
+  browser over the central workspace for side-by-side inspection.
+- Decision: render the control surface in the application-level portal, open it
+  centered over the main workspace, make its title bar draggable, retain native
+  resizing, and clamp it back into view after dragging or window resizing.
+- Roadmap or validation change: extend M1.6 with portal, drag, and viewport-clamping
+  checks.
+- Related commit/tag: planned for `local-v0.1.7.62`.
+
 ## 2026-07-30 — Intrinsic page height can defeat a nominally large control surface
 
 - Evidence: a tall live screenshot expanded the preview's grid minimum, pushed the

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 // Emits the asset URL only; the worker itself loads lazily with the pdfjs chunk.
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import {
@@ -390,6 +391,9 @@ function BrowserOperator({
   const [controlText, setControlText] = useState("");
   const [controlError, setControlError] = useState("");
   const [controlMaximized, setControlMaximized] = useState(false);
+  const [controlPosition, setControlPosition] = useState<{ x: number; y: number } | null>(null);
+  const controlModalRef = useRef<HTMLElement | null>(null);
+  const controlDragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
   const captureInFlight = useRef(false);
   const browserUsed = toolNames.some((name) => name.startsWith("browser_"));
 
@@ -438,6 +442,29 @@ function BrowserOperator({
     return () => window.clearInterval(timer);
   }, [previewInterval, sessionId, state?.open]);
 
+  useEffect(() => {
+    if (!controlOpen) return;
+    const keepControlVisible = () => {
+      const bounds = controlModalRef.current?.getBoundingClientRect();
+      if (!bounds || controlMaximized) return;
+      const margin = 8;
+      if (window.innerWidth <= 760) {
+        setControlPosition({ x: margin, y: margin });
+        return;
+      }
+      setControlPosition((position) =>
+        position
+          ? {
+              x: Math.max(margin, Math.min(position.x, window.innerWidth - bounds.width - margin)),
+              y: Math.max(margin, Math.min(position.y, window.innerHeight - bounds.height - margin)),
+            }
+          : position,
+      );
+    };
+    window.addEventListener("resize", keepControlVisible);
+    return () => window.removeEventListener("resize", keepControlVisible);
+  }, [controlMaximized, controlOpen]);
+
   const capture = async () => {
     setBusy(true);
     try {
@@ -478,6 +505,34 @@ function BrowserOperator({
     } finally {
       setBusy(false);
     }
+  };
+  const startControlDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    if (controlMaximized || event.button !== 0 || (event.target as HTMLElement).closest("button")) return;
+    const bounds = controlModalRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    controlDragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - bounds.left,
+      offsetY: event.clientY - bounds.top,
+    };
+    setControlPosition({ x: bounds.left, y: bounds.top });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const moveControl = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = controlDragRef.current;
+    const modal = controlModalRef.current;
+    if (!drag || !modal || drag.pointerId !== event.pointerId) return;
+    const bounds = modal.getBoundingClientRect();
+    const margin = 8;
+    setControlPosition({
+      x: Math.max(margin, Math.min(event.clientX - drag.offsetX, window.innerWidth - bounds.width - margin)),
+      y: Math.max(margin, Math.min(event.clientY - drag.offsetY, window.innerHeight - bounds.height - margin)),
+    });
+  };
+  const stopControlDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    if (controlDragRef.current?.pointerId !== event.pointerId) return;
+    controlDragRef.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
   };
   const humanAction = async (
     action: Parameters<typeof performBrowserHumanAction>[1],
@@ -875,18 +930,33 @@ function BrowserOperator({
         )}
       </div>
     </RailSection>
-    {controlOpen && state?.open && (
+    {controlOpen && state?.open && typeof document !== "undefined" && createPortal(
       <div className="browser-control-backdrop" role="presentation">
         <section
-          className={`browser-control-modal${controlMaximized ? " maximized" : ""}`}
+          ref={controlModalRef}
+          className={`browser-control-modal${controlMaximized ? " maximized" : ""}${controlPosition ? " moved" : ""}`}
+          style={
+            !controlMaximized && controlPosition
+              ? { left: controlPosition.x, top: controlPosition.y }
+              : undefined
+          }
           role="dialog"
-          aria-modal="true"
+          aria-modal="false"
           aria-label="Interactive Secure Browser"
         >
-          <header className="browser-control-header">
+          <header
+            className="browser-control-header"
+            onPointerDown={startControlDrag}
+            onPointerMove={moveControl}
+            onPointerUp={stopControlDrag}
+            onPointerCancel={stopControlDrag}
+            onDoubleClick={() => setControlMaximized((value) => !value)}
+            title="Drag to move the browser window"
+          >
             <div>
               <strong>Secure Browser</strong>
               <span><i /> You are in control</span>
+              <small>Drag this bar to move</small>
             </div>
             <div className="browser-control-header-actions">
               <button
@@ -987,7 +1057,8 @@ function BrowserOperator({
             />
           )}
         </section>
-      </div>
+      </div>,
+      document.body,
     )}
     </>
   );
