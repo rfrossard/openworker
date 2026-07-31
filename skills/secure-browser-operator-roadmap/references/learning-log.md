@@ -1,5 +1,19 @@
 # Secure Browser Operator Learning Log
 
+## 2026-07-30 — Intrinsic page height can defeat a nominally large control surface
+
+- Evidence: a tall live screenshot expanded the preview's grid minimum, pushed the
+  popup controls outside the visible app window, and the narrow-window rule hid the
+  native resize affordance.
+- Impact: the page appeared cropped and the user could not discover how to resize or
+  maximize the browser even though those controls existed.
+- Decision: give the preview a zero-minimum bounded grid row, keep overflow recovery
+  on the popup, preserve resizing at narrow widths, and render an explicit striped
+  resize corner plus visible instruction.
+- Roadmap or validation change: strengthen M1.6 with a tall-content narrow-window
+  containment test.
+- Related commit/tag: planned for `local-v0.1.7.61`.
+
 ## 2026-07-30 — Upload approval must freeze both sides of the disclosure
 
 - Evidence: `browser_upload_file` enforced the workspace boundary only when it ran

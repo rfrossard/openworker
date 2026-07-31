@@ -976,8 +976,16 @@ function BrowserOperator({
           {controlError && <div className="browser-error">{controlError}</div>}
           <footer>
             Click the preview to focus or activate page elements. Your actions are applied
-            to the same isolated session the agent uses. Drag the lower-right corner to resize.
+            to the same isolated session the agent uses. Resize from the striped corner,
+            or use Maximize.
           </footer>
+          {!controlMaximized && (
+            <span
+              className="browser-control-resize-hint"
+              aria-hidden="true"
+              title="Drag to resize"
+            />
+          )}
         </section>
       </div>
     )}

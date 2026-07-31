@@ -47,7 +47,9 @@ Apply relevant rows to every milestone and add newly observed failure modes.
     surface can be resumed and control can still be returned to the agent.
 16. Open human control on large and narrow viewports; verify the browser starts
     large, can be resized and maximized/restored, keeps the full page aspect ratio,
-    and maps preview clicks to the same browser coordinates at every size.
+    and maps preview clicks to the same browser coordinates at every size. Repeat
+    with tall page content and verify the header, footer, controls, preview bounds,
+    resize corner, and Maximize action all remain visible.
 17. Propose a workspace file upload and show the exact destination field plus only
     the file name and size. Reject an outside-workspace path, non-file input,
     ambiguous or changed target, substituted path, and file modified after approval;

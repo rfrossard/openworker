@@ -116,6 +116,28 @@ test("the user can take control of the active browser and return it to the agent
   }).toEqual({ width: 1584, height: 984 });
   await page.getByRole("button", { name: "Restore browser size" }).click();
   await expect(dialog).toHaveCSS("resize", "both");
+
+  await page.setViewportSize({ width: 680, height: 900 });
+  await expect(dialog).toHaveCSS("resize", "both");
+  await expect(page.getByRole("button", { name: "Maximize browser" })).toBeVisible();
+  await expect(page.getByText("Resize from the striped corner, or use Maximize.")).toBeVisible();
+  const canvas = page.locator(".browser-control-canvas");
+  const preview = page.getByRole("img", { name: "Interactive browser preview" });
+  await expect.poll(async () => {
+    const dialogBox = await dialog.boundingBox();
+    const canvasBox = await canvas.boundingBox();
+    const previewBox = await preview.boundingBox();
+    if (!dialogBox || !canvasBox || !previewBox) return false;
+    return (
+      dialogBox.y >= 0 &&
+      dialogBox.y + dialogBox.height <= 900 &&
+      previewBox.x >= canvasBox.x &&
+      previewBox.y >= canvasBox.y &&
+      previewBox.x + previewBox.width <= canvasBox.x + canvasBox.width + 1 &&
+      previewBox.y + previewBox.height <= canvasBox.y + canvasBox.height + 1
+    );
+  }).toBe(true);
+
   await page.getByRole("img", { name: "Interactive browser preview" }).click({
     position: { x: 100, y: 80 },
   });
