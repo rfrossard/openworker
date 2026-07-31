@@ -1,5 +1,17 @@
 # Secure Browser Operator Learning Log
 
+## 2026-07-30 — Available control still failed when the viewport was too small
+
+- Evidence: installed M1.5 exposed working browser controls, but the fixed-size
+  surface left the live page too small to inspect and offered no resizing affordance.
+- Impact: the user could technically navigate but could not comfortably read or
+  control normal desktop pages.
+- Decision: make the browser surface nearly window-sized by default, resizable from
+  its lower-right corner, and explicitly maximizable/restorable. Keep the rendered
+  image element proportional so coordinate mapping remains accurate.
+- Roadmap or validation change: M1.6 and a viewport/resize regression scenario.
+- Related commit/tag: planned for `local-v0.1.7.59`.
+
 ## 2026-07-30 — In-app human-control handoff
 
 - Observation: retaining a browser preview after an agent task was not sufficient;

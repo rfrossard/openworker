@@ -389,6 +389,7 @@ function BrowserOperator({
   const [controlAddress, setControlAddress] = useState("");
   const [controlText, setControlText] = useState("");
   const [controlError, setControlError] = useState("");
+  const [controlMaximized, setControlMaximized] = useState(false);
   const captureInFlight = useRef(false);
   const browserUsed = toolNames.some((name) => name.startsWith("browser_"));
 
@@ -877,7 +878,7 @@ function BrowserOperator({
     {controlOpen && state?.open && (
       <div className="browser-control-backdrop" role="presentation">
         <section
-          className="browser-control-modal"
+          className={`browser-control-modal${controlMaximized ? " maximized" : ""}`}
           role="dialog"
           aria-modal="true"
           aria-label="Interactive Secure Browser"
@@ -887,9 +888,19 @@ function BrowserOperator({
               <strong>Secure Browser</strong>
               <span><i /> You are in control</span>
             </div>
-            <button className="btn primary" onClick={returnControl} disabled={busy}>
-              Return to agent
-            </button>
+            <div className="browser-control-header-actions">
+              <button
+                className="btn secondary"
+                onClick={() => setControlMaximized((value) => !value)}
+                aria-label={controlMaximized ? "Restore browser size" : "Maximize browser"}
+                title={controlMaximized ? "Restore size" : "Use the full OpenWorker window"}
+              >
+                {controlMaximized ? "Restore" : "Maximize"}
+              </button>
+              <button className="btn primary" onClick={returnControl} disabled={busy}>
+                Return to agent
+              </button>
+            </div>
           </header>
           <div className="browser-control-toolbar">
             <button aria-label="Go back" title="Back" onClick={() => humanAction({ action: "back" })} disabled={busy}>←</button>
@@ -965,7 +976,7 @@ function BrowserOperator({
           {controlError && <div className="browser-error">{controlError}</div>}
           <footer>
             Click the preview to focus or activate page elements. Your actions are applied
-            to the same isolated session the agent uses.
+            to the same isolated session the agent uses. Drag the lower-right corner to resize.
           </footer>
         </section>
       </div>

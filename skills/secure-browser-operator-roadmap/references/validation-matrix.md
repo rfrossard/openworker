@@ -45,3 +45,6 @@ Apply relevant rows to every milestone and add newly observed failure modes.
     verify safe rejection and no ownership, action, cookie, or preview leakage.
 15. Reload or temporarily hide the UI during user ownership; verify the control
     surface can be resumed and control can still be returned to the agent.
+16. Open human control on large and narrow viewports; verify the browser starts
+    large, can be resized and maximized/restored, keeps the full page aspect ratio,
+    and maps preview clicks to the same browser coordinates at every size.

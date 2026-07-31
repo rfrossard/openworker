@@ -53,6 +53,7 @@ test("an active Secure Browser remains recoverable after the side panel is hidde
 test("the user can take control of the active browser and return it to the agent", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
   let owner: "agent" | "user" = "agent";
   const actions: Array<Record<string, unknown>> = [];
   const browserState = () => ({
@@ -100,8 +101,21 @@ test("the user can take control of the active browser and return it to the agent
   await page.goto("/");
   await page.getByRole("button", { name: "Take control" }).click();
 
-  await expect(page.getByRole("dialog", { name: "Interactive Secure Browser" })).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Interactive Secure Browser" });
+  await expect(dialog).toBeVisible();
   await expect(page.getByText("You are in control")).toBeVisible();
+  await expect.poll(async () => {
+    const box = await dialog.boundingBox();
+    return { width: Math.round(box?.width || 0), height: Math.round(box?.height || 0) };
+  }).toEqual({ width: 1480, height: 960 });
+  await expect(dialog).toHaveCSS("resize", "both");
+  await page.getByRole("button", { name: "Maximize browser" }).click();
+  await expect.poll(async () => {
+    const box = await dialog.boundingBox();
+    return { width: Math.round(box?.width || 0), height: Math.round(box?.height || 0) };
+  }).toEqual({ width: 1584, height: 984 });
+  await page.getByRole("button", { name: "Restore browser size" }).click();
+  await expect(dialog).toHaveCSS("resize", "both");
   await page.getByRole("img", { name: "Interactive browser preview" }).click({
     position: { x: 100, y: 80 },
   });

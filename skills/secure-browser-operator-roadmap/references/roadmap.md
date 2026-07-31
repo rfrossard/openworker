@@ -59,6 +59,10 @@ Progress:
   common keys, and return control to the agent. Agent browser actions fail closed
   while the user owns the session, pending approvals prevent takeover, and an
   interrupted UI can resume user control without opening external Chromium.
+- M1.6 makes the human-control surface usable for inspection rather than merely
+  available: it opens at a large desktop size, scales the page without distorting
+  click coordinates, supports native corner resizing, and provides explicit
+  Maximize and Restore controls.
 - The existing durable approval flow remains the single source of consent.
 
 Remaining:
