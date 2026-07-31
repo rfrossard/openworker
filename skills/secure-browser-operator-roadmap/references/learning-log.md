@@ -1,5 +1,17 @@
 # Secure Browser Operator Learning Log
 
+## 2026-07-30 — Approval proximity must not create a second consent system
+
+- Evidence: the highlighted browser target and its explanation were visible beside
+  the preview, while the decision controls existed only in the composer.
+- Impact: the user had to move away from the evidence to approve it; duplicating the
+  approval state in the browser panel would instead introduce races and ambiguity.
+- Decision: pass the current live approval into the browser panel, expose decisions
+  only when its tool matches the pending browser proposal, call the existing
+  composer resolver, and lock both controls after the first decision.
+- Roadmap or validation change: M1.8 and an exactly-once synchronized-decision test.
+- Related commit/tag: planned for `local-v0.1.7.63`.
+
 ## 2026-07-30 — A fixed popup can still inherit the side rail's visual boundary
 
 - Evidence: the human-control surface was mounted inside the right rail, so a wide

@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BrowserActionInspector } from "./RightRail";
 
@@ -27,7 +27,53 @@ describe("BrowserActionInspector", () => {
     expect(screen.getByText("example.com")).toBeTruthy();
     expect(screen.getByText("Page interaction")).toBeTruthy();
     expect(screen.getByText("The selected page element is activated.")).toBeTruthy();
-    expect(screen.getByText("Approve or deny this action in the composer.")).toBeTruthy();
+    expect(screen.getByText("This action can also be resolved from the composer.")).toBeTruthy();
+  });
+
+  it("resolves the same pending action directly beside the preview", () => {
+    const decide = vi.fn();
+    render(
+      <BrowserActionInspector
+        action={{
+          tool_call_id: "call-browser-1",
+          tool_name: "browser_click",
+          action: "Click",
+          label: "Save draft",
+          status: "pending",
+        }}
+        canResolve
+        onDecision={decide}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve once" }));
+    expect(decide).toHaveBeenCalledTimes(1);
+    expect(decide).toHaveBeenCalledWith("once");
+
+    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    expect(decide).toHaveBeenCalledTimes(2);
+    expect(decide).toHaveBeenLastCalledWith("deny");
+  });
+
+  it("disables both decisions after one has been sent", () => {
+    render(
+      <BrowserActionInspector
+        action={{
+          tool_call_id: "call-browser-2",
+          tool_name: "browser_click",
+          action: "Click",
+          label: "Continue",
+          status: "pending",
+        }}
+        canResolve
+        resolving
+        onDecision={vi.fn()}
+      />,
+    );
+
+    expect((screen.getByRole("button", { name: "Approve once" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Deny" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("status").textContent).toContain("Decision sent");
   });
 
   it("surfaces a stale target as a safe stop", () => {
@@ -45,7 +91,7 @@ describe("BrowserActionInspector", () => {
 
     expect(screen.getByText("Target changed")).toBeTruthy();
     expect(screen.getByText("The page changed before the action ran.")).toBeTruthy();
-    expect(screen.queryByText("Approve or deny this action in the composer.")).toBeNull();
+    expect(screen.queryByText("This action can also be resolved from the composer.")).toBeNull();
   });
 
   it("explains typing without rendering the proposed value", () => {

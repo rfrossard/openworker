@@ -595,6 +595,12 @@ button.btn.danger { color: var(--accent); }
 .browser-action-inspector dl div { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 7px; font-size: 11px; line-height: 1.35; }
 .browser-action-inspector dt { color: var(--faint); }
 .browser-action-inspector dd { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.browser-action-decisions {
+  display: flex; align-items: center; gap: 7px; padding-top: 2px;
+  border-top: 1px solid color-mix(in srgb, #f4b942 28%, transparent);
+}
+.browser-action-decisions .btn { padding: 6px 9px; border-radius: 7px; font-size: 11.5px; }
+.browser-action-decisions span { color: var(--faint); font-size: 10.5px; }
 .browser-status-row { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
 .browser-status-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--faint); }
 .browser-status-dot.open { background: var(--success, #3da66b); }

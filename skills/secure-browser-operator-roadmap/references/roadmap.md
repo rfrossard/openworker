@@ -67,20 +67,22 @@ Progress:
   input, shows only the file name and size, labels the action as file disclosure,
   preserves workspace-bound path enforcement, and rejects a changed field, file,
   path, ambiguous target, or non-file input before anything is attached.
+- M1.8 places Approve once and Deny beside the highlighted browser preview. These
+  controls resolve the same live approval record as the composer, appear only when
+  the pending browser tool matches that record, and lock after the first decision
+  to prevent duplicate execution.
 - The existing durable approval flow remains the single source of consent.
 
 Remaining:
 
 - Extend the proposal contract to scroll and download.
-- Add direct approve/deny affordances beside the preview without duplicating
-  or racing the durable approval record.
 - Complete cancellation, restart, two-session, iframe, and accessibility scenarios.
 - Complete keyboard focus order, screen-reader announcements, and narrow-window
   visual checks for the in-app human-control surface.
 
-Next smallest action: add direct approve/deny affordances beside the preview by
-resolving the same durable approval record used by the composer; do not create a
-second consent state. Then extend the inspected action contract to scrolling.
+Next smallest action: extend the inspected action contract to scrolling, including
+direction, distance, target container, expected visible outcome, stale-page
+rejection, and exactly-once approval handling.
 
 ### M2 — Reliable Actions
 

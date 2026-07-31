@@ -23,7 +23,7 @@ import {
   type BrowserState,
   type ResearchRun,
 } from "../api";
-import type { TodoItem } from "../types";
+import type { ApprovalDecision, Item, TodoItem } from "../types";
 import { AccessSection } from "./AccessSection";
 import { DeepResearchLauncher } from "./DeepResearchLauncher";
 import { Icon } from "./Icon";
@@ -79,6 +79,8 @@ interface Props {
   openAccessKey?: number;
   onOpenIntegrations?: () => void;
   onResearchPrefill?: (prompt: string) => void;
+  pendingApproval?: Extract<Item, { kind: "approval" }>;
+  onApprovalDecision?: (decision: ApprovalDecision) => void;
 }
 
 export function RightRail({
@@ -98,6 +100,8 @@ export function RightRail({
   openAccessKey = 0,
   onOpenIntegrations,
   onResearchPrefill,
+  pendingApproval,
+  onApprovalDecision,
 }: Props) {
   const [open, setOpen] = useState<Record<Panel, boolean>>({
     progress: true,
@@ -202,6 +206,8 @@ export function RightRail({
             toolNames={toolNames}
             open={open.browser}
             onToggle={() => setOpen({ ...open, browser: !open.browser })}
+            pendingApproval={pendingApproval}
+            onApprovalDecision={onApprovalDecision}
           />
 
           {showArtifacts && (
@@ -371,6 +377,8 @@ function BrowserOperator({
   toolNames,
   open,
   onToggle,
+  pendingApproval,
+  onApprovalDecision,
 }: {
   sessionId: string;
   refreshKey: number;
@@ -378,6 +386,8 @@ function BrowserOperator({
   toolNames: string[];
   open: boolean;
   onToggle: () => void;
+  pendingApproval?: Extract<Item, { kind: "approval" }>;
+  onApprovalDecision?: (decision: ApprovalDecision) => void;
 }) {
   const [state, setState] = useState<BrowserState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -391,6 +401,7 @@ function BrowserOperator({
   const [controlText, setControlText] = useState("");
   const [controlError, setControlError] = useState("");
   const [controlMaximized, setControlMaximized] = useState(false);
+  const [resolvingActionId, setResolvingActionId] = useState("");
   const [controlPosition, setControlPosition] = useState<{ x: number; y: number } | null>(null);
   const controlModalRef = useRef<HTMLElement | null>(null);
   const controlDragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
@@ -640,6 +651,21 @@ function BrowserOperator({
   };
   const mediaProgress = state?.streaming_media_progress || {};
   const progressPercent = Math.max(0, Math.min(100, mediaProgress.percent || 0));
+  const pendingActionId =
+    state?.pending_action?.tool_call_id ||
+    state?.pending_action?.created_at ||
+    state?.pending_action?.tool_name ||
+    "";
+  const canResolvePendingAction =
+    !!state?.pending_action?.tool_name &&
+    state.pending_action.status === "pending" &&
+    pendingApproval?.name === state.pending_action.tool_name &&
+    !!onApprovalDecision;
+  const resolvePendingAction = (decision: "once" | "deny") => {
+    if (!canResolvePendingAction || !pendingActionId || resolvingActionId === pendingActionId) return;
+    setResolvingActionId(pendingActionId);
+    onApprovalDecision?.(decision);
+  };
   const formatBytes = (bytes?: number) => {
     if (!bytes) return "";
     if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -706,7 +732,12 @@ function BrowserOperator({
           </>
         )}
         {!!state?.pending_action?.tool_name && (
-          <BrowserActionInspector action={state.pending_action} />
+          <BrowserActionInspector
+            action={state.pending_action}
+            canResolve={canResolvePendingAction}
+            resolving={resolvingActionId === pendingActionId}
+            onDecision={resolvePendingAction}
+          />
         )}
         {(state?.open || !!state?.media?.length) && (
           <div className="browser-media">
@@ -1066,8 +1097,14 @@ function BrowserOperator({
 
 export function BrowserActionInspector({
   action,
+  canResolve = false,
+  resolving = false,
+  onDecision,
 }: {
   action: BrowserState["pending_action"];
+  canResolve?: boolean;
+  resolving?: boolean;
+  onDecision?: (decision: "once" | "deny") => void;
 }) {
   const status =
     action.status === "stale"
@@ -1096,7 +1133,27 @@ export function BrowserActionInspector({
       </dl>
       {action.error && <div className="browser-error">{action.error}</div>}
       {action.status === "pending" && (
-        <div className="rail-muted">Approve or deny this action in the composer.</div>
+        (canResolve || resolving) && onDecision ? (
+          <div className="browser-action-decisions" aria-label="Browser action approval">
+            <button
+              className="btn primary"
+              onClick={() => onDecision("once")}
+              disabled={resolving}
+            >
+              Approve once
+            </button>
+            <button
+              className="btn quiet-deny"
+              onClick={() => onDecision("deny")}
+              disabled={resolving}
+            >
+              Deny
+            </button>
+            {resolving && <span role="status">Decision sent…</span>}
+          </div>
+        ) : (
+          <div className="rail-muted">This action can also be resolved from the composer.</div>
+        )
       )}
     </div>
   );

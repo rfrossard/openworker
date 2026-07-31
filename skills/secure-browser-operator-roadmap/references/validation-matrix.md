@@ -57,3 +57,7 @@ Apply relevant rows to every milestone and add newly observed failure modes.
     the file name and size. Reject an outside-workspace path, non-file input,
     ambiguous or changed target, substituted path, and file modified after approval;
     no rejected case may attach a file.
+18. Resolve a pending browser action beside the preview with Approve once and Deny.
+    Verify both controls address the same live composer approval, only appear for
+    the matching browser tool, lock after the first decision, produce exactly one
+    tool result, and cannot race a second click into duplicate execution.

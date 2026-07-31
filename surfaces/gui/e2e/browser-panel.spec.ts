@@ -50,6 +50,44 @@ test("an active Secure Browser remains recoverable after the side panel is hidde
   await expect(page.getByText("Web form", { exact: true })).toBeVisible();
 });
 
+test("a browser action can resolve the live composer approval beside its preview", async ({
+  page,
+}) => {
+  await page.route("**/v1/browser/state?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...OPEN_BROWSER,
+        pending_action: {
+          tool_call_id: "call-run-shell-1",
+          tool_name: "run_shell",
+          action: "Run",
+          label: "List workspace files",
+          domain: "Local workspace",
+          risk: "Local action",
+          expected_result: "The workspace files are listed.",
+          status: "pending",
+          created_at: "2026-07-31T02:02:00Z",
+        },
+      }),
+    }),
+  );
+  await page.goto("/");
+
+  const composer = page.getByPlaceholder(/Ask the coworker/);
+  await composer.fill("please run a tool");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  const inspector = page.locator(".browser-action-inspector");
+  await expect(inspector.getByRole("button", { name: "Approve once" })).toBeVisible();
+  await inspector.getByRole("button", { name: "Approve once" }).click();
+
+  await expect(page.getByText("The command ran; 1 file found.")).toBeVisible();
+  await expect(inspector.getByRole("button", { name: "Approve once" })).toBeDisabled();
+  await expect(inspector.getByRole("button", { name: "Deny" })).toBeDisabled();
+});
+
 test("the user can take control of the active browser and return it to the agent", async ({
   page,
 }) => {

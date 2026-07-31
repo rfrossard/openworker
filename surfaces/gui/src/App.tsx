@@ -1639,6 +1639,10 @@ export function App() {
             openAccessKey={accessKey}
             onOpenIntegrations={() => setSurface("integrations")}
             onResearchPrefill={prefillComposer}
+            pendingApproval={
+              pendingApproval?.kind === "approval" ? pendingApproval : undefined
+            }
+            onApprovalDecision={approve}
           />
         </div>
       </div>
