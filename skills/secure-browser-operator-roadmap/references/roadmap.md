@@ -63,20 +63,24 @@ Progress:
   available: it opens at a large desktop size, scales the page without distorting
   click coordinates, supports native corner resizing, and provides explicit
   Maximize and Restore controls.
+- M1.7 extends Action Inspector to file uploads. It identifies the exact file
+  input, shows only the file name and size, labels the action as file disclosure,
+  preserves workspace-bound path enforcement, and rejects a changed field, file,
+  path, ambiguous target, or non-file input before anything is attached.
 - The existing durable approval flow remains the single source of consent.
 
 Remaining:
 
-- Extend the proposal contract to scroll, upload, and download.
+- Extend the proposal contract to scroll and download.
 - Add direct approve/deny affordances beside the preview without duplicating
   or racing the durable approval record.
 - Complete cancellation, restart, two-session, iframe, and accessibility scenarios.
 - Complete keyboard focus order, screen-reader announcements, and narrow-window
   visual checks for the in-app human-control surface.
 
-Next smallest action: resume the inspected `browser_upload_file` slice, including
-the exact destination field, file identity, size/type summary, explicit approval,
-workspace-bound path checks, and post-upload verification.
+Next smallest action: add direct approve/deny affordances beside the preview by
+resolving the same durable approval record used by the composer; do not create a
+second consent state. Then extend the inspected action contract to scrolling.
 
 ### M2 — Reliable Actions
 

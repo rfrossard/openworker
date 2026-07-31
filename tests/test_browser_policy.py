@@ -231,6 +231,9 @@ class _ActionLocator:
         self.page.current_value = value
         self.page.selections.append(value)
 
+    def set_input_files(self, path, timeout=0):
+        self.page.uploads.append(path)
+
 
 class _ActionPage:
     url = "https://example.com/form"
@@ -250,6 +253,7 @@ class _ActionPage:
         self.clicked = 0
         self.typed = []
         self.selections = []
+        self.uploads = []
         self.screenshot_masks = []
 
     def locator(self, _target):
@@ -428,6 +432,141 @@ def test_browser_action_proposal_rejects_an_ambiguous_target():
     assert proposal["status"] == "pending"
     assert proposal["match_count"] == 2
     assert proposal["error"] == "The proposed browser target is no longer unique."
+
+
+def test_browser_upload_proposal_explains_file_and_rejects_changed_target(tmp_path):
+    from coworker.connectors.browser_automation import _BrowserController
+
+    upload = tmp_path / "quarterly-report.pdf"
+    upload.write_bytes(b"report")
+    page = _ActionPage()
+    page.label = "Attach supporting document"
+    page.tag = "input"
+    page.input_type = "file"
+    controller = _BrowserController()
+    controller._page = page
+
+    proposal = controller.propose_action(
+        tool_call_id="call-upload",
+        tool_name="browser_upload_file",
+        arguments={"target": "#attachment", "path": str(upload)},
+    )
+
+    assert proposal["action"] == "Upload"
+    assert proposal["label"] == "Attach supporting document"
+    assert proposal["risk"] == "File disclosure"
+    assert proposal["content_summary"] == "File: quarterly-report.pdf"
+    assert str(tmp_path) not in proposal["content_summary"]
+    assert proposal["expected_result"] == (
+        "“quarterly-report.pdf” is attached to this field."
+    )
+
+    controller.resolve_action("call-upload", "once")
+    page.label = "Attach identity document"
+
+    result = controller.validate_action(
+        "browser_upload_file", "#attachment", action_value=str(upload)
+    )
+
+    assert result == {
+        "error": (
+            "The page changed before the action ran. Review the new target "
+            "and approve it again."
+        )
+    }
+    assert page.uploads == []
+
+
+def test_browser_upload_proposal_rejects_non_file_input_and_different_file(tmp_path):
+    from coworker.connectors.browser_automation import _BrowserController
+
+    approved = tmp_path / "approved.txt"
+    approved.write_text("approved", encoding="utf-8")
+    changed = tmp_path / "changed.txt"
+    changed.write_text("changed", encoding="utf-8")
+    page = _ActionPage()
+    page.tag = "input"
+    page.input_type = "text"
+    controller = _BrowserController()
+    controller._page = page
+
+    invalid = controller.propose_action(
+        tool_call_id="call-invalid-upload",
+        tool_name="browser_upload_file",
+        arguments={"target": "#attachment", "path": str(approved)},
+    )
+    assert invalid["error"] == "The proposed upload target is not a file input."
+
+    controller._touch(pending_action={})
+    page.input_type = "file"
+    controller.propose_action(
+        tool_call_id="call-valid-upload",
+        tool_name="browser_upload_file",
+        arguments={"target": "#attachment", "path": str(approved)},
+    )
+    controller.resolve_action("call-valid-upload", "once")
+
+    assert controller.validate_action(
+        "browser_upload_file", "#attachment", action_value=str(changed)
+    ) == {
+        "error": (
+            "The file differs from the approved proposal. "
+            "Review and approve it again."
+        )
+    }
+    assert page.uploads == []
+
+
+def test_browser_upload_executes_approved_workspace_file_and_rejects_changed_file(
+    tmp_path,
+):
+    from coworker.connectors.browser_automation import (
+        _browser_for,
+        make_browser_automation_tools,
+    )
+
+    session_id = "inspected-upload"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    upload = workspace / "brief.txt"
+    upload.write_text("first version", encoding="utf-8")
+    page = _ActionPage()
+    page.tag = "input"
+    page.input_type = "file"
+    page.label = "Attach brief"
+    controller = _browser_for(session_id)
+    controller._page = page
+    tools = {
+        tool.__name__: tool
+        for tool in make_browser_automation_tools(
+            roots=[workspace], session_id=session_id
+        )
+    }
+
+    proposal = controller.propose_action(
+        tool_call_id="call-upload-success",
+        tool_name="browser_upload_file",
+        arguments={"target": "#brief", "path": str(upload)},
+    )
+    assert proposal["content_summary"] == "File: brief.txt (13 B)"
+    controller.resolve_action("call-upload-success", "once")
+    result = tools["browser_upload_file"]("#brief", str(upload))
+    assert result["ok"] is True
+    assert page.uploads == [str(upload)]
+
+    controller.propose_action(
+        tool_call_id="call-upload-changed",
+        tool_name="browser_upload_file",
+        arguments={"target": "#brief", "path": str(upload)},
+    )
+    controller.resolve_action("call-upload-changed", "once")
+    upload.write_text("a different file version", encoding="utf-8")
+
+    changed = tools["browser_upload_file"]("#brief", str(upload))
+    assert changed == {
+        "error": "The file changed before upload. Review and approve it again."
+    }
+    assert page.uploads == [str(upload)]
 
 
 def test_browser_action_denial_clears_the_pending_target():

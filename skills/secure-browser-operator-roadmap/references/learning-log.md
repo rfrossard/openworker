@@ -1,5 +1,17 @@
 # Secure Browser Operator Learning Log
 
+## 2026-07-30 — Upload approval must freeze both sides of the disclosure
+
+- Evidence: `browser_upload_file` enforced the workspace boundary only when it ran
+  and did not inspect the page field before approval.
+- Impact: the user could approve a generic upload without seeing the destination
+  field, while a changed file or changed page target could make that approval stale.
+- Decision: freeze the unique file input plus the workspace-resolved file identity,
+  name, size, and modification stamp. Show only name and size; reject any change
+  before Playwright attaches the file.
+- Roadmap or validation change: M1.7 and the inspected-upload failure matrix.
+- Related commit/tag: planned for `local-v0.1.7.60`.
+
 ## 2026-07-30 — Available control still failed when the viewport was too small
 
 - Evidence: installed M1.5 exposed working browser controls, but the fixed-size

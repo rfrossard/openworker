@@ -134,6 +134,7 @@ class _BrowserController:
         self._page = None
         self._error: Optional[str] = None
         self._sensitive_targets: set[str] = set()
+        self._workspace_roots: list[Any] = []
         self._executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="coworker-browser"
         )
@@ -161,6 +162,10 @@ class _BrowserController:
             "control_owner": "agent",
             "control_changed_at": None,
         }
+
+    def set_workspace_roots(self, roots: list[Any]) -> None:
+        with self._lock:
+            self._workspace_roots = list(roots)
 
     def _touch(self, **changes: Any) -> None:
         self._state.update(changes)
@@ -643,6 +648,7 @@ class _BrowserController:
                 inspected = _inspect_target(page, target)
                 is_type = tool_name == "browser_type"
                 is_select = tool_name == "browser_select"
+                is_upload = tool_name == "browser_upload_file"
                 sensitive = bool(inspected.get("sensitive")) or (
                     is_type
                     and _looks_sensitive_value(str(arguments.get("text") or ""))
@@ -672,14 +678,32 @@ class _BrowserController:
                             or str(matches[0].get("value") or "")
                         )
                         option_value = str(matches[0].get("value") or "")
-                action_name = "Select" if is_select else ("Type" if is_type else "Click")
-                proposal = {
-                    "tool_call_id": tool_call_id,
-                    "tool_name": tool_name,
-                    "action": action_name,
-                    "target": target,
-                    "domain": urlsplit(page.url).hostname or "",
-                    "risk": (
+                upload_path = str(arguments.get("path") or "")
+                upload_name = Path(upload_path).name
+                upload_error = ""
+                upload_resolved_path = ""
+                upload_size = 0
+                upload_mtime_ns = 0
+                if is_upload and self._workspace_roots:
+                    try:
+                        resolved_upload = resolve_workspace_path(
+                            upload_path, self._workspace_roots, must_exist=True
+                        )
+                        upload_resolved_path = str(resolved_upload)
+                        upload_stat = resolved_upload.stat()
+                        upload_size = int(upload_stat.st_size)
+                        upload_mtime_ns = int(upload_stat.st_mtime_ns)
+                    except (BrowserPolicyError, OSError) as exc:
+                        upload_error = str(exc)
+                action_name = (
+                    "Upload"
+                    if is_upload
+                    else ("Select" if is_select else ("Type" if is_type else "Click"))
+                )
+                risk = (
+                    "File disclosure"
+                    if is_upload
+                    else (
                         "Sensitive input"
                         if sensitive
                         else (
@@ -687,34 +711,58 @@ class _BrowserController:
                             if is_select
                             else ("Form input" if is_type else "Page interaction")
                         )
-                    ),
-                    "expected_result": (
-                        f'The dropdown changes to “{option_label}”.'
-                        if is_select and option_label
-                        else (
-                            "The field is replaced with the approved content."
-                            if bool(arguments.get("clear", True))
-                            else "The approved content is appended to the field."
-                        )
-                        if is_type
-                        else (
-                            "The chosen dropdown option is selected."
-                            if is_select
-                            else "The selected page element is activated."
-                        )
-                    ),
-                    "content_summary": (
+                    )
+                )
+                if is_upload:
+                    expected_result = (
+                        f'“{upload_name or "The selected file"}” is attached to '
+                        "this field."
+                    )
+                    content_summary = (
                         (
-                            f"Selected option: {option_label}"
-                            if option_label
-                            else ""
+                            f"File: {upload_name} "
+                            f"({_format_file_size(upload_size)})"
                         )
-                        if is_select
-                        else ("Content hidden for privacy." if is_type else "")
-                    ),
+                        if upload_size
+                        else f"File: {upload_name}"
+                    )
+                elif is_select:
+                    expected_result = (
+                        f'The dropdown changes to “{option_label}”.'
+                        if option_label
+                        else "The chosen dropdown option is selected."
+                    )
+                    content_summary = (
+                        f"Selected option: {option_label}" if option_label else ""
+                    )
+                elif is_type:
+                    expected_result = (
+                        "The field is replaced with the approved content."
+                        if bool(arguments.get("clear", True))
+                        else "The approved content is appended to the field."
+                    )
+                    content_summary = "Content hidden for privacy."
+                else:
+                    expected_result = "The selected page element is activated."
+                    content_summary = ""
+                proposal = {
+                    "tool_call_id": tool_call_id,
+                    "tool_name": tool_name,
+                    "action": action_name,
+                    "target": target,
+                    "domain": urlsplit(page.url).hostname or "",
+                    "risk": risk,
+                    "expected_result": expected_result,
+                    "content_summary": content_summary,
                     "sensitive": sensitive,
                     "_requested_value": requested_value if is_select else "",
                     "_option_value": option_value if is_select else "",
+                    "_upload_path": upload_path if is_upload else "",
+                    "_upload_resolved_path": (
+                        upload_resolved_path if is_upload else ""
+                    ),
+                    "_upload_size": upload_size if is_upload else 0,
+                    "_upload_mtime_ns": upload_mtime_ns if is_upload else 0,
                     "status": "pending",
                     "created_at": time.strftime(
                         "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
@@ -723,6 +771,15 @@ class _BrowserController:
                 }
                 if select_error:
                     proposal["error"] = select_error
+                if is_upload and (
+                    inspected.get("_tag") != "input"
+                    or inspected.get("_type") != "file"
+                ):
+                    proposal["error"] = (
+                        "The proposed upload target is not a file input."
+                    )
+                if upload_error:
+                    proposal["error"] = upload_error
                 self._capture_preview()
                 self._touch(pending_action=proposal)
                 return _public_action(proposal)
@@ -781,6 +838,38 @@ class _BrowserController:
                             "Review and approve it again."
                         )
                     }
+                if (
+                    tool_name == "browser_upload_file"
+                    and str(proposal.get("_upload_path") or "")
+                    != str(action_value or "")
+                ):
+                    return {
+                        "error": (
+                            "The file differs from the approved proposal. "
+                            "Review and approve it again."
+                        )
+                    }
+                if tool_name == "browser_upload_file":
+                    resolved_path = str(proposal.get("_upload_resolved_path") or "")
+                    if resolved_path:
+                        try:
+                            current_stat = Path(resolved_path).stat()
+                        except OSError:
+                            current_stat = None
+                        if (
+                            current_stat is None
+                            or int(current_stat.st_size)
+                            != int(proposal.get("_upload_size") or 0)
+                            or int(current_stat.st_mtime_ns)
+                            != int(proposal.get("_upload_mtime_ns") or 0)
+                        ):
+                            proposal["status"] = "stale"
+                            proposal["error"] = (
+                                "The file changed before upload. Review and approve "
+                                "it again."
+                            )
+                            self._touch(pending_action=proposal)
+                            return {"error": proposal["error"]}
                 page, err = self.page()
                 if err:
                     return err
@@ -914,7 +1003,12 @@ def browser_propose_action(
     tool_name: str,
     arguments: dict[str, Any],
 ) -> dict[str, Any]:
-    if tool_name not in {"browser_click", "browser_type", "browser_select"}:
+    if tool_name not in {
+        "browser_click",
+        "browser_type",
+        "browser_select",
+        "browser_upload_file",
+    }:
         return {}
     return _browser_for(session_id).propose_action(
         tool_call_id=tool_call_id,
@@ -934,6 +1028,15 @@ def _cap(value: int, default: int = 20000, upper: int = 100000) -> int:
         return max(1, min(int(value or default), upper))
     except Exception:
         return default
+
+
+def _format_file_size(size: int) -> str:
+    value = float(max(0, size))
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            return f"{int(value)} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{int(size)} B"
 
 
 def _target_locator(page, target: str, *, first: bool = True):
@@ -1094,6 +1197,8 @@ def _inspect_target(page, target: str) -> dict[str, Any]:
         "sensitive": sensitive,
         "_options": options,
         "_selected_values": selected_values,
+        "_tag": descriptor.get("tag") or "",
+        "_type": descriptor.get("type") or "",
     }
 
 
@@ -1229,6 +1334,7 @@ def make_browser_automation_tools(
     tools: list[Callable[..., Any]] = []
     workspace_roots = list(roots or [])
     controller = _browser_for(session_id)
+    controller.set_workspace_roots(workspace_roots)
 
     def browser_open_url(
         url: str, wait_until: str = "domcontentloaded"
@@ -1424,7 +1530,12 @@ def make_browser_automation_tools(
             )
         except BrowserPolicyError as exc:
             return {"error": str(exc)}
-        return controller.call(
+        validation_error = controller.validate_action(
+            "browser_upload_file", target, action_value=path
+        )
+        if validation_error:
+            return validation_error
+        result = controller.call(
             "upload_file",
             lambda page: (
                 _target_locator(page, target).set_input_files(
@@ -1433,6 +1544,10 @@ def make_browser_automation_tools(
                 {"ok": True, "path": str(file_path)},
             )[1],
         )
+        controller.finish_action(
+            "browser_upload_file", target, succeeded="error" not in result
+        )
+        return result
 
     browser_upload_file.__name__ = "browser_upload_file"
     tools.append(

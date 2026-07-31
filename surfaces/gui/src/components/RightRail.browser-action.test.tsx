@@ -91,4 +91,27 @@ describe("BrowserActionInspector", () => {
     expect(screen.getByText("The dropdown changes to “Brazil”.")).toBeTruthy();
     expect(screen.getByText("Form selection")).toBeTruthy();
   });
+
+  it("shows the file name and disclosure risk before upload", () => {
+    const { container } = render(
+      <BrowserActionInspector
+        action={{
+          tool_name: "browser_upload_file",
+          action: "Upload",
+          label: "Attach supporting document",
+          domain: "example.com",
+          risk: "File disclosure",
+          expected_result: "“quarterly-report.pdf” is attached to this field.",
+          content_summary: "File: quarterly-report.pdf",
+          status: "pending",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Upload")).toBeTruthy();
+    expect(screen.getByText("Attach supporting document")).toBeTruthy();
+    expect(screen.getByText("File: quarterly-report.pdf")).toBeTruthy();
+    expect(screen.getByText("File disclosure")).toBeTruthy();
+    expect(container.textContent).not.toContain("/Users/");
+  });
 });
