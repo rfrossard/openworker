@@ -1,0 +1,4 @@
+interface:
+  display_name: "Secure Browser Operator Roadmap"
+  short_description: "Evolve browser automation safely and incrementally"
+  default_prompt: "Use $secure-browser-operator-roadmap to plan, implement, validate, and update the next Secure Browser Operator milestone."
