@@ -51,6 +51,9 @@ Progress:
 - M1.3 covers dropdown selection. It presents the exact human-readable option,
   freezes the complete option set and current selection, normalizes labels to the
   approved HTML value, and rejects missing, disabled, ambiguous, or changed options.
+- M1.4 keeps an active browser observable after the agent finishes. The current
+  session automatically reveals its rail, and a hidden rail retains a visible
+  Browser affordance that restores the same live preview.
 - The existing durable approval flow remains the single source of consent.
 
 Remaining:
@@ -59,9 +62,12 @@ Remaining:
 - Add direct approve/deny affordances beside the preview without duplicating
   or racing the durable approval record.
 - Complete cancellation, restart, two-session, iframe, and accessibility scenarios.
+- Add an explicit in-app human-control handoff without opening an external Chromium
+  window or confusing a periodically refreshed screenshot with an interactive page.
 
-Next smallest action: extend the inspected-target contract to `browser_upload_file`,
-including approved filename/type/size display and changed-file rejection.
+Next smallest action: design and validate the minimal in-app human-control handoff
+(large live view, navigation controls, clear agent/user ownership, and safe return
+to agent control). Then resume the inspected `browser_upload_file` slice.
 
 ### M2 — Reliable Actions
 

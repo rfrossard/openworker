@@ -35,3 +35,6 @@ Apply relevant rows to every milestone and add newly observed failure modes.
     events, approval storage, audit output, controls, and screenshots expose no raw value.
 11. Select an option by value and label; reject missing, disabled, ambiguous, changed,
     or differently executed options without mutating the page.
+12. Finish an agent browser task with the browser still open; verify the current
+    session's rail becomes visible, can be hidden, and can be restored from an
+    explicit Browser affordance without changing pages or crossing sessions.

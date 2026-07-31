@@ -3,6 +3,7 @@ import {
   announceInboxUnlock,
   finalizeAutomationRun,
   getArtifacts,
+  getBrowserState,
   getHealth,
   getRecentWorkspaces,
   getSessionMessages,
@@ -218,6 +219,7 @@ export function App() {
     setSurface("persona");
   };
   const [browserRefreshKey, setBrowserRefreshKey] = useState(0);
+  const [browserActive, setBrowserActive] = useState(false);
   const [railHidden, setRailHidden] = useState(false);
   // Left-nav collapse (⌘B): when collapsed the sidebar leaves the grid so content reclaims the
   // width; hovering the left edge peeks it back as a floating overlay. Persisted per-device.
@@ -281,6 +283,29 @@ export function App() {
     window.addEventListener("ocw-open-artifact", show);
     return () => window.removeEventListener("ocw-open-artifact", show);
   }, []);
+  // Browser work must remain observable after the agent finishes. Reconcile against the
+  // server-owned, per-session browser state on session changes and browser tool events.
+  // An active browser reveals the rail automatically; if the user hides it afterwards,
+  // the topbar retains an explicit Browser affordance so the preview is never stranded.
+  useEffect(() => {
+    if (surface !== "session" || agent === "chat") {
+      setBrowserActive(false);
+      return;
+    }
+    let current = true;
+    getBrowserState(sessionId)
+      .then((state) => {
+        if (!current) return;
+        setBrowserActive(!!state.open);
+        if (state.open) setRailHidden(false);
+      })
+      .catch(() => {
+        if (current) setBrowserActive(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [agent, browserRefreshKey, sessionId, surface]);
   // The command-palette search, openable from the collapsed-sidebar topbar cluster (§22). The
   // expanded sidebar owns its own instance; this one exists so search never disappears with it.
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1382,6 +1407,18 @@ export function App() {
           {/* Right: session-settings icon (§23) + panel toggle. Model/mode/persona chrome is
               gone — the facts live in the subtitle, the controls in the composer (§22). */}
           <div className="main-topbar-side main-topbar-actions" onPointerDown={beginWindowDrag}>
+            {agent !== "chat" && railHidden && browserActive && (
+              <button
+                className="topbar-artifacts-btn"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => setRailHidden(false)}
+                title="Show the active Secure Browser"
+              >
+                <Icon name="browser" size={14} />
+                <span>Browser</span>
+                <span className="topbar-browser-live" aria-hidden="true" />
+              </button>
+            )}
             {agent === "cowork" && railHidden && artifactCount > 0 && (
               <button
                 className="topbar-artifacts-btn"

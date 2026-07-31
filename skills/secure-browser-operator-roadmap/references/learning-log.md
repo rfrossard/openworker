@@ -14,6 +14,20 @@ Append entries only when observed evidence changes an assumption, rule, test, ar
 
 ## Findings
 
+### 2026-07-30 — A live headless browser can still be invisible to its user
+
+- Evidence: the installed app retained the Selenium page, screenshot, and action
+  evidence after the agent selected an option, while the user saw no browser surface
+  and had no obvious way to restore the hidden rail.
+- Impact: backend success and an open Chromium process did not satisfy observability;
+  the agent could truthfully report completion while the user could not inspect it.
+- Decision: reconcile the active session's browser state in the app shell, reveal the
+  rail automatically, and retain a topbar Browser affordance whenever it is hidden.
+  Treat true interactive takeover as a separate capability, not as a screenshot label.
+- Roadmap or validation change: M1.4 covers browser visibility and recovery; an
+  explicit in-app human-control handoff precedes further action expansion.
+- Related commit/tag: planned for `local-v0.1.7.57`.
+
 ### 2026-07-30 — Dropdown labels and HTML values are not interchangeable
 
 - Evidence: `browser_select` claimed to accept an option value or label, but passed

@@ -6,6 +6,7 @@ export type IconName =
   | "logo"
   | "sidebar"
   | "sidebarRight"
+  | "browser"
   | "signOut"
   | "chat"
   | "diamond"
@@ -95,6 +96,13 @@ export function Icon({
         <svg {...s}>
           <rect x="3.5" y="4.5" width="17" height="15" rx="4" />
           <path d="M15 4.5v15" />
+        </svg>
+      );
+    case "browser":
+      return (
+        <svg {...s}>
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M3.8 12h16.4M12 3.5c2.2 2.3 3.3 5.1 3.3 8.5S14.2 18.2 12 20.5M12 3.5C9.8 5.8 8.7 8.6 8.7 12s1.1 6.2 3.3 8.5" />
         </svg>
       );
     case "signOut":
