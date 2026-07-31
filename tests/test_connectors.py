@@ -253,6 +253,7 @@ def test_engine_connector_tools_are_cowork_scoped(tmp_path):
     assert "browser_read_url" in cowork.registry.names()
     assert "browser_open_url" in cowork.registry.names()
     assert "browser_click" in cowork.registry.names()
+    assert "browser_scroll" in cowork.registry.names()
     assert "browser_type" in cowork.registry.names()
     assert "github_search" not in cowork.registry.names()
     assert "send_message" in helper.registry.names()
@@ -265,6 +266,7 @@ def test_engine_connector_tools_are_cowork_scoped(tmp_path):
     assert cowork.registry.get("browser_open_url").metadata.requires_approval is False
     assert cowork.registry.get("browser_snapshot").metadata.requires_approval is False
     assert cowork.registry.get("browser_click").metadata.requires_approval is True
+    assert cowork.registry.get("browser_scroll").metadata.requires_approval is True
     assert cowork.registry.get("browser_type").metadata.requires_approval is True
     cowork.permissions.allow_tool_for_session("browser_click")
     decision = cowork.permissions.evaluate(

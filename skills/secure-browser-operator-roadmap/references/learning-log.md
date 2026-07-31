@@ -1,5 +1,17 @@
 # Secure Browser Operator Learning Log
 
+## 2026-07-30 — A tool implementation is not model-visible until cataloged
+
+- Evidence: `browser_scroll` existed in the packaged sidecar and its direct tests
+  passed, but the connector catalog omitted it, so engine construction filtered it
+  out and the model accurately reported no scroll tool.
+- Impact: backend-only tests and UI tests produced a false installed-app success.
+- Decision: catalog every new browser tool, mention it in agent guidance, and require
+  a registry/schema integration assertion plus an installed-session smoke check.
+- Roadmap or validation change: M1.9 remains in progress until `.65` proves the tool
+  is visible to a real installed session.
+- Related commit/tag: planned for `local-v0.1.7.65`.
+
 ## 2026-07-30 — Scroll needs the same inspected contract as clicking
 
 - Evidence: agent scrolling previously had no tool or reviewable proposal; only

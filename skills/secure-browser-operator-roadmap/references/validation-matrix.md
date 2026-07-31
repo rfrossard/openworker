@@ -66,3 +66,7 @@ Apply relevant rows to every milestone and add newly observed failure modes.
     page/container scroll position, stale container, zero/oversized distance, denied
     action, reused approval, and approval from another session; no rejected case may
     move the page.
+20. Build a real agent engine with the installed connector configuration and verify
+    `browser_scroll` appears in both the registry and provider tool schema. Ask an
+    installed session to describe its browser tools; it must not report the pre-.65
+    list that omits scrolling.

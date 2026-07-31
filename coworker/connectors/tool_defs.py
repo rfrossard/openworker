@@ -62,6 +62,13 @@ TOOL_DEFS: tuple[ConnectorToolDef, ...] = (
     ),
     ConnectorToolDef(
         "browser",
+        "browser_scroll",
+        "Scroll page",
+        "write",
+        "Scroll the page or a scrollable area by an exact pixel distance.",
+    ),
+    ConnectorToolDef(
+        "browser",
         "browser_type",
         "Fill field",
         "write",
