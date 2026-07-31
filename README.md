@@ -1,141 +1,150 @@
 # OpenWorker
 
-**[openworker.com](https://openworker.com)** · [Download](#download) · [Issues](https://github.com/andrewyng/openworker/issues)
+OpenWorker is a local-first AI coworker for turning requests into finished work. It combines a desktop workspace, an approval-gated agent runtime, connected tools, model choice, research, browser operation, and artifact generation in one session.
 
-> **Beta** - OpenWorker is in open beta: fully usable, updates itself, and we're actively polishing rough edges. [Issues](https://github.com/andrewyng/openworker/issues) welcome.
+This repository is the private enhanced edition maintained by `rfrossard`. It includes the upstream OpenWorker foundation plus the local Usage Dashboard, Intelligent Model Router, grounded Deep Research, Artifact Studio, Gemini Nano Banana 2 Lite image generation, and Secure Browser Operator described below.
 
-> **Local enhanced edition.** This private branch extends the upstream OpenWorker
-> project with a Usage Dashboard, Intelligent Model Router, Deep Research,
-> presentation tooling, native image generation, and a Secure Browser Operator.
-> See [Current capabilities](docs/CURRENT_CAPABILITIES.md), the
-> [feature roadmap](docs/MANUS_FEATURE_ROADMAP.md), and
-> [versioning and rollback](docs/ROLLBACK.md). These additions are not included in
-> the public download links below unless they have also shipped upstream.
+> **Beta:** features that call an external provider, browse a third-party site, download media, or write to an integration remain subject to provider limits, permissions, rate limits, login state, and approval.
 
-**AI that gets your everyday tasks done.** OpenWorker is an open-source AI coworker that lives on your desktop and delivers **finished work**, not just chat: a polished document, a Slack reply with the numbers, an updated calendar, a triaged inbox.
+## What OpenWorker does
 
-It runs on your machine and doesn't lock you into any model: bring your own API key for OpenAI, Anthropic, Google, or an open-weight provider, or run fully local with Ollama. Your data leaves your machine only through the model and integrations *you* choose.
+You describe an outcome, for example:
 
-[![How OpenWorker works](docs/assets/how-it-works.png)](https://openworker.com)
+- “Research the current agent protocol landscape and create a sourced presentation.”
+- “Open this public form, select the requested option, and show me the result before submitting.”
+- “Turn this Markdown report into a polished PDF and an editable PowerPoint.”
+- “Compare the configured models, estimate the cost, and recommend the best one for this task.”
 
-## Download
+OpenWorker plans the work, asks for approval before consequential actions, keeps evidence and artifacts with the session, and reports what actually happened.
 
-[**⬇ macOS (Apple Silicon)**](https://download.openworker.com/mac)
-<sub>macOS 12+ · signed & notarized · auto-updates</sub>
+## Feature overview
 
-[**⬇ Windows 10/11 (x64)**](https://download.openworker.com/windows)
-<sub>builds are not yet code-signed, so SmartScreen will warn; signing is in progress</sub>
+### Usage Dashboard and Model Router
 
-Open the app, add a model key (or point it at Ollama), and ask for something real.
+- Live tabs for Usage, Models, Providers, Benchmarks, and Routing.
+- Session and daily token/cost estimates, including browser, artifact, and image operations when usage dimensions are available.
+- Provider cards with official account balances where supported, `Last updated` timestamps, stale/error states, and clear separation from local estimates.
+- Configured-versus-all model filtering, Ollama discovery, and visual distinction between local and paid/API models.
+- Manual, shadow, and automatic routing modes with confidence and estimated-cost guardrails, decision history, and feedback.
 
-## How it works
+### Grounded Deep Research
 
-1. Tell OpenWorker the outcome you want - "prepare a customer brief," "untangle my calendar," "draft a report," "check where the release stands across Jira and GitHub."
-2. It breaks the task into steps and works across your desktop, files, and connected apps.
-3. Before anything consequential - sending a message, changing a calendar, running a command - it checks in and you approve or redirect.
-4. You get the finished deliverable, not a to-do list.
+- Guided quick and standard research runs.
+- Computational-thinking decomposition into claims, evidence, conflicts, gaps, and sources.
+- A claim ledger and provenance-aware Markdown and JSON artifacts.
+- Presentation candidates for tables, charts, big numbers, timelines, processes, flow diagrams, org charts, quotes, and illustrative visuals.
 
-Under the hood:
+### Artifact Studio
 
-```text
-┌────────────────────────────────────────────────┐
-│              OpenWorker desktop app            │  native shell + GUI
-├────────────────────────────────────────────────┤
-│           local agent server (Python)          │  engine · tools · connectors - built on aisuite
-├───────────────┬────────────────┬───────────────┤
-│  your files   │   your tools   │  your model   │  everything runs with your keys,
-│  & terminal   │ 25+ connectors │  any provider │  on your machine
-└───────────────┴────────────────┴───────────────┘
-```
+- Markdown-to-PDF conversion with preview.
+- Research-to-presentation and Manus-style presentation workflows.
+- Three guided stages: content/storytelling, design, and review.
+- Widescreen 16:9 slides, templates, a large style catalog, per-slide editing, and live previews.
+- Structured elements: tables, bar/donut charts, big numbers, timelines, processes, flow diagrams, org charts, quotes, citations, and speaker notes.
+- Presentation quality checks for hierarchy, density, source coverage, layout, and missing assets.
+- Editable PPTX export.
+- Optional approval-gated original visuals through Gemini Nano Banana 2 Lite, with successful operations attributed in Usage.
 
-## What it can do
+### Secure Browser Operator
 
-- **Produce real deliverables** - documents, spreadsheets, reports, and web pages land as files you can open and share.
-- **Understand usage and cost** - track tokens, estimated cost, sessions, providers,
-  billed image operations, account refresh timestamps, and model availability from
-  the in-app Usage Dashboard.
-- **Route work to an appropriate model** - compare configured and available models,
-  use manual, shadow, or automatic routing, and apply confidence and estimated-cost
-  guardrails with feedback history.
-- **Research with grounded claims** - decompose a question into claims, evidence,
-  sources, gaps, and presentation-ready structures instead of producing an
-  unsupported narrative.
-- **Build presentations** - turn Markdown and structured research into editable
-  widescreen decks with templates, slide-level layouts, tables, charts, timelines,
-  diagrams, quotes, speaker notes, citations, and optional generated visuals.
-- **Operate an isolated browser visibly** - navigate public pages, inspect controls,
-  approve interactions beside the preview, take over the same browser in-app, and
-  safely scroll, type, select, upload, capture, or download authorized media.
-- **Work from Slack** - mention `@OpenWorker` in a channel; a session opens on your desktop, the work happens with your tools, and the answer comes back as a thread reply.
-- **Use your everyday tools** - 25+ integrations including GitHub, Slack, Jira, Notion, Linear, HubSpot, Outlook, monday.com, Gmail, and Google Calendar, plus your **terminal and local files**. Any tool reachable over [MCP](https://modelcontextprotocol.io/) plugs in too, with per-tool control.
-- **Run on a schedule** - automations for recurring work: a morning brief, a weekly report, a standing watch over a channel. Runs land in the app with full transcripts.
-- **Ask before acting** - writes, sends, and shell commands are approval-gated. Unattended runs park their asks in an inbox instead of acting on their own.
+- An isolated Chromium context per OpenWorker session.
+- Public-page navigation with localhost, private-network, unsafe-file, and credential-bearing URL protections.
+- Live preview with configurable refresh, page text, controls, URL, screenshots, navigation history, and evidence.
+- Action Inspector for click, type, select, upload, and exact inspected scroll actions.
+- Single-use approval, denial, stale-target detection, expected-result checks, risk labels, and sensitive-value redaction.
+- In-app human takeover in a draggable, resizable, maximizable browser surface over the workspace.
+- Workspace-bound uploads and screenshot exports.
+- Authorized page-media analysis and video/audio downloads with resolution selection, configurable Downloads destination, progress/cancel states, and optional EN/PT/ES subtitles where the source permits them.
 
-## Bring your own model
+External sites may require login, CAPTCHA, consent, or may rate-limit captions/media. OpenWorker does not bypass DRM, authentication, or site controls.
 
-Model access is yours: pick a provider, paste your key, switch anytime. Supported out of the box:
+### Connected work
 
-**OpenAI · Anthropic · Google Gemini · Inkling (Thinking Machines) · GLM (Z.ai) · DeepSeek · Kimi (Moonshot) · Qwen · MiniMax · Mistral · Grok (xAI)** - plus open-weight models via **Together** and **Fireworks**, and fully local models via **Ollama**.
+Use local files, the terminal, and MCP-compatible tools alongside integrations such as GitHub, Slack, Jira, Notion, Linear, HubSpot, Outlook, Gmail, and Google Calendar. Automations can run recurring work and park approval requests in the app.
 
-A curated model list marks what we've verified for tool-calling work. Adding any model string works at your own risk.
+## Models and providers
 
-## Privacy
+Bring your own API key or run locally. The enhanced edition supports configured models from OpenAI, Anthropic, Google Gemini, DeepSeek, Qwen, Mistral, Grok/xAI, Kimi, GLM, MiniMax, Together, Fireworks, and other compatible providers, plus local Ollama models.
 
-OpenWorker is local-first. Everything lives on your machine: the agent loop, your conversations, connector tokens, and model keys - all in the app's local secret store. The only cloud piece is a small service that brokers OAuth handshakes for connectors. You can always use the App without signing-in - use the connectors via manually-created credentials/API-keys.
+Provider support depends on the model's API capabilities. A model appearing in the catalog does not guarantee tool calling, vision, audio, image generation, balance endpoints, or availability in your account.
+
+## Privacy and approvals
+
+The agent server, conversations, session state, connector credentials, and model keys are stored locally. External traffic occurs only through the providers and integrations you configure. Consequential writes, sends, shell commands, browser interactions, and paid image generation are approval-gated.
+
+Do not put API keys, cookies, authorization headers, or private source material in issues, fixtures, screenshots, commits, or generated artifacts.
 
 ## Run from source
 
-Prerequisites: Python 3.10+, Node 20+, and (for the desktop shell) the Rust toolchain via [rustup](https://rustup.rs/).
+### Requirements
+
+- macOS 12+ or Windows 10/11
+- Python 3.10+
+- Node.js 20+
+- Rust toolchain via [rustup](https://rustup.rs/) for the desktop shell
+- Ollama is optional for local models
+
+### Start the local server and UI
 
 ```shell
-git clone https://github.com/andrewyng/openworker
+git clone https://github.com/rfrossard/openworker.git
 cd openworker
 
-# 1. One-time bootstrap - creates the Python venv at .venv
-#    (on Windows, run from Git Bash or WSL)
+# Create the Python environment and install dependencies.
 bash packaging/setup_dev_env.sh
 
-# 2. Start the local agent server
+# Terminal 1: start the agent server.
 .venv/bin/openworker-server --cwd ~/some/project --port 8765
-#    (Windows: .venv\Scripts\openworker-server.exe)
 
-# 3. In a second terminal, start the UI
+# Terminal 2: start the browser UI.
 cd surfaces/gui
 npm install
-npm run dev        # browser UI on the Vite dev port
+npm run dev
 ```
 
-To run the full desktop app instead of the browser UI, replace step 3 with `npm run tauri dev` (from `surfaces/gui/`) - the Tauri shell launches the window and supervises the server itself.
+For the native desktop shell, run `npm run tauri dev` from `surfaces/gui/` instead. The Tauri shell supervises the local server.
 
-Tests: `.venv/bin/pytest` (server), `npm test` and `npm run e2e` in `surfaces/gui` (GUI unit + hermetic end-to-end). Desktop bundles are built with `packaging/build_dmg.sh` / `packaging/build_windows.ps1`.
+Configure providers and connectors from the app. For Ollama, start Ollama locally and install models with the Ollama CLI; OpenWorker discovers available local models when the provider is enabled.
 
-The current local release process additionally requires a recoverable installed-app
-backup, packaged/installed checksum comparison, installed-app smoke checks, a
-monotonic `local-v0.1.7.N` tag, and synchronization only to the private `origin`.
+## Tests and builds
 
-## Repository layout
+```shell
+# Backend
+.venv/bin/pytest
 
-| Directory | What's in it |
+# GUI unit tests, end-to-end tests, and production build
+cd surfaces/gui
+npm test
+npm run e2e
+npm run build
+```
+
+Desktop packaging uses `packaging/build_dmg.sh` on macOS and `packaging/build_windows.ps1` on Windows. Release work also requires a recoverable installed-app backup, packaged/installed checksum comparison, installed-app smoke checks, monotonic local tags, and private-origin synchronization. See [ROLLBACK.md](docs/ROLLBACK.md).
+
+## Repository map
+
+| Path | Purpose |
 |---|---|
-| `coworker/` | Python backend - agent engine, model providers, connectors, MCP client, memory, automations |
-| `surfaces/gui/` | Desktop app - React UI + Tauri shell that supervises the server |
-| `stt/` | Speech-to-text sidecar (Rust) for voice input |
-| `packaging/` | Installer builds (macOS DMG, Windows), auto-update manifest, dev bootstrap |
-| `docs/` | Design specs and decision logs |
+| `coworker/` | Python agent runtime, providers, connectors, MCP, memory, and automations |
+| `surfaces/gui/` | React interface and Tauri desktop shell |
+| `stt/` | Rust speech-to-text sidecar |
+| `packaging/` | Development bootstrap and desktop packaging |
+| `docs/` | Capability reference, roadmap, decisions, and rollback procedures |
 | `tests/` | Backend test suite |
 
-## Built on aisuite
+## Documentation map
 
-OpenWorker's engine is built on [**aisuite**](https://github.com/andrewyng/aisuite), a lightweight Python library providing a unified chat-completions API across LLM providers and an agents layer with tools, toolkits, and MCP support. If you want to build your own agent harness rather than use ours, start there; this repo is a working reference for what aisuite can carry.
+- [Current capabilities](docs/CURRENT_CAPABILITIES.md) — behavior available in the enhanced local branch.
+- [Capability roadmap](docs/MANUS_FEATURE_ROADMAP.md) — available, in-progress, and planned work.
+- [Rollback and release integrity](docs/ROLLBACK.md) — backups, tags, checksums, and recovery.
+- [GUI development guide](surfaces/gui/README.md) — local UI setup and desktop development.
 
-OpenWorker was originally developed inside the aisuite repository before moving to its own home here; thanks to the aisuite contributors whose work it builds on.
+## Development principles
 
-## Contributing
+Changes should be incremental, reversible, and observable. Preserve unrelated user work, add regression coverage for behavior changes, keep all user-visible UI text in English, redact secrets, and never claim official provider balance or cost data when only a local estimate exists.
 
-Contributions and bug reports are welcome - open an [issue](https://github.com/andrewyng/openworker/issues) or a pull request. The app updates itself, so fixes reach installs quickly.
-For any PR, please attach screenshots of what was broken and how it is fixed now. We will shortly add features that you can contribute to.
-Please note that we are actively developing based off a internal list and goal, so we may not approve PRs that add features that are already under-development or deviates from our vision.
+The enhanced branch uses monotonic tags in the form `local-v<base>.<sequence>` and pushes only to the private `origin`; the upstream remote is fetch-only.
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
