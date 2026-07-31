@@ -196,14 +196,17 @@ class _ActionLocator:
 
     def evaluate(self, _script):
         return {
-            "tag": "button",
-            "type": "",
-            "id": "save",
-            "name": "",
+            "tag": self.page.tag,
+            "type": self.page.input_type,
+            "id": self.page.element_id,
+            "name": self.page.name,
             "role": "",
             "href": "",
+            "autocomplete": self.page.autocomplete,
+            "placeholder": self.page.placeholder,
             "label": self.page.label,
             "text": self.page.label,
+            "currentValue": self.page.current_value,
             "disabled": False,
             "visible": True,
             "box": {"x": 80, "y": 120, "width": 160, "height": 44},
@@ -213,14 +216,31 @@ class _ActionLocator:
     def click(self, timeout=0):
         self.page.clicked += 1
 
+    def fill(self, text, timeout=0):
+        self.page.current_value = text
+        self.page.typed.append(("fill", text))
+
+    def type(self, text, timeout=0):
+        self.page.current_value += text
+        self.page.typed.append(("type", text))
+
 
 class _ActionPage:
     url = "https://example.com/form"
 
     def __init__(self):
         self.label = "Save draft"
+        self.tag = "button"
+        self.input_type = ""
+        self.element_id = "save"
+        self.name = ""
+        self.autocomplete = ""
+        self.placeholder = ""
+        self.current_value = ""
         self.match_count = 1
         self.clicked = 0
+        self.typed = []
+        self.screenshot_masks = []
 
     def locator(self, _target):
         return _ActionLocator(self)
@@ -231,7 +251,8 @@ class _ActionPage:
     def get_by_role(self, _role, name=None):
         return _ActionLocator(self)
 
-    def screenshot(self, full_page=False):
+    def screenshot(self, full_page=False, mask=None, mask_color=None):
+        self.screenshot_masks.append(len(mask or []))
         return b"preview"
 
     def title(self):
@@ -330,3 +351,137 @@ def test_browser_click_tool_fails_closed_without_clicking_a_stale_target():
 
     assert result["error"].startswith("The page changed before the action ran.")
     assert page.clicked == 0
+
+
+def test_browser_type_proposal_redacts_sensitive_content_and_masks_preview():
+    from coworker.connectors.browser_automation import (
+        _browser_for,
+        make_browser_automation_tools,
+    )
+
+    session_id = "sensitive-type-tool"
+    secret = "example-sensitive-value-that-must-never-appear"
+    page = _ActionPage()
+    page.tag = "input"
+    page.input_type = "password"
+    page.element_id = "account-password"
+    page.name = "password"
+    page.autocomplete = "current-password"
+    page.label = "Account password"
+    controller = _browser_for(session_id)
+    controller._page = page
+
+    proposal = controller.propose_action(
+        tool_call_id="call-type",
+        tool_name="browser_type",
+        arguments={"target": "#account-password", "text": secret, "clear": True},
+    )
+
+    assert proposal["action"] == "Type"
+    assert proposal["risk"] == "Sensitive input"
+    assert proposal["content_summary"] == "Content hidden for privacy."
+    assert secret not in repr(proposal)
+    assert secret not in repr(controller._state["pending_action"])
+
+    controller.resolve_action("call-type", "once")
+    tools = {
+        tool.__name__: tool
+        for tool in make_browser_automation_tools(session_id=session_id)
+    }
+    result = tools["browser_type"]("#account-password", secret)
+
+    assert result["ok"] is True
+    assert page.current_value == secret
+    assert page.screenshot_masks[-1] == 1
+    assert controller._state["pending_action"] == {}
+
+
+def test_browser_type_rejects_when_existing_input_changed_after_approval():
+    from coworker.connectors.browser_automation import _BrowserController
+
+    page = _ActionPage()
+    page.tag = "input"
+    page.element_id = "search"
+    page.label = "Search"
+    page.current_value = "original"
+    controller = _BrowserController()
+    controller._page = page
+    controller.propose_action(
+        tool_call_id="call-input-change",
+        tool_name="browser_type",
+        arguments={"target": "#search", "text": "approved text", "clear": True},
+    )
+    controller.resolve_action("call-input-change", "once")
+    page.current_value = "changed elsewhere"
+
+    result = controller.validate_action("browser_type", "#search")
+
+    assert result and result["error"].startswith(
+        "The page changed before the action ran."
+    )
+    assert page.typed == []
+
+
+def test_browser_type_arguments_are_redacted_for_ui_and_persistence():
+    from coworker.audit import redact_tool_arguments
+    from coworker.engine import PermissionRequest
+    from coworker.server.manager import _approval_body
+
+    secret = "do-not-render-this-value"
+    request = PermissionRequest(
+        tool_name="browser_type",
+        arguments={"target": "#token", "text": secret, "clear": True},
+        metadata=None,
+        reason="requires approval",
+        tool_call_id="call-redaction",
+    )
+    safe = redact_tool_arguments(request.tool_name, request.arguments)
+
+    assert safe == {
+        "target": "#token",
+        "text": "[redacted input]",
+        "clear": True,
+    }
+    assert secret not in _approval_body(request)
+
+
+def test_browser_type_denial_and_two_sessions_remain_isolated():
+    from coworker.connectors.browser_automation import (
+        _browser_for,
+        make_browser_automation_tools,
+    )
+
+    first = _browser_for("type-isolation-first")
+    second = _browser_for("type-isolation-second")
+    first_page = _ActionPage()
+    second_page = _ActionPage()
+    for page in (first_page, second_page):
+        page.tag = "input"
+        page.element_id = "note"
+        page.label = "Private note"
+    first._page = first_page
+    second._page = second_page
+    first.propose_action(
+        tool_call_id="call-first",
+        tool_name="browser_type",
+        arguments={"target": "#note", "text": "first value"},
+    )
+    second.propose_action(
+        tool_call_id="call-second",
+        tool_name="browser_type",
+        arguments={"target": "#note", "text": "second value"},
+    )
+
+    first.resolve_action("call-first", "deny")
+    second.resolve_action("call-second", "once")
+    second_tools = {
+        tool.__name__: tool
+        for tool in make_browser_automation_tools(session_id="type-isolation-second")
+    }
+    result = second_tools["browser_type"]("#note", "second value")
+
+    assert result["ok"] is True
+    assert first_page.current_value == ""
+    assert second_page.current_value == "second value"
+    assert first._state["pending_action"] == {}
+    assert second._state["pending_action"] == {}

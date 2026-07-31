@@ -45,17 +45,20 @@ Progress:
 
 - M1.1 implements click proposals, a numbered target overlay, a plain-English
   action card, unique-target enforcement, and stale-target rejection.
+- M1.2 extends the same contract to typed input. The proposed value is redacted
+  from live events, approval records, Inbox previews, and audit logs; sensitive
+  fields are masked in browser screenshots; changed input is rejected before fill.
 - The existing durable approval flow remains the single source of consent.
 
 Remaining:
 
-- Extend the proposal contract to type, select, scroll, upload, and download.
+- Extend the proposal contract to select, scroll, upload, and download.
 - Add direct approve/deny affordances beside the preview without duplicating
   or racing the durable approval record.
 - Complete cancellation, restart, two-session, iframe, and accessibility scenarios.
 
-Next smallest action: extend the same inspected-target contract to `browser_type`,
-including secret-field redaction and changed-input rejection.
+Next smallest action: extend the inspected-target contract to `browser_select`,
+including approved option-label display and changed-options rejection.
 
 ### M2 — Reliable Actions
 

@@ -125,6 +125,7 @@ _CONNECT_FAILED_DETAIL = (
 )
 
 from ..attachments import build_user_content
+from ..audit import redact_tool_arguments
 from ..engine import ApprovalOutcome
 from ..inbox import VIS_INBOX, VIS_INLINE, args_preview
 from ..permissions import Mode
@@ -1483,7 +1484,12 @@ def create_app(manager: SessionManager) -> FastAPI:
                     p
                     for p in (
                         (getattr(_request, "reason", "") or "").strip(),
-                        args_preview(getattr(_request, "arguments", None)),
+                        args_preview(
+                            redact_tool_arguments(
+                                str(getattr(_request, "tool_name", "") or ""),
+                                getattr(_request, "arguments", None) or {},
+                            )
+                        ),
                     )
                     if p
                 ),

@@ -23,6 +23,20 @@ _SECRET_KEYS = (
 _BODY_KEYS = ("body", "content", "html")
 
 
+def redact_tool_arguments(tool: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Return UI/persistence-safe tool arguments without changing execution inputs."""
+    if not isinstance(args, dict):
+        return {}
+    out = dict(args)
+    for key in list(out):
+        lk = str(key).lower()
+        if any(secret in lk for secret in _SECRET_KEYS):
+            out[key] = "[redacted]"
+        elif tool == "browser_type" and lk == "text":
+            out[key] = "[redacted input]"
+    return out
+
+
 class AuditStore:
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = Path(db_path).expanduser()
@@ -124,13 +138,9 @@ def _sanitize_args(tool: str, args: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(args, dict):
         return {}
     out: dict[str, Any] = {}
-    for key, value in args.items():
+    for key, value in redact_tool_arguments(tool, args).items():
         lk = str(key).lower()
-        if any(s in lk for s in _SECRET_KEYS):
-            out[key] = "[redacted]"
-        elif tool == "browser_type" and lk == "text":
-            out[key] = "[redacted input]"
-        elif any(b == lk or lk.endswith("_" + b) for b in _BODY_KEYS):
+        if any(b == lk or lk.endswith("_" + b) for b in _BODY_KEYS):
             out[key] = "[redacted body]"
         else:
             out[key] = _summarize(value)

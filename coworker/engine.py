@@ -20,6 +20,7 @@ from enum import Enum
 from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
 from .events import Event, EventType
+from .audit import redact_tool_arguments
 from .permissions import Mode, PermissionEngine
 from .providers import AssistantTurn, ProviderClient, ToolCall
 from .providers.errors import friendly_model_error
@@ -450,7 +451,12 @@ class TurnEngine:
                 continue
             yield Event(
                 EventType.TOOL_PROPOSED,
-                {"name": tool_call.name, "arguments": tool_call.arguments},
+                {
+                    "name": tool_call.name,
+                    "arguments": redact_tool_arguments(
+                        tool_call.name, tool_call.arguments
+                    ),
+                },
             )
             self._audit(tool_call, stage="proposed")
             # `request_directory` and `propose_plan` are interactive: the user decides
@@ -554,7 +560,9 @@ class TurnEngine:
                 EventType.PERMISSION_REQUIRED,
                 {
                     "name": tool_call.name,
-                    "arguments": tool_call.arguments,
+                    "arguments": redact_tool_arguments(
+                        tool_call.name, tool_call.arguments
+                    ),
                     "reason": decision.reason,
                     "category": getattr(metadata, "category", ""),
                     # The exact target a standing rule could pin, or None when the call

@@ -133,6 +133,7 @@ class _BrowserController:
         self._context = None
         self._page = None
         self._error: Optional[str] = None
+        self._sensitive_targets: set[str] = set()
         self._executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="coworker-browser"
         )
@@ -190,7 +191,25 @@ class _BrowserController:
     def _capture_preview(self) -> None:
         if self._page is None:
             return
-        png = self._page.screenshot(full_page=False)
+        masks = []
+        for target in sorted(self._sensitive_targets):
+            try:
+                locator = _target_locator(self._page, target, first=False)
+                if locator.count() == 1:
+                    masks.append(locator.first)
+            except Exception:
+                continue
+        try:
+            png = self._page.screenshot(
+                full_page=False,
+                **({"mask": masks, "mask_color": "#6b7280"} if masks else {}),
+            )
+        except Exception:
+            # Never fall back to an unmasked screenshot after a sensitive field was used.
+            if masks:
+                self._touch(screenshot_data_url="")
+                return
+            raise
         data_url = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
         self._touch(screenshot_data_url=data_url)
 
@@ -394,6 +413,7 @@ class _BrowserController:
                 self._browser = None
                 self._context = None
                 self._page = None
+                self._sensitive_targets.clear()
                 self._touch(
                     open=False,
                     status="closed",
@@ -411,7 +431,11 @@ class _BrowserController:
     def _state_locked(self) -> dict[str, Any]:
         with self._lock:
             self._refresh_page_state()
-            return dict(self._state)
+            state = dict(self._state)
+            state["pending_action"] = _public_action(
+                dict(self._state.get("pending_action") or {})
+            )
+            return state
 
     def screenshot(self) -> dict[str, Any]:
         return self._submit(self._screenshot_locked)
@@ -457,6 +481,7 @@ class _BrowserController:
                 else:
                     self._refresh_page_state()
                     if previous_url and self._page.url != previous_url:
+                        self._sensitive_targets.clear()
                         self._touch(
                             streaming_media=[],
                             streaming_media_status="idle",
@@ -489,14 +514,35 @@ class _BrowserController:
                     return err
                 target = str(arguments.get("target") or "").strip()
                 inspected = _inspect_target(page, target)
+                is_type = tool_name == "browser_type"
+                sensitive = bool(inspected.get("sensitive")) or (
+                    is_type
+                    and _looks_sensitive_value(str(arguments.get("text") or ""))
+                )
                 proposal = {
                     "tool_call_id": tool_call_id,
                     "tool_name": tool_name,
-                    "action": "Click",
+                    "action": "Type" if is_type else "Click",
                     "target": target,
                     "domain": urlsplit(page.url).hostname or "",
-                    "risk": "Page interaction",
-                    "expected_result": "The selected page element is activated.",
+                    "risk": (
+                        "Sensitive input"
+                        if sensitive
+                        else ("Form input" if is_type else "Page interaction")
+                    ),
+                    "expected_result": (
+                        (
+                            "The field is replaced with the approved content."
+                            if bool(arguments.get("clear", True))
+                            else "The approved content is appended to the field."
+                        )
+                        if is_type
+                        else "The selected page element is activated."
+                    ),
+                    "content_summary": (
+                        "Content hidden for privacy." if is_type else ""
+                    ),
+                    "sensitive": sensitive,
                     "status": "pending",
                     "created_at": time.strftime(
                         "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
@@ -563,6 +609,17 @@ class _BrowserController:
                 return None
 
         return self._executor.submit(run).result()
+
+    def protect_action_value(self, tool_name: str, target: str) -> None:
+        """Keep sensitive typed content out of every later preview screenshot."""
+        with self._lock:
+            proposal = dict(self._state.get("pending_action") or {})
+            if (
+                proposal.get("tool_name") == tool_name
+                and proposal.get("target") == target
+                and proposal.get("sensitive")
+            ):
+                self._sensitive_targets.add(target)
 
     def finish_action(self, tool_name: str, target: str, *, succeeded: bool) -> None:
         with self._lock:
@@ -646,7 +703,7 @@ def browser_propose_action(
     tool_name: str,
     arguments: dict[str, Any],
 ) -> dict[str, Any]:
-    if tool_name != "browser_click":
+    if tool_name not in {"browser_click", "browser_type"}:
         return {}
     return _browser_for(session_id).propose_action(
         tool_call_id=tool_call_id,
@@ -687,19 +744,27 @@ def _target_locator(page, target: str, *, first: bool = True):
 _TARGET_DESCRIPTOR_JS = """
 (el) => {
   const rect = el.getBoundingClientRect();
+  const tag = el.tagName.toLowerCase();
+  const formField = tag === 'input' || tag === 'textarea' || el.isContentEditable;
   const label =
     el.getAttribute('aria-label') ||
     (el.labels && el.labels.length ? Array.from(el.labels).map(x => x.innerText.trim()).join(' ') : '') ||
-    (el.innerText || el.value || '').trim();
+    el.getAttribute('placeholder') ||
+    el.getAttribute('name') ||
+    el.getAttribute('id') ||
+    (el.innerText || '').trim();
   return {
-    tag: el.tagName.toLowerCase(),
+    tag,
     type: el.getAttribute('type') || '',
     id: el.getAttribute('id') || '',
     name: el.getAttribute('name') || '',
     role: el.getAttribute('role') || '',
     href: el.getAttribute('href') || '',
+    autocomplete: el.getAttribute('autocomplete') || '',
+    placeholder: el.getAttribute('placeholder') || '',
     label: label.slice(0, 160),
-    text: (el.innerText || el.value || '').trim().slice(0, 160),
+    text: formField ? '' : (el.innerText || el.value || '').trim().slice(0, 160),
+    currentValue: formField ? (el.value || el.innerText || '') : '',
     disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
     visible: rect.width > 0 && rect.height > 0,
     box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
@@ -707,6 +772,39 @@ _TARGET_DESCRIPTOR_JS = """
   };
 }
 """
+
+
+_SENSITIVE_FIELD_HINTS = (
+    "password",
+    "passwd",
+    "passcode",
+    "pin",
+    "token",
+    "secret",
+    "api key",
+    "api_key",
+    "credit card",
+    "card number",
+    "cvv",
+    "cvc",
+    "one-time",
+    "otp",
+)
+
+
+def _looks_sensitive_value(value: str) -> bool:
+    stripped = value.strip()
+    lowered = stripped.lower()
+    return bool(
+        re.search(
+            r"\b(?:bearer\s+\S+|sk-[a-z0-9_-]{12,}|"
+            r"AIza[0-9A-Za-z_-]{20,}|gh[pousr]_[A-Za-z0-9_]{20,})\b",
+            stripped,
+            re.IGNORECASE,
+        )
+        or (stripped.count(".") == 2 and len(stripped) > 40)
+        or any(hint in lowered for hint in ("api_key=", "token=", "password="))
+    )
 
 
 def _inspect_target(page, target: str) -> dict[str, Any]:
@@ -729,9 +827,20 @@ def _inspect_target(page, target: str) -> dict[str, Any]:
         return {"error": str(exc)}
     if not descriptor.get("visible") or descriptor.get("disabled"):
         return {"error": "The proposed browser target is not actionable."}
+    current_value = str(descriptor.pop("currentValue", "") or "")
+    field_haystack = " ".join(
+        str(descriptor.get(key) or "")
+        for key in ("type", "id", "name", "autocomplete", "placeholder", "label")
+    ).lower()
+    sensitive = descriptor.get("type") == "password" or any(
+        hint in field_haystack for hint in _SENSITIVE_FIELD_HINTS
+    )
     identity = {
         "url": page.url,
         "target": target,
+        "current_value_sha256": hashlib.sha256(
+            current_value.encode("utf-8")
+        ).hexdigest(),
         **{
             key: descriptor.get(key)
             for key in (
@@ -741,6 +850,8 @@ def _inspect_target(page, target: str) -> dict[str, Any]:
                 "name",
                 "role",
                 "href",
+                "autocomplete",
+                "placeholder",
                 "label",
                 "text",
             )
@@ -755,6 +866,7 @@ def _inspect_target(page, target: str) -> dict[str, Any]:
         "viewport": descriptor.get("viewport") or {},
         "fingerprint": fingerprint,
         "match_count": 1,
+        "sensitive": sensitive,
     }
 
 
@@ -785,6 +897,22 @@ _SNAPSHOT_JS = """
     }
     return '';
   };
+  const sensitive = (el) => {
+    const hint = [
+      el.getAttribute('type'),
+      el.getAttribute('id'),
+      el.getAttribute('name'),
+      el.getAttribute('autocomplete'),
+      el.getAttribute('placeholder'),
+      el.getAttribute('aria-label'),
+      labelFor(el)
+    ].filter(Boolean).join(' ').toLowerCase();
+    return [
+      'password', 'passwd', 'passcode', 'pin', 'token', 'secret',
+      'api key', 'api_key', 'credit card', 'card number', 'cvv',
+      'cvc', 'one-time', 'otp'
+    ].some(value => hint.includes(value));
+  };
   const describe = (el, i) => ({
     index: i,
     tag: el.tagName.toLowerCase(),
@@ -795,7 +923,9 @@ _SNAPSHOT_JS = """
     aria: el.getAttribute('aria-label') || '',
     label: labelFor(el),
     placeholder: el.getAttribute('placeholder') || '',
-    text: (el.innerText || el.value || '').trim().slice(0, 200),
+    text: sensitive(el)
+      ? '[redacted]'
+      : (el.innerText || el.value || '').trim().slice(0, 200),
     href: el.getAttribute('href') || '',
     selectorHint: el.getAttribute('id') ? `#${CSS.escape(el.getAttribute('id'))}` : (el.getAttribute('name') ? `[name="${el.getAttribute('name')}"]` : '')
   });
@@ -984,6 +1114,11 @@ def make_browser_automation_tools(
     )
 
     def browser_type(target: str, text: str, clear: bool = True) -> dict[str, Any]:
+        validation_error = controller.validate_action("browser_type", target)
+        if validation_error:
+            return validation_error
+        controller.protect_action_value("browser_type", target)
+
         def run(page):
             loc = _target_locator(page, target)
             if clear:
@@ -992,7 +1127,11 @@ def make_browser_automation_tools(
                 loc.type(text, timeout=10000)
             return {"ok": True, "url": page.url}
 
-        return controller.call("type", run)
+        result = controller.call("type", run)
+        controller.finish_action(
+            "browser_type", target, succeeded="error" not in result
+        )
+        return result
 
     browser_type.__name__ = "browser_type"
     tools.append(

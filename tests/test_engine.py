@@ -131,6 +131,44 @@ def test_write_requires_approval_then_approved(tmp_path):
     assert (tmp_path / "new.py").read_text() == "print(1)\n"
 
 
+def test_browser_type_events_never_expose_the_typed_value(tmp_path):
+    from coworker.connectors.browser_automation import make_browser_automation_tools
+
+    async def deny(_req: PermissionRequest):
+        return ApprovalOutcome.DENY
+
+    secret = "token-value-that-must-stay-private"
+    provider = ScriptedProvider(
+        [
+            _tool_turn(
+                "browser_type",
+                {"target": "#api-token", "text": secret, "clear": True},
+            ),
+            _text_turn("not entered"),
+        ]
+    )
+    registry = ToolRegistry()
+    registry.register_all(make_browser_automation_tools(session_id="redacted-events"))
+    engine = TurnEngine(
+        provider=provider,
+        registry=registry,
+        permissions=PermissionEngine(workspace_root=tmp_path),
+        model="gpt-5.5",
+        approver=deny,
+    )
+
+    events = _collect(engine, "enter the token")
+    surfaced = [
+        event.data["arguments"]
+        for event in events
+        if event.type in {EventType.TOOL_PROPOSED, EventType.PERMISSION_REQUIRED}
+    ]
+
+    assert len(surfaced) == 2
+    assert all(args["text"] == "[redacted input]" for args in surfaced)
+    assert secret not in repr(surfaced)
+
+
 def test_denied_tool_yields_error_and_continues(tmp_path):
     async def deny(_req: PermissionRequest):
         return ApprovalOutcome.DENY

@@ -35,7 +35,7 @@ from ..mentions import MentionSessionStore
 from ..subscriptions import ChannelBuffer, SubscriptionStore
 from ..unrouted import UnroutedStore
 from ..unattended import UnattendedRegistry
-from ..audit import AuditStore
+from ..audit import AuditStore, redact_tool_arguments
 from ..conversations import ConversationStore, title_from
 from ..engine import ApprovalOutcome, Approver, TurnEngine
 from ..roots import RootDir
@@ -120,7 +120,12 @@ def _approval_body(request) -> str:
     mirrored 'Run `write_file`?' shows the path/content rather than just the tool name.
     """
     reason = (getattr(request, "reason", "") or "").strip()
-    preview = args_preview(getattr(request, "arguments", None))
+    preview = args_preview(
+        redact_tool_arguments(
+            str(getattr(request, "tool_name", "") or ""),
+            getattr(request, "arguments", None) or {},
+        )
+    )
     return "\n".join(p for p in (reason, preview) if p)
 
 
@@ -2968,7 +2973,9 @@ class SessionManager:
 
         data: dict[str, Any] = {
             "tool": request.tool_name,
-            "arguments": getattr(request, "arguments", None) or {},
+            "arguments": redact_tool_arguments(
+                request.tool_name, getattr(request, "arguments", None) or {}
+            ),
         }
         browser_action = browser_propose_action(
             session_id,

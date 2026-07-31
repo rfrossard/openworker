@@ -821,6 +821,12 @@ export function BrowserActionInspector({
         <span>{status}</span>
       </div>
       <div className="browser-action-target">{action.label || action.target || "Page element"}</div>
+      {action.content_summary && (
+        <div className="browser-action-content">
+          <Icon name="shield" size={13} />
+          <span>{action.content_summary}</span>
+        </div>
+      )}
       <dl>
         <div><dt>Site</dt><dd>{action.domain || "Current page"}</dd></div>
         <div><dt>Risk</dt><dd>{action.risk || "Page interaction"}</dd></div>

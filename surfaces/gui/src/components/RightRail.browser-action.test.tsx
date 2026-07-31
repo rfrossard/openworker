@@ -47,4 +47,27 @@ describe("BrowserActionInspector", () => {
     expect(screen.getByText("The page changed before the action ran.")).toBeTruthy();
     expect(screen.queryByText("Approve or deny this action in the composer.")).toBeNull();
   });
+
+  it("explains typing without rendering the proposed value", () => {
+    const secret = "do-not-render-this-token";
+    const { container } = render(
+      <BrowserActionInspector
+        action={{
+          tool_name: "browser_type",
+          action: "Type",
+          label: "API token",
+          domain: "example.com",
+          risk: "Sensitive input",
+          expected_result: "The field is replaced with the approved content.",
+          content_summary: "Content hidden for privacy.",
+          sensitive: true,
+          status: "pending",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Content hidden for privacy.")).toBeTruthy();
+    expect(screen.getByText("Sensitive input")).toBeTruthy();
+    expect(container.textContent).not.toContain(secret);
+  });
 });
