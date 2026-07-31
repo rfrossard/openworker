@@ -207,6 +207,8 @@ class _ActionLocator:
             "label": self.page.label,
             "text": self.page.label,
             "currentValue": self.page.current_value,
+            "options": self.page.options,
+            "selectedValues": self.page.selected_values,
             "disabled": False,
             "visible": True,
             "box": {"x": 80, "y": 120, "width": 160, "height": 44},
@@ -224,6 +226,11 @@ class _ActionLocator:
         self.page.current_value += text
         self.page.typed.append(("type", text))
 
+    def select_option(self, value, timeout=0):
+        self.page.selected_values = [value]
+        self.page.current_value = value
+        self.page.selections.append(value)
+
 
 class _ActionPage:
     url = "https://example.com/form"
@@ -237,9 +244,12 @@ class _ActionPage:
         self.autocomplete = ""
         self.placeholder = ""
         self.current_value = ""
+        self.options = []
+        self.selected_values = []
         self.match_count = 1
         self.clicked = 0
         self.typed = []
+        self.selections = []
         self.screenshot_masks = []
 
     def locator(self, _target):
@@ -483,5 +493,187 @@ def test_browser_type_denial_and_two_sessions_remain_isolated():
     assert result["ok"] is True
     assert first_page.current_value == ""
     assert second_page.current_value == "second value"
+    assert first._state["pending_action"] == {}
+    assert second._state["pending_action"] == {}
+
+
+def test_browser_select_shows_human_label_and_executes_exact_approved_option():
+    from coworker.connectors.browser_automation import (
+        _browser_for,
+        make_browser_automation_tools,
+    )
+
+    session_id = "select-approved-option"
+    page = _ActionPage()
+    page.tag = "select"
+    page.element_id = "country"
+    page.label = "Country"
+    page.options = [
+        {"value": "ca", "label": "Canada", "disabled": False},
+        {"value": "br", "label": "Brazil", "disabled": False},
+    ]
+    page.selected_values = ["ca"]
+    page.current_value = "ca"
+    controller = _browser_for(session_id)
+    controller._page = page
+
+    proposal = controller.propose_action(
+        tool_call_id="call-select",
+        tool_name="browser_select",
+        arguments={"target": "#country", "value": "Brazil"},
+    )
+
+    assert proposal["action"] == "Select"
+    assert proposal["risk"] == "Form selection"
+    assert proposal["content_summary"] == "Selected option: Brazil"
+    assert proposal["expected_result"] == "The dropdown changes to “Brazil”."
+    assert "_requested_value" not in proposal
+    assert "_options" not in proposal
+    assert "fingerprint" not in proposal
+
+    controller.resolve_action("call-select", "once")
+    tools = {
+        tool.__name__: tool
+        for tool in make_browser_automation_tools(session_id=session_id)
+    }
+    result = tools["browser_select"]("#country", "Brazil")
+
+    assert result["ok"] is True
+    assert page.selections == ["br"]
+    assert controller._state["pending_action"] == {}
+
+
+def test_browser_select_rejects_changed_option_list_without_mutation():
+    from coworker.connectors.browser_automation import _BrowserController
+
+    page = _ActionPage()
+    page.tag = "select"
+    page.element_id = "plan"
+    page.label = "Plan"
+    page.options = [
+        {"value": "basic", "label": "Basic", "disabled": False},
+        {"value": "pro", "label": "Professional", "disabled": False},
+    ]
+    controller = _BrowserController()
+    controller._page = page
+    controller.propose_action(
+        tool_call_id="call-options-changed",
+        tool_name="browser_select",
+        arguments={"target": "#plan", "value": "pro"},
+    )
+    controller.resolve_action("call-options-changed", "once")
+    page.options[1] = {
+        "value": "pro",
+        "label": "Professional — annual contract",
+        "disabled": False,
+    }
+
+    result = controller.validate_action(
+        "browser_select", "#plan", action_value="pro"
+    )
+
+    assert result and result["error"].startswith(
+        "The page changed before the action ran."
+    )
+    assert page.selections == []
+
+
+def test_browser_select_rejects_missing_disabled_and_changed_requested_options():
+    from coworker.connectors.browser_automation import _BrowserController
+
+    page = _ActionPage()
+    page.tag = "select"
+    page.element_id = "tier"
+    page.label = "Tier"
+    page.options = [
+        {"value": "free", "label": "Free", "disabled": False},
+        {"value": "locked", "label": "Enterprise", "disabled": True},
+    ]
+    controller = _BrowserController()
+    controller._page = page
+
+    missing = controller.propose_action(
+        tool_call_id="call-missing-option",
+        tool_name="browser_select",
+        arguments={"target": "#tier", "value": "unknown"},
+    )
+    assert missing["error"] == "The selected option is no longer available."
+    controller.resolve_action("call-missing-option", "once")
+    assert controller.validate_action(
+        "browser_select", "#tier", action_value="unknown"
+    ) == {"error": "The selected option is no longer available."}
+
+    controller.resolve_action("call-missing-option", "deny")
+    disabled = controller.propose_action(
+        tool_call_id="call-disabled-option",
+        tool_name="browser_select",
+        arguments={"target": "#tier", "value": "locked"},
+    )
+    assert disabled["error"] == "The selected option is disabled."
+    controller.resolve_action("call-disabled-option", "once")
+    assert controller.validate_action(
+        "browser_select", "#tier", action_value="locked"
+    ) == {"error": "The selected option is disabled."}
+
+    controller.resolve_action("call-disabled-option", "deny")
+    controller.propose_action(
+        tool_call_id="call-changed-option",
+        tool_name="browser_select",
+        arguments={"target": "#tier", "value": "free"},
+    )
+    controller.resolve_action("call-changed-option", "once")
+    assert controller.validate_action(
+        "browser_select", "#tier", action_value="locked"
+    ) == {
+        "error": (
+            "The selected option differs from the approved proposal. "
+            "Review and approve it again."
+        )
+    }
+    assert page.selections == []
+
+
+def test_browser_select_denial_and_two_sessions_remain_isolated():
+    from coworker.connectors.browser_automation import (
+        _browser_for,
+        make_browser_automation_tools,
+    )
+
+    first = _browser_for("select-isolation-first")
+    second = _browser_for("select-isolation-second")
+    first_page = _ActionPage()
+    second_page = _ActionPage()
+    for page in (first_page, second_page):
+        page.tag = "select"
+        page.element_id = "language"
+        page.label = "Language"
+        page.options = [
+            {"value": "en", "label": "English", "disabled": False},
+            {"value": "pt", "label": "Portuguese", "disabled": False},
+        ]
+    first._page = first_page
+    second._page = second_page
+    first.propose_action(
+        tool_call_id="select-first",
+        tool_name="browser_select",
+        arguments={"target": "#language", "value": "English"},
+    )
+    second.propose_action(
+        tool_call_id="select-second",
+        tool_name="browser_select",
+        arguments={"target": "#language", "value": "Portuguese"},
+    )
+
+    first.resolve_action("select-first", "deny")
+    second.resolve_action("select-second", "once")
+    second_tools = {
+        tool.__name__: tool
+        for tool in make_browser_automation_tools(session_id="select-isolation-second")
+    }
+    result = second_tools["browser_select"]("#language", "Portuguese")
+
+    assert result["ok"] is True
+    assert first_page.selections == []
+    assert second_page.selections == ["pt"]
     assert first._state["pending_action"] == {}
     assert second._state["pending_action"] == {}

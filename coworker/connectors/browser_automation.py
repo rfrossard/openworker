@@ -515,40 +515,87 @@ class _BrowserController:
                 target = str(arguments.get("target") or "").strip()
                 inspected = _inspect_target(page, target)
                 is_type = tool_name == "browser_type"
+                is_select = tool_name == "browser_select"
                 sensitive = bool(inspected.get("sensitive")) or (
                     is_type
                     and _looks_sensitive_value(str(arguments.get("text") or ""))
                 )
+                option_label = ""
+                option_value = ""
+                select_error = ""
+                requested_value = str(arguments.get("value") or "")
+                if is_select and not inspected.get("error"):
+                    matches = [
+                        option
+                        for option in inspected.get("_options", [])
+                        if requested_value
+                        in {str(option.get("value") or ""), str(option.get("label") or "")}
+                    ]
+                    if len(matches) != 1:
+                        select_error = (
+                            "The selected option is ambiguous."
+                            if matches
+                            else "The selected option is no longer available."
+                        )
+                    elif matches[0].get("disabled"):
+                        select_error = "The selected option is disabled."
+                    else:
+                        option_label = (
+                            str(matches[0].get("label") or "")
+                            or str(matches[0].get("value") or "")
+                        )
+                        option_value = str(matches[0].get("value") or "")
+                action_name = "Select" if is_select else ("Type" if is_type else "Click")
                 proposal = {
                     "tool_call_id": tool_call_id,
                     "tool_name": tool_name,
-                    "action": "Type" if is_type else "Click",
+                    "action": action_name,
                     "target": target,
                     "domain": urlsplit(page.url).hostname or "",
                     "risk": (
                         "Sensitive input"
                         if sensitive
-                        else ("Form input" if is_type else "Page interaction")
+                        else (
+                            "Form selection"
+                            if is_select
+                            else ("Form input" if is_type else "Page interaction")
+                        )
                     ),
                     "expected_result": (
-                        (
+                        f'The dropdown changes to “{option_label}”.'
+                        if is_select and option_label
+                        else (
                             "The field is replaced with the approved content."
                             if bool(arguments.get("clear", True))
                             else "The approved content is appended to the field."
                         )
                         if is_type
-                        else "The selected page element is activated."
+                        else (
+                            "The chosen dropdown option is selected."
+                            if is_select
+                            else "The selected page element is activated."
+                        )
                     ),
                     "content_summary": (
-                        "Content hidden for privacy." if is_type else ""
+                        (
+                            f"Selected option: {option_label}"
+                            if option_label
+                            else ""
+                        )
+                        if is_select
+                        else ("Content hidden for privacy." if is_type else "")
                     ),
                     "sensitive": sensitive,
+                    "_requested_value": requested_value if is_select else "",
+                    "_option_value": option_value if is_select else "",
                     "status": "pending",
                     "created_at": time.strftime(
                         "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
                     ),
                     **inspected,
                 }
+                if select_error:
+                    proposal["error"] = select_error
                 self._capture_preview()
                 self._touch(pending_action=proposal)
                 return _public_action(proposal)
@@ -577,7 +624,9 @@ class _BrowserController:
                 self._touch(pending_action={})
             return {"ok": True}
 
-    def validate_action(self, tool_name: str, target: str) -> Optional[dict[str, Any]]:
+    def validate_action(
+        self, tool_name: str, target: str, action_value: Optional[str] = None
+    ) -> Optional[dict[str, Any]]:
         """Reject an approved action when its page element changed before execution."""
 
         def run() -> Optional[dict[str, Any]]:
@@ -592,6 +641,19 @@ class _BrowserController:
                     return None
                 if proposal.get("status") != "approved":
                     return {"error": "The browser action has not been approved."}
+                if proposal.get("error"):
+                    return {"error": str(proposal["error"])}
+                if (
+                    tool_name == "browser_select"
+                    and str(proposal.get("_requested_value") or "")
+                    != str(action_value or "")
+                ):
+                    return {
+                        "error": (
+                            "The selected option differs from the approved proposal. "
+                            "Review and approve it again."
+                        )
+                    }
                 page, err = self.page()
                 if err:
                     return err
@@ -620,6 +682,18 @@ class _BrowserController:
                 and proposal.get("sensitive")
             ):
                 self._sensitive_targets.add(target)
+
+    def approved_select_value(self, target: str, requested_value: str) -> str:
+        """Resolve an approved option label to the exact frozen HTML option value."""
+        with self._lock:
+            proposal = dict(self._state.get("pending_action") or {})
+            if (
+                proposal.get("tool_name") == "browser_select"
+                and proposal.get("target") == target
+                and str(proposal.get("_requested_value") or "") == requested_value
+            ):
+                return str(proposal.get("_option_value") or requested_value)
+            return requested_value
 
     def finish_action(self, tool_name: str, target: str, *, succeeded: bool) -> None:
         with self._lock:
@@ -703,7 +777,7 @@ def browser_propose_action(
     tool_name: str,
     arguments: dict[str, Any],
 ) -> dict[str, Any]:
-    if tool_name not in {"browser_click", "browser_type"}:
+    if tool_name not in {"browser_click", "browser_type", "browser_select"}:
         return {}
     return _browser_for(session_id).propose_action(
         tool_call_id=tool_call_id,
@@ -764,7 +838,17 @@ _TARGET_DESCRIPTOR_JS = """
     placeholder: el.getAttribute('placeholder') || '',
     label: label.slice(0, 160),
     text: formField ? '' : (el.innerText || el.value || '').trim().slice(0, 160),
-    currentValue: formField ? (el.value || el.innerText || '') : '',
+    currentValue: (formField || tag === 'select') ? (el.value || el.innerText || '') : '',
+    options: tag === 'select'
+      ? Array.from(el.options).map(option => ({
+          value: option.value,
+          label: option.label || option.textContent || option.value,
+          disabled: !!option.disabled
+        }))
+      : [],
+    selectedValues: tag === 'select'
+      ? Array.from(el.selectedOptions).map(option => option.value)
+      : [],
     disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
     visible: rect.width > 0 && rect.height > 0,
     box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
@@ -828,6 +912,8 @@ def _inspect_target(page, target: str) -> dict[str, Any]:
     if not descriptor.get("visible") or descriptor.get("disabled"):
         return {"error": "The proposed browser target is not actionable."}
     current_value = str(descriptor.pop("currentValue", "") or "")
+    options = list(descriptor.pop("options", []) or [])
+    selected_values = list(descriptor.pop("selectedValues", []) or [])
     field_haystack = " ".join(
         str(descriptor.get(key) or "")
         for key in ("type", "id", "name", "autocomplete", "placeholder", "label")
@@ -841,6 +927,8 @@ def _inspect_target(page, target: str) -> dict[str, Any]:
         "current_value_sha256": hashlib.sha256(
             current_value.encode("utf-8")
         ).hexdigest(),
+        "options": options,
+        "selected_values": selected_values,
         **{
             key: descriptor.get(key)
             for key in (
@@ -867,11 +955,17 @@ def _inspect_target(page, target: str) -> dict[str, Any]:
         "fingerprint": fingerprint,
         "match_count": 1,
         "sensitive": sensitive,
+        "_options": options,
+        "_selected_values": selected_values,
     }
 
 
 def _public_action(action: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in action.items() if key != "fingerprint"}
+    return {
+        key: value
+        for key, value in action.items()
+        if key != "fingerprint" and not str(key).startswith("_")
+    }
 
 
 def _safe_call(fn: Callable[[], Any]) -> dict[str, Any]:
@@ -1152,13 +1246,25 @@ def make_browser_automation_tools(
     )
 
     def browser_select(target: str, value: str) -> dict[str, Any]:
-        return controller.call(
+        validation_error = controller.validate_action(
+            "browser_select", target, action_value=value
+        )
+        if validation_error:
+            return validation_error
+        approved_value = controller.approved_select_value(target, value)
+        result = controller.call(
             "select",
             lambda page: (
-                _target_locator(page, target).select_option(value, timeout=10000),
+                _target_locator(page, target).select_option(
+                    approved_value, timeout=10000
+                ),
                 {"ok": True, "url": page.url},
             )[1],
         )
+        controller.finish_action(
+            "browser_select", target, succeeded="error" not in result
+        )
+        return result
 
     browser_select.__name__ = "browser_select"
     tools.append(

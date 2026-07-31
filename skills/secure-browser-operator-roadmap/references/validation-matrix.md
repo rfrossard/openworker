@@ -33,3 +33,5 @@ Apply relevant rows to every milestone and add newly observed failure modes.
 9. Match zero, one, and multiple elements; only one unique visible enabled target may proceed.
 10. Type a secret-like value and verify the execution input remains intact while live
     events, approval storage, audit output, controls, and screenshots expose no raw value.
+11. Select an option by value and label; reject missing, disabled, ambiguous, changed,
+    or differently executed options without mutating the page.

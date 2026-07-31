@@ -48,17 +48,20 @@ Progress:
 - M1.2 extends the same contract to typed input. The proposed value is redacted
   from live events, approval records, Inbox previews, and audit logs; sensitive
   fields are masked in browser screenshots; changed input is rejected before fill.
+- M1.3 covers dropdown selection. It presents the exact human-readable option,
+  freezes the complete option set and current selection, normalizes labels to the
+  approved HTML value, and rejects missing, disabled, ambiguous, or changed options.
 - The existing durable approval flow remains the single source of consent.
 
 Remaining:
 
-- Extend the proposal contract to select, scroll, upload, and download.
+- Extend the proposal contract to scroll, upload, and download.
 - Add direct approve/deny affordances beside the preview without duplicating
   or racing the durable approval record.
 - Complete cancellation, restart, two-session, iframe, and accessibility scenarios.
 
-Next smallest action: extend the inspected-target contract to `browser_select`,
-including approved option-label display and changed-options rejection.
+Next smallest action: extend the inspected-target contract to `browser_upload_file`,
+including approved filename/type/size display and changed-file rejection.
 
 ### M2 — Reliable Actions
 

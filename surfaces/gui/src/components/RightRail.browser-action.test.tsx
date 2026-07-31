@@ -70,4 +70,25 @@ describe("BrowserActionInspector", () => {
     expect(screen.getByText("Sensitive input")).toBeTruthy();
     expect(container.textContent).not.toContain(secret);
   });
+
+  it("shows the exact human-readable dropdown option", () => {
+    render(
+      <BrowserActionInspector
+        action={{
+          tool_name: "browser_select",
+          action: "Select",
+          label: "Country",
+          domain: "example.com",
+          risk: "Form selection",
+          expected_result: "The dropdown changes to “Brazil”.",
+          content_summary: "Selected option: Brazil",
+          status: "pending",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Selected option: Brazil")).toBeTruthy();
+    expect(screen.getByText("The dropdown changes to “Brazil”.")).toBeTruthy();
+    expect(screen.getByText("Form selection")).toBeTruthy();
+  });
 });

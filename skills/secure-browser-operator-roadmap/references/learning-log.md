@@ -14,6 +14,18 @@ Append entries only when observed evidence changes an assumption, rule, test, ar
 
 ## Findings
 
+### 2026-07-30 — Dropdown labels and HTML values are not interchangeable
+
+- Evidence: `browser_select` claimed to accept an option value or label, but passed
+  either string directly to Playwright's value-oriented shorthand.
+- Impact: a clear user request such as “choose Brazil” could fail when the HTML value
+  was `br`, and a changed option list was not revalidated after approval.
+- Decision: resolve the requested label/value while proposing, privately freeze the
+  exact HTML value plus full option set, show only the human label, and execute the
+  frozen value after revalidation.
+- Roadmap or validation change: M1.3 covers dropdown selection and its failure modes.
+- Related commit/tag: `local-v0.1.7.56`.
+
 ### 2026-07-30 — Approval and preview paths need one redaction boundary
 
 - Evidence: audit storage redacted `browser_type.text`, but the live tool event,
