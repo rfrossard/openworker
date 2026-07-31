@@ -19,7 +19,7 @@ Let OpenWorker agents complete browser tasks transparently and reliably while th
 
 ### M1 — Action Inspector
 
-Status: `ready`
+Status: `in_progress`
 
 Goal: show what the agent intends to interact with before execution.
 
@@ -41,7 +41,21 @@ Acceptance:
 
 Non-goals: persistent login profiles, multi-step replay, autonomous recovery.
 
-Next smallest action: document the existing browser action protocol and add a failing test for a stale click target.
+Progress:
+
+- M1.1 implements click proposals, a numbered target overlay, a plain-English
+  action card, unique-target enforcement, and stale-target rejection.
+- The existing durable approval flow remains the single source of consent.
+
+Remaining:
+
+- Extend the proposal contract to type, select, scroll, upload, and download.
+- Add direct approve/deny affordances beside the preview without duplicating
+  or racing the durable approval record.
+- Complete cancellation, restart, two-session, iframe, and accessibility scenarios.
+
+Next smallest action: extend the same inspected-target contract to `browser_type`,
+including secret-field redaction and changed-input rejection.
 
 ### M2 — Reliable Actions
 

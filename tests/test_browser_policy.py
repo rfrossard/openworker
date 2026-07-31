@@ -181,3 +181,152 @@ def test_snapshot_discovers_direct_media_variants():
 
     result = _snapshot(Page(), 100)
     assert result["media"][0]["resolution"] == "1080p"
+
+
+class _ActionLocator:
+    def __init__(self, page):
+        self.page = page
+
+    @property
+    def first(self):
+        return self
+
+    def count(self):
+        return self.page.match_count
+
+    def evaluate(self, _script):
+        return {
+            "tag": "button",
+            "type": "",
+            "id": "save",
+            "name": "",
+            "role": "",
+            "href": "",
+            "label": self.page.label,
+            "text": self.page.label,
+            "disabled": False,
+            "visible": True,
+            "box": {"x": 80, "y": 120, "width": 160, "height": 44},
+            "viewport": {"width": 1280, "height": 900},
+        }
+
+    def click(self, timeout=0):
+        self.page.clicked += 1
+
+
+class _ActionPage:
+    url = "https://example.com/form"
+
+    def __init__(self):
+        self.label = "Save draft"
+        self.match_count = 1
+        self.clicked = 0
+
+    def locator(self, _target):
+        return _ActionLocator(self)
+
+    def get_by_text(self, _target, exact=False):
+        return _ActionLocator(self)
+
+    def get_by_role(self, _role, name=None):
+        return _ActionLocator(self)
+
+    def screenshot(self, full_page=False):
+        return b"preview"
+
+    def title(self):
+        return "Example form"
+
+
+def test_browser_click_rejects_a_target_that_changed_after_approval():
+    from coworker.connectors.browser_automation import _BrowserController
+
+    page = _ActionPage()
+    controller = _BrowserController()
+    controller._page = page
+
+    proposal = controller.propose_action(
+        tool_call_id="call-1",
+        tool_name="browser_click",
+        arguments={"target": "#save"},
+    )
+    assert proposal["label"] == "Save draft"
+    assert proposal["box"] == {"x": 80, "y": 120, "width": 160, "height": 44}
+    assert "fingerprint" not in proposal
+
+    controller.resolve_action("call-1", "once")
+    page.label = "Delete account"
+
+    result = controller.validate_action("browser_click", "#save")
+
+    assert result == {
+        "error": (
+            "The page changed before the action ran. Review the new target "
+            "and approve it again."
+        )
+    }
+    assert controller._state["pending_action"]["status"] == "stale"
+    assert page.clicked == 0
+
+
+def test_browser_action_proposal_rejects_an_ambiguous_target():
+    from coworker.connectors.browser_automation import _BrowserController
+
+    page = _ActionPage()
+    page.match_count = 2
+    controller = _BrowserController()
+    controller._page = page
+
+    proposal = controller.propose_action(
+        tool_call_id="call-ambiguous",
+        tool_name="browser_click",
+        arguments={"target": "text=Continue"},
+    )
+
+    assert proposal["status"] == "pending"
+    assert proposal["match_count"] == 2
+    assert proposal["error"] == "The proposed browser target is no longer unique."
+
+
+def test_browser_action_denial_clears_the_pending_target():
+    from coworker.connectors.browser_automation import _BrowserController
+
+    controller = _BrowserController()
+    controller._page = _ActionPage()
+    controller.propose_action(
+        tool_call_id="call-denied",
+        tool_name="browser_click",
+        arguments={"target": "#save"},
+    )
+
+    controller.resolve_action("call-denied", "deny")
+
+    assert controller._state["pending_action"] == {}
+
+
+def test_browser_click_tool_fails_closed_without_clicking_a_stale_target():
+    from coworker.connectors.browser_automation import (
+        _browser_for,
+        make_browser_automation_tools,
+    )
+
+    session_id = "stale-action-tool"
+    page = _ActionPage()
+    controller = _browser_for(session_id)
+    controller._page = page
+    controller.propose_action(
+        tool_call_id="call-tool",
+        tool_name="browser_click",
+        arguments={"target": "#save"},
+    )
+    controller.resolve_action("call-tool", "once")
+    page.label = "Delete account"
+    tools = {
+        tool.__name__: tool
+        for tool in make_browser_automation_tools(session_id=session_id)
+    }
+
+    result = tools["browser_click"]("#save")
+
+    assert result["error"].startswith("The page changed before the action ran.")
+    assert page.clicked == 0

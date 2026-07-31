@@ -56,6 +56,8 @@ from ..connectors.browser_automation import (
     browser_close_session,
     browser_media_context,
     browser_media_source,
+    browser_propose_action,
+    browser_resolve_action,
     browser_set_streaming_media,
     browser_set_policy,
     browser_state,
@@ -2968,6 +2970,14 @@ class SessionManager:
             "tool": request.tool_name,
             "arguments": getattr(request, "arguments", None) or {},
         }
+        browser_action = browser_propose_action(
+            session_id,
+            tool_call_id=str(getattr(request, "tool_call_id", None) or ""),
+            tool_name=request.tool_name,
+            arguments=getattr(request, "arguments", None) or {},
+        )
+        if browser_action:
+            data["browser_action"] = browser_action
         task = self.task_store.task_for_run_session(session_id)
         if task is None:
             return data
@@ -3021,6 +3031,12 @@ class SessionManager:
         the task-persistent "always_task" vocabulary alongside the session-scoped ones.
         """
         from ..engine import ApprovalOutcome
+
+        browser_resolve_action(
+            session_id,
+            tool_call_id=str(getattr(request, "tool_call_id", None) or ""),
+            resolution=resolution,
+        )
 
         if resolution == "always_task":
             self.mint_task_rule(

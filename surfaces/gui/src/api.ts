@@ -842,6 +842,23 @@ export interface BrowserState {
     eta_seconds?: number;
     path?: string;
   };
+  pending_action: {
+    tool_call_id?: string;
+    tool_name?: string;
+    action?: string;
+    target?: string;
+    label?: string;
+    domain?: string;
+    risk?: string;
+    expected_result?: string;
+    status?: "pending" | "approved" | "stale";
+    error?: string;
+    match_count?: number;
+    created_at?: string;
+    resolved_at?: string;
+    box?: { x: number; y: number; width: number; height: number };
+    viewport?: { width: number; height: number };
+  };
 }
 
 export async function getBrowserState(sessionId: string): Promise<BrowserState> {

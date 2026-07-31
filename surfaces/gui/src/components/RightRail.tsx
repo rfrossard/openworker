@@ -567,13 +567,34 @@ function BrowserOperator({
         )}
         {state?.screenshot_data_url && (
           <>
-            <img
-              className="browser-shot"
-              src={state.screenshot_data_url}
-              alt={state.open ? "Current secure browser page" : "Last secure browser preview"}
-            />
+            <div className="browser-shot-wrap">
+              <img
+                className="browser-shot"
+                src={state.screenshot_data_url}
+                alt={state.open ? "Current secure browser page" : "Last secure browser preview"}
+              />
+              {state.pending_action?.box &&
+                state.pending_action?.viewport &&
+                state.pending_action.status !== "stale" && (
+                  <span
+                    className="browser-target-overlay"
+                    aria-hidden="true"
+                    style={{
+                      left: `${(state.pending_action.box.x / state.pending_action.viewport.width) * 100}%`,
+                      top: `${(state.pending_action.box.y / state.pending_action.viewport.height) * 100}%`,
+                      width: `${(state.pending_action.box.width / state.pending_action.viewport.width) * 100}%`,
+                      height: `${(state.pending_action.box.height / state.pending_action.viewport.height) * 100}%`,
+                    }}
+                  >
+                    1
+                  </span>
+                )}
+            </div>
             {!state.open && <div className="rail-muted">Last browser preview</div>}
           </>
+        )}
+        {!!state?.pending_action?.tool_name && (
+          <BrowserActionInspector action={state.pending_action} />
         )}
         {(state?.open || !!state?.media?.length) && (
           <div className="browser-media">
@@ -778,6 +799,38 @@ function BrowserOperator({
         )}
       </div>
     </RailSection>
+  );
+}
+
+export function BrowserActionInspector({
+  action,
+}: {
+  action: BrowserState["pending_action"];
+}) {
+  const status =
+    action.status === "stale"
+      ? "Target changed"
+      : action.status === "approved"
+        ? "Approved — verifying target"
+        : "Approval required";
+  return (
+    <div className={`browser-action-inspector ${action.status || "pending"}`} aria-live="polite">
+      <div className="browser-action-head">
+        <span className="browser-action-number">1</span>
+        <strong>{action.action || "Browser action"}</strong>
+        <span>{status}</span>
+      </div>
+      <div className="browser-action-target">{action.label || action.target || "Page element"}</div>
+      <dl>
+        <div><dt>Site</dt><dd>{action.domain || "Current page"}</dd></div>
+        <div><dt>Risk</dt><dd>{action.risk || "Page interaction"}</dd></div>
+        <div><dt>Expected</dt><dd>{action.expected_result || "The page changes as described."}</dd></div>
+      </dl>
+      {action.error && <div className="browser-error">{action.error}</div>}
+      {action.status === "pending" && (
+        <div className="rail-muted">Approve or deny this action in the composer.</div>
+      )}
+    </div>
   );
 }
 

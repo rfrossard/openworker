@@ -14,6 +14,14 @@ Append entries only when observed evidence changes an assumption, rule, test, ar
 
 ## Findings
 
+### 2026-07-30 — Approval previously described a selector, not a stable element
+
+- Evidence: `browser_click` resolved a selector only after approval and intentionally selected the first match.
+- Impact: a changed or ambiguous page could activate an element the user never reviewed.
+- Decision: freeze a unique element fingerprint and bounding box when approval is raised, then resolve and compare it immediately before execution.
+- Roadmap or validation change: M1.1 starts with click actions; ambiguous and stale targets fail closed.
+- Related commit/tag: pending M1.1 release after `local-v0.1.7.53`.
+
 ### 2026-07-30 — Visibility must precede greater autonomy
 
 - Evidence: the embedded preview made browser activity understandable, but users still cannot inspect the exact target and consequence before an interaction.

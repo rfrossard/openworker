@@ -30,3 +30,4 @@ Apply relevant rows to every milestone and add newly observed failure modes.
 6. Close the browser before approval.
 7. Run two sessions with simultaneous proposals and verify isolation.
 8. Restart OpenWorker and verify pending approvals are not executed.
+9. Match zero, one, and multiple elements; only one unique visible enabled target may proceed.

@@ -580,7 +580,20 @@ button.btn.danger { color: var(--accent); }
 .rail-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .rail-actions .btn { padding: 6px 9px; font-size: 12px; border-radius: 8px; }
 .browser-mini { display: flex; flex-direction: column; gap: 8px; }
-.browser-shot { display: block; width: 100%; max-height: 220px; object-fit: contain; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.browser-shot-wrap { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.browser-shot { display: block; width: 100%; max-height: 220px; object-fit: contain; }
+.browser-target-overlay { position: absolute; display: flex; align-items: center; justify-content: center; min-width: 20px; min-height: 20px; border: 2px solid #f4b942; border-radius: 5px; background: color-mix(in srgb, #f4b942 18%, transparent); color: #17130a; font-size: 11px; font-weight: 800; box-shadow: 0 0 0 2px color-mix(in srgb, #111 45%, transparent); pointer-events: none; }
+.browser-action-inspector { display: flex; flex-direction: column; gap: 7px; padding: 10px; border: 1px solid color-mix(in srgb, #f4b942 55%, var(--line)); border-radius: 9px; background: color-mix(in srgb, #f4b942 7%, var(--paper)); }
+.browser-action-inspector.stale { border-color: color-mix(in srgb, var(--danger, #d85858) 55%, var(--line)); }
+.browser-action-head { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 7px; }
+.browser-action-head strong { color: var(--ink); font-size: 12px; }
+.browser-action-head > span:last-child { color: var(--faint); font-size: 10px; text-align: right; }
+.browser-action-number { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 999px; background: #f4b942; color: #17130a; font-size: 11px; font-weight: 800; }
+.browser-action-target { color: var(--ink); font-size: 12.5px; font-weight: 600; }
+.browser-action-inspector dl { display: flex; flex-direction: column; gap: 4px; margin: 0; }
+.browser-action-inspector dl div { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 7px; font-size: 11px; line-height: 1.35; }
+.browser-action-inspector dt { color: var(--faint); }
+.browser-action-inspector dd { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
 .browser-status-row { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
 .browser-status-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--faint); }
 .browser-status-dot.open { background: var(--success, #3da66b); }

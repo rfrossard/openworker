@@ -12,6 +12,7 @@ import threading
 import time
 import base64
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -155,6 +156,7 @@ class _BrowserController:
             "streaming_media_status": "idle",
             "streaming_media_error": "",
             "streaming_media_progress": {},
+            "pending_action": {},
         }
 
     def _touch(self, **changes: Any) -> None:
@@ -399,6 +401,7 @@ class _BrowserController:
                     title="",
                     controls=[],
                     media=[],
+                    pending_action={},
                 )
             return {"ok": True}
 
@@ -467,6 +470,110 @@ class _BrowserController:
 
         return self._submit(run)
 
+    def propose_action(
+        self,
+        *,
+        tool_call_id: str,
+        tool_name: str,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Freeze the exact visible target shown to the user before approval."""
+
+        def run() -> dict[str, Any]:
+            with self._lock:
+                existing = dict(self._state.get("pending_action") or {})
+                if tool_call_id and existing.get("tool_call_id") == tool_call_id:
+                    return _public_action(existing)
+                page, err = self.page()
+                if err:
+                    return err
+                target = str(arguments.get("target") or "").strip()
+                inspected = _inspect_target(page, target)
+                proposal = {
+                    "tool_call_id": tool_call_id,
+                    "tool_name": tool_name,
+                    "action": "Click",
+                    "target": target,
+                    "domain": urlsplit(page.url).hostname or "",
+                    "risk": "Page interaction",
+                    "expected_result": "The selected page element is activated.",
+                    "status": "pending",
+                    "created_at": time.strftime(
+                        "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+                    ),
+                    **inspected,
+                }
+                self._capture_preview()
+                self._touch(pending_action=proposal)
+                return _public_action(proposal)
+
+        return self._submit(run)
+
+    def resolve_action(self, tool_call_id: str, resolution: str) -> dict[str, Any]:
+        with self._lock:
+            proposal = dict(self._state.get("pending_action") or {})
+            if not proposal or proposal.get("tool_call_id") != tool_call_id:
+                return {"ok": True}
+            if resolution in {
+                "allow",
+                "once",
+                "always",
+                "always_tool",
+                "always_command",
+                "always_task",
+            }:
+                proposal["status"] = "approved"
+                proposal["resolved_at"] = time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+                )
+                self._touch(pending_action=proposal)
+            else:
+                self._touch(pending_action={})
+            return {"ok": True}
+
+    def validate_action(self, tool_name: str, target: str) -> Optional[dict[str, Any]]:
+        """Reject an approved action when its page element changed before execution."""
+
+        def run() -> Optional[dict[str, Any]]:
+            with self._lock:
+                proposal = dict(self._state.get("pending_action") or {})
+                if not proposal:
+                    return None
+                if (
+                    proposal.get("tool_name") != tool_name
+                    or proposal.get("target") != target
+                ):
+                    return None
+                if proposal.get("status") != "approved":
+                    return {"error": "The browser action has not been approved."}
+                page, err = self.page()
+                if err:
+                    return err
+                current = _inspect_target(page, target)
+                if current.get("error") or current.get("fingerprint") != proposal.get(
+                    "fingerprint"
+                ):
+                    proposal["status"] = "stale"
+                    proposal["error"] = (
+                        "The page changed before the action ran. Review the new target "
+                        "and approve it again."
+                    )
+                    self._touch(pending_action=proposal)
+                    return {"error": proposal["error"]}
+                return None
+
+        return self._executor.submit(run).result()
+
+    def finish_action(self, tool_name: str, target: str, *, succeeded: bool) -> None:
+        with self._lock:
+            proposal = dict(self._state.get("pending_action") or {})
+            if (
+                proposal.get("tool_name") == tool_name
+                and proposal.get("target") == target
+                and (succeeded or proposal.get("status") != "stale")
+            ):
+                self._touch(pending_action={})
+
 
 _BROWSERS_LOCK = threading.RLock()
 _BROWSERS: dict[str, _BrowserController] = {}
@@ -532,6 +639,28 @@ def browser_set_streaming_media(
     )
 
 
+def browser_propose_action(
+    session_id: str,
+    *,
+    tool_call_id: str,
+    tool_name: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
+    if tool_name != "browser_click":
+        return {}
+    return _browser_for(session_id).propose_action(
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+        arguments=arguments,
+    )
+
+
+def browser_resolve_action(
+    session_id: str, *, tool_call_id: str, resolution: str
+) -> dict[str, Any]:
+    return _browser_for(session_id).resolve_action(tool_call_id, resolution)
+
+
 def _cap(value: int, default: int = 20000, upper: int = 100000) -> int:
     try:
         return max(1, min(int(value or default), upper))
@@ -539,18 +668,98 @@ def _cap(value: int, default: int = 20000, upper: int = 100000) -> int:
         return default
 
 
-def _target_locator(page, target: str):
+def _target_locator(page, target: str, *, first: bool = True):
     target = target.strip()
     if target.startswith("text="):
-        return page.get_by_text(target[5:], exact=False).first
-    if target.startswith("role="):
+        locator = page.get_by_text(target[5:], exact=False)
+    elif target.startswith("role="):
         role_name = target[5:]
         role, _, name = role_name.partition(":")
-        return page.get_by_role(role.strip(), name=name.strip() or None).first
+        locator = page.get_by_role(role.strip(), name=name.strip() or None)
+    else:
+        try:
+            locator = page.locator(target)
+        except Exception:
+            locator = page.get_by_text(target, exact=False)
+    return locator.first if first else locator
+
+
+_TARGET_DESCRIPTOR_JS = """
+(el) => {
+  const rect = el.getBoundingClientRect();
+  const label =
+    el.getAttribute('aria-label') ||
+    (el.labels && el.labels.length ? Array.from(el.labels).map(x => x.innerText.trim()).join(' ') : '') ||
+    (el.innerText || el.value || '').trim();
+  return {
+    tag: el.tagName.toLowerCase(),
+    type: el.getAttribute('type') || '',
+    id: el.getAttribute('id') || '',
+    name: el.getAttribute('name') || '',
+    role: el.getAttribute('role') || '',
+    href: el.getAttribute('href') || '',
+    label: label.slice(0, 160),
+    text: (el.innerText || el.value || '').trim().slice(0, 160),
+    disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
+    visible: rect.width > 0 && rect.height > 0,
+    box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+    viewport: { width: window.innerWidth, height: window.innerHeight }
+  };
+}
+"""
+
+
+def _inspect_target(page, target: str) -> dict[str, Any]:
+    if not target:
+        return {"error": "The browser action does not identify a target."}
     try:
-        return page.locator(target).first
-    except Exception:
-        return page.get_by_text(target, exact=False).first
+        candidates = _target_locator(page, target, first=False)
+        count = candidates.count()
+        if count != 1:
+            return {
+                "error": (
+                    "The proposed browser target is no longer unique."
+                    if count
+                    else "The proposed browser target is no longer available."
+                ),
+                "match_count": count,
+            }
+        descriptor = candidates.first.evaluate(_TARGET_DESCRIPTOR_JS)
+    except Exception as exc:
+        return {"error": str(exc)}
+    if not descriptor.get("visible") or descriptor.get("disabled"):
+        return {"error": "The proposed browser target is not actionable."}
+    identity = {
+        "url": page.url,
+        "target": target,
+        **{
+            key: descriptor.get(key)
+            for key in (
+                "tag",
+                "type",
+                "id",
+                "name",
+                "role",
+                "href",
+                "label",
+                "text",
+            )
+        },
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    return {
+        "label": descriptor.get("label") or descriptor.get("text") or target,
+        "box": descriptor.get("box") or {},
+        "viewport": descriptor.get("viewport") or {},
+        "fingerprint": fingerprint,
+        "match_count": 1,
+    }
+
+
+def _public_action(action: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in action.items() if key != "fingerprint"}
 
 
 def _safe_call(fn: Callable[[], Any]) -> dict[str, Any]:
@@ -745,13 +954,20 @@ def make_browser_automation_tools(
     )
 
     def browser_click(target: str) -> dict[str, Any]:
-        return controller.call(
+        validation_error = controller.validate_action("browser_click", target)
+        if validation_error:
+            return validation_error
+        result = controller.call(
             "click",
             lambda page: (
                 _target_locator(page, target).click(timeout=10000),
                 {"ok": True, "url": page.url},
             )[1],
         )
+        controller.finish_action(
+            "browser_click", target, succeeded="error" not in result
+        )
+        return result
 
     browser_click.__name__ = "browser_click"
     tools.append(
