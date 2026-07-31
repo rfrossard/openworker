@@ -4,6 +4,14 @@
 
 > **Beta** - OpenWorker is in open beta: fully usable, updates itself, and we're actively polishing rough edges. [Issues](https://github.com/andrewyng/openworker/issues) welcome.
 
+> **Local enhanced edition.** This private branch extends the upstream OpenWorker
+> project with a Usage Dashboard, Intelligent Model Router, Deep Research,
+> presentation tooling, native image generation, and a Secure Browser Operator.
+> See [Current capabilities](docs/CURRENT_CAPABILITIES.md), the
+> [feature roadmap](docs/MANUS_FEATURE_ROADMAP.md), and
+> [versioning and rollback](docs/ROLLBACK.md). These additions are not included in
+> the public download links below unless they have also shipped upstream.
+
 **AI that gets your everyday tasks done.** OpenWorker is an open-source AI coworker that lives on your desktop and delivers **finished work**, not just chat: a polished document, a Slack reply with the numbers, an updated calendar, a triaged inbox.
 
 It runs on your machine and doesn't lock you into any model: bring your own API key for OpenAI, Anthropic, Google, or an open-weight provider, or run fully local with Ollama. Your data leaves your machine only through the model and integrations *you* choose.
@@ -43,6 +51,21 @@ Under the hood:
 ## What it can do
 
 - **Produce real deliverables** - documents, spreadsheets, reports, and web pages land as files you can open and share.
+- **Understand usage and cost** - track tokens, estimated cost, sessions, providers,
+  billed image operations, account refresh timestamps, and model availability from
+  the in-app Usage Dashboard.
+- **Route work to an appropriate model** - compare configured and available models,
+  use manual, shadow, or automatic routing, and apply confidence and estimated-cost
+  guardrails with feedback history.
+- **Research with grounded claims** - decompose a question into claims, evidence,
+  sources, gaps, and presentation-ready structures instead of producing an
+  unsupported narrative.
+- **Build presentations** - turn Markdown and structured research into editable
+  widescreen decks with templates, slide-level layouts, tables, charts, timelines,
+  diagrams, quotes, speaker notes, citations, and optional generated visuals.
+- **Operate an isolated browser visibly** - navigate public pages, inspect controls,
+  approve interactions beside the preview, take over the same browser in-app, and
+  safely scroll, type, select, upload, capture, or download authorized media.
 - **Work from Slack** - mention `@OpenWorker` in a channel; a session opens on your desktop, the work happens with your tools, and the answer comes back as a thread reply.
 - **Use your everyday tools** - 25+ integrations including GitHub, Slack, Jira, Notion, Linear, HubSpot, Outlook, monday.com, Gmail, and Google Calendar, plus your **terminal and local files**. Any tool reachable over [MCP](https://modelcontextprotocol.io/) plugs in too, with per-tool control.
 - **Run on a schedule** - automations for recurring work: a morning brief, a weekly report, a standing watch over a channel. Runs land in the app with full transcripts.
@@ -85,6 +108,10 @@ npm run dev        # browser UI on the Vite dev port
 To run the full desktop app instead of the browser UI, replace step 3 with `npm run tauri dev` (from `surfaces/gui/`) - the Tauri shell launches the window and supervises the server itself.
 
 Tests: `.venv/bin/pytest` (server), `npm test` and `npm run e2e` in `surfaces/gui` (GUI unit + hermetic end-to-end). Desktop bundles are built with `packaging/build_dmg.sh` / `packaging/build_windows.ps1`.
+
+The current local release process additionally requires a recoverable installed-app
+backup, packaged/installed checksum comparison, installed-app smoke checks, a
+monotonic `local-v0.1.7.N` tag, and synchronization only to the private `origin`.
 
 ## Repository layout
 
