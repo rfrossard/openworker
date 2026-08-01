@@ -251,6 +251,7 @@ export interface ResearchRun {
   depth: "quick" | "standard" | "deep";
   plan: string[];
   plan_steps?: ResearchPlanStep[];
+  lanes?: ResearchLane[];
   method?: "standard" | "grounded_claims";
   deliverable?: "report" | "presentation";
   audience?: string;
@@ -286,6 +287,15 @@ export interface ResearchPlanStep {
   id: string;
   text: string;
   enabled: boolean;
+}
+
+export interface ResearchLane {
+  id: string;
+  title: string;
+  objective: string;
+  step_ids: string[];
+  status: "planned" | "researching" | "completed" | "blocked";
+  source_budget: number;
 }
 
 export interface ResearchClaim {

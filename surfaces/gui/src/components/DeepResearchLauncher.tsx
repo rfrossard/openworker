@@ -36,11 +36,29 @@ const DEFAULT_PLAN = makePlanSteps(DEFAULT_PLAN_TEXT);
 const enabledPlan = (steps: ResearchPlanStep[]) =>
   steps.map((step) => step.text.trim()).filter((text, index) => steps[index]?.enabled && Boolean(text));
 
-const DEPTH_SETTINGS: Record<ResearchDepth, { sources: string; label: string }> = {
-  quick: { sources: "at least 5 credible sources", label: "Quick" },
-  standard: { sources: "at least 10 credible sources", label: "Standard" },
-  deep: { sources: "at least 20 credible sources", label: "Deep" },
+const DEPTH_SETTINGS: Record<ResearchDepth, { sources: string; label: string; sourceLimit: number }> = {
+  quick: { sources: "at least 5 credible sources", label: "Quick", sourceLimit: 5 },
+  standard: { sources: "at least 10 credible sources", label: "Standard", sourceLimit: 10 },
+  deep: { sources: "at least 20 credible sources", label: "Deep", sourceLimit: 20 },
 };
+
+function lanePreview(steps: ResearchPlanStep[], sourceLimit: number) {
+  const enabled = steps.filter((step) => step.enabled && step.text.trim());
+  const laneCount = Math.min(4, enabled.length);
+  if (!laneCount) return [];
+  const chunkSize = Math.ceil(enabled.length / laneCount);
+  const groups = Array.from({ length: laneCount }, (_, index) =>
+    enabled.slice(index * chunkSize, (index + 1) * chunkSize),
+  ).filter((group) => group.length > 0);
+  const base = Math.floor(sourceLimit / groups.length);
+  const remainder = sourceLimit % groups.length;
+  return groups.map((group, index) => ({
+    id: group[0].id,
+    text: group[0].text,
+    sourceBudget: base + (index < remainder ? 1 : 0),
+    stepCount: group.length,
+  }));
+}
 
 export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): string {
   const plan = (Array.isArray(brief.plan) ? brief.plan : brief.plan.split("\n"))
@@ -360,6 +378,8 @@ export function DeepResearchLauncher({
     }
   };
 
+  const plannedLanes = lanePreview(planSteps, DEPTH_SETTINGS[depth].sourceLimit);
+
   return (
     <>
       <button
@@ -611,6 +631,23 @@ export function DeepResearchLauncher({
                 </div>
                 <button type="button" className="research-add-plan-step" onClick={addPlanStep}>+ Add step</button>
               </fieldset>
+
+              {plannedLanes.length > 0 && (
+                <section className="research-lane-preview" aria-label="Wide Research lanes">
+                  <header>
+                    <div>
+                      <strong>Wide Research lanes</strong>
+                      <span>Prepared from checked plan steps. Execution remains single-agent until managed fan-out is enabled.</span>
+                    </div>
+                    <b>{plannedLanes.length} lane{plannedLanes.length === 1 ? "" : "s"}</b>
+                  </header>
+                  <div>
+                    {plannedLanes.map((lane, index) => (
+                      <span key={lane.id}><b>{index + 1}</b><em>{lane.sourceBudget} sources</em>{lane.text}{lane.stepCount > 1 ? ` + ${lane.stepCount - 1} more` : ""}</span>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               <details className="research-advanced-options">
                 <summary>Advanced options</summary>

@@ -207,4 +207,14 @@ describe("Deep Research launcher", () => {
     expect(request.plan_steps.some((step: { enabled: boolean }) => !step.enabled)).toBe(true);
     fetchMock.mockRestore();
   });
+
+  it("previews bounded Wide Research lanes without implying parallel execution", () => {
+    render(<DeepResearchLauncher sessionId="session-a" onCreate={vi.fn()} />);
+    const launchers = screen.getAllByRole("button", { name: "Deep Research" });
+    fireEvent.click(launchers[launchers.length - 1]);
+    const lanes = screen.getByRole("region", { name: "Wide Research lanes" });
+    expect(lanes.textContent).toContain("4 lanes");
+    expect(lanes.textContent).toContain("Execution remains single-agent");
+    expect(lanes.textContent).toContain("3 sources");
+  });
 });

@@ -34,6 +34,7 @@ RESEARCH_STATUSES = {
 SOURCE_LIMITS = {"quick": 5, "standard": 10, "deep": 20}
 EVIDENCE_STATUSES = {"collected", "verified", "conflicting", "discarded"}
 CLAIM_STATUSES = {"proposed", "supported", "partial", "conflicting", "unsupported"}
+LANE_STATUSES = {"planned", "researching", "completed", "blocked"}
 
 
 def _now() -> str:
@@ -82,6 +83,80 @@ def _enabled_plan(steps: list[dict[str, Any]]) -> list[str]:
     return [str(step["text"]) for step in steps if step.get("enabled")]
 
 
+def _derive_lanes(
+    steps: list[dict[str, Any]], source_limit: int
+) -> list[dict[str, Any]]:
+    """Split checked plan steps into bounded, observable future-worker lanes.
+
+    This is intentionally planning-only: current research execution remains a
+    single agent until managed fan-out, budget enforcement, and recovery are
+    implemented.  Persisting these lanes now makes that future transition
+    inspectable and backwards-compatible.
+    """
+    enabled = [step for step in steps if step.get("enabled")]
+    lane_count = min(4, len(enabled))
+    if not lane_count:
+        return []
+    # Keep the plan's reading order inside each lane.  Striding would put the
+    # fifth step back into lane one, which is surprising when users inspect a
+    # plan before managed fan-out is available.
+    chunk_size = (len(enabled) + lane_count - 1) // lane_count
+    groups = [
+        enabled[index : index + chunk_size]
+        for index in range(0, len(enabled), chunk_size)
+    ]
+    base, remainder = divmod(max(0, source_limit), lane_count)
+    lanes: list[dict[str, Any]] = []
+    for index, group in enumerate(groups):
+        primary = str(group[0]["text"])
+        lanes.append(
+            {
+                "id": f"lane-{index + 1}",
+                "title": primary[:100],
+                "objective": primary,
+                "step_ids": [str(step["id"]) for step in group],
+                "status": "planned",
+                "source_budget": base + (1 if index < remainder else 0),
+            }
+        )
+    return lanes
+
+
+def _normalise_lanes(
+    value: Any, *, fallback_steps: list[dict[str, Any]], source_limit: int
+) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return _derive_lanes(fallback_steps, source_limit)
+    lanes: list[dict[str, Any]] = []
+    for index, raw in enumerate(value[:4]):
+        if not isinstance(raw, dict):
+            continue
+        objective = str(raw.get("objective") or raw.get("title") or "").strip()[:500]
+        if not objective:
+            continue
+        status = str(raw.get("status") or "planned")
+        raw_step_ids = raw.get("step_ids", [])
+        if not isinstance(raw_step_ids, list):
+            raw_step_ids = []
+        try:
+            source_budget = max(0, int(raw.get("source_budget") or 0))
+        except (TypeError, ValueError):
+            source_budget = 0
+        lanes.append(
+            {
+                "id": str(raw.get("id") or f"lane-{index + 1}")[:100],
+                "title": str(raw.get("title") or objective)[:100],
+                "objective": objective,
+                "step_ids": [
+                    str(item)[:100] for item in raw_step_ids if str(item).strip()
+                ],
+                "status": status if status in LANE_STATUSES else "planned",
+                "source_budget": source_budget,
+            }
+        )
+    return lanes or _derive_lanes(fallback_steps, source_limit)
+
+
 @dataclass
 class ResearchRun:
     run_id: str
@@ -90,6 +165,7 @@ class ResearchRun:
     depth: str
     plan: list[str]
     plan_steps: list[dict[str, Any]] = field(default_factory=list)
+    lanes: list[dict[str, Any]] = field(default_factory=list)
     method: str = "standard"
     deliverable: str = "report"
     audience: str = ""
@@ -154,6 +230,15 @@ class ResearchRun:
         )
         enabled_plan = _enabled_plan(known["plan_steps"])
         known["plan"] = enabled_plan or clean_plan
+        try:
+            known["source_limit"] = max(1, int(known.get("source_limit") or 10))
+        except (TypeError, ValueError):
+            known["source_limit"] = 10
+        known["lanes"] = _normalise_lanes(
+            known.get("lanes"),
+            fallback_steps=known["plan_steps"],
+            source_limit=known["source_limit"],
+        )
         if known.get("method") not in RESEARCH_METHODS:
             known["method"] = "standard"
         if known.get("deliverable") not in RESEARCH_DELIVERABLES:
@@ -266,6 +351,7 @@ class ResearchRunStore:
             depth=depth,
             plan=clean_plan,
             plan_steps=clean_steps,
+            lanes=_derive_lanes(clean_steps, SOURCE_LIMITS[depth]),
             method=method,
             deliverable=deliverable,
             audience=audience,
@@ -387,6 +473,8 @@ class ResearchRunStore:
                 setattr(run, key, value)
                 if key == "depth":
                     run.source_limit = SOURCE_LIMITS[value]
+            if {"plan", "plan_steps", "depth"}.intersection(changes):
+                run.lanes = _derive_lanes(run.plan_steps, run.source_limit)
             run.updated_at = _now()
             self._save()
             return run

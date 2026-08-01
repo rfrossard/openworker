@@ -289,6 +289,19 @@ export function RightRail({
                       {run.method === "grounded_claims" ? "grounded claims" : "standard"} ·{" "}
                       {run.plan.length} plan steps · {run.source_limit} sources planned
                     </span>
+                    {run.lanes?.length ? (
+                      <details className="research-run-lanes">
+                        <summary>Wide Research plan · {run.lanes.length} lane{run.lanes.length === 1 ? "" : "s"}</summary>
+                        <p>Lane planning is ready; managed parallel execution is not enabled yet.</p>
+                        <ul>
+                          {run.lanes.map((lane, index) => (
+                            <li key={lane.id}>
+                              <b>{index + 1}</b><span>{lane.objective}</span><em>{lane.source_budget} sources · {lane.status}</em>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    ) : null}
                     {run.quality?.status === "passed" && (
                       <span className="research-quality passed">
                         Quality gate passed · {run.quality.checks} checks

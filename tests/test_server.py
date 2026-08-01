@@ -138,6 +138,16 @@ def test_research_run_rest_accepts_structured_plan_steps(tmp_path):
     assert created["ok"] is True
     assert created["run"]["plan"] == ["Collect evidence"]
     assert created["run"]["plan_steps"][1]["enabled"] is False
+    assert created["run"]["lanes"] == [
+        {
+            "id": "lane-1",
+            "title": "Collect evidence",
+            "objective": "Collect evidence",
+            "step_ids": ["first"],
+            "status": "planned",
+            "source_budget": 10,
+        }
+    ]
 
 
 def test_research_run_computes_new_artifacts_and_browser_activity(

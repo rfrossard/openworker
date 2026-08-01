@@ -146,6 +146,67 @@ def test_research_plan_steps_preserve_checkbox_state_and_order(tmp_path):
         )
 
 
+def test_research_lanes_are_derived_and_rebalanced_with_plan_or_depth(tmp_path):
+    store = ResearchRunStore(tmp_path / "research-runs.json")
+    created = store.create(
+        session_id="session-a",
+        question="Research lanes",
+        depth="standard",
+        plan=["Find primary sources", "Compare alternatives", "Assess risks"],
+    )
+
+    assert [lane["objective"] for lane in created.lanes] == created.plan
+    assert sum(lane["source_budget"] for lane in created.lanes) == 10
+    assert all(lane["status"] == "planned" for lane in created.lanes)
+
+    updated = store.update(created.run_id, depth="deep")
+    assert updated is not None
+    assert sum(lane["source_budget"] for lane in updated.lanes) == 20
+
+    restored = ResearchRunStore(tmp_path / "research-runs.json").list("session-a")[0]
+    assert restored.lanes == updated.lanes
+
+    updated = store.update(created.run_id, plan=["Reframed scope", "Verify sources"])
+    assert updated is not None
+    assert [lane["objective"] for lane in updated.lanes] == [
+        "Reframed scope",
+        "Verify sources",
+    ]
+
+
+def test_legacy_run_derives_lanes_and_ignores_malformed_lane_step_ids(tmp_path):
+    path = tmp_path / "research-runs.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "runs": [
+                    {
+                        "run_id": "research-existing",
+                        "session_id": "session-a",
+                        "question": "Existing",
+                        "depth": "quick",
+                        "plan": ["Collect", "Check", "Synthesize"],
+                        "lanes": [
+                            {
+                                "id": "lane-1",
+                                "title": "Collect",
+                                "step_ids": "not-a-list",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    restored = ResearchRunStore(path).list("session-a")[0]
+    assert restored.lanes[0]["objective"] == "Collect"
+    assert restored.lanes[0]["step_ids"] == []
+    assert restored.lanes[0]["source_budget"] == 0
+
+
 def test_unknown_research_fields_survive_round_trip(tmp_path):
     path = tmp_path / "research-runs.json"
     path.write_text(
