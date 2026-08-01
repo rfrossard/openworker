@@ -75,16 +75,28 @@ export function bigNumberParts(slide: Pick<MarkdownSlide, "title" | "takeaway" |
   const explicitValue = String(data.value || data.metric || data.metric_value || "").trim();
   const explicitLabel = String(data.label || data.metric_label || data.description || "").trim();
   if (explicitValue) return { value: explicitValue, label: explicitLabel || slide.takeaway || slide.title };
-  const candidate = slide.bullets.find((value) => /(?:[$€£]|\b\d)[\d.,]*(?:\s?(?:%|x|k|m|bn?|million|billion|trillion))?/i.test(value)) || slide.bullets[0] || "42%";
+  const metricPattern = /(?:(?:US\$|R\$|[$€£])\s*)?\d[\d.,]*(?:\s?(?:bilh(?:ão|ões)|milh(?:ão|ões)|billion|million|trillion|bn?|%|x|k|m))?/gi;
+  const selectMetric = (value: string) => {
+    const matches = [...value.matchAll(metricPattern)].map((match) => match[0].trim());
+    return matches.sort((left, right) => {
+      const score = (metric: string) =>
+        (/(?:US\$|R\$|[$€£])/.test(metric) ? 100 : 0)
+        + (/(?:million|billion|trillion|milh|bilh|\bbn?\b)/i.test(metric) ? 50 : 0)
+        + (/%/.test(metric) ? 20 : 0)
+        - (/^(?:19|20)\d{2}$/.test(metric) ? 35 : 0);
+      return score(right) - score(left) || right.length - left.length;
+    })[0] || "";
+  };
+  const candidate = slide.bullets.find((value) => selectMetric(value)) || slide.bullets[0] || "42%";
   const pipe = candidate.split("|").map((value) => value.trim()).filter(Boolean);
   if (pipe.length >= 2) {
-    const numeric = pipe.find((value) => /(?:[$€£]|\b\d)[\d.,]*(?:\s?(?:%|x|k|m|bn?|million|billion|trillion))?/i.test(value)) || pipe[0];
+    const numeric = pipe.map((value) => ({ value, metric: selectMetric(value) })).sort((left, right) => right.metric.length - left.metric.length)[0]?.metric || pipe[0];
     return { value: numeric, label: pipe.find((value) => value !== numeric) || slide.takeaway || slide.title };
   }
-  const match = candidate.match(/(?:[$€£]\s*)?\d[\d.,]*(?:\s?(?:%|x|k|m|bn?|million|billion|trillion))?/i);
-  if (match) {
-    const remainder = candidate.replace(match[0], "").replace(/^[\s:—–-]+|[\s:—–-]+$/g, "");
-    return { value: match[0], label: remainder || slide.takeaway || slide.title };
+  const metric = selectMetric(candidate);
+  if (metric) {
+    const remainder = candidate.replace(metric, "").replace(/\s*\[C\d+(?:,\s*C\d+)*\]/gi, "").replace(/\s+/g, " ").replace(/^[\s:—–-]+|[\s:—–-]+$/g, "");
+    return { value: metric, label: remainder || slide.takeaway || slide.title };
   }
   return { value: candidate, label: slide.takeaway || slide.title };
 }

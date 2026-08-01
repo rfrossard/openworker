@@ -226,6 +226,15 @@ The first milestone is complete.
     })).toEqual({ value: "US$ 42M", label: "Revenue growth" });
   });
 
+  it("prioritizes a currency amount over dates and citation numbers", () => {
+    expect(bigNumberParts({
+      title: "Capital intensity",
+      takeaway: "Lease obligations became the financial constraint.",
+      bullets: ["The S-1 revealed US$ 47 bilhões in future lease obligations in 2019 [C3]."],
+      visualPlanData: {},
+    }).value).toBe("US$ 47 bilhões");
+  });
+
   it("flags decorative or overly dense visual choices and auto-fixes safe cases", () => {
     const deck = parseMarkdownDeck(`# Quality
 ## Composition

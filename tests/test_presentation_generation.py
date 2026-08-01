@@ -131,6 +131,23 @@ def test_big_number_uses_structured_metric_and_template_font(tmp_path):
     assert title.text_frame.paragraphs[0].font.name == "Arial"
 
 
+def test_big_number_prioritizes_currency_amount_over_a_date(tmp_path):
+    tool = make_build_presentation_tool(workspace=tmp_path)
+    result = tool(
+        title="Capital intensity",
+        slides=[{
+            "title": "Capital intensity",
+            "layout": "big-number",
+            "bullets": ["The S-1 revealed US$ 47 bilhões in lease obligations in 2019 [C3]."],
+        }],
+        pptx_path="capital.pptx",
+        pdf_path="capital.pdf",
+    )
+    assert result["ok"] is True
+    text = "\n".join(shape.text for shape in Presentation(tmp_path / "capital.pptx").slides[1].shapes if getattr(shape, "has_text_frame", False))
+    assert "US$ 47 bilhões" in text
+
+
 def test_build_presentation_supports_extended_designer_layouts(tmp_path):
     image = tmp_path / "visual.png"
     _sample_image(image)

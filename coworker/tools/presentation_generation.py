@@ -350,16 +350,29 @@ def _big_number_parts(spec: dict[str, Any]) -> tuple[str, str]:
     explicit_label = str(spec.get("metric_label") or "").strip()
     if explicit_value:
         return explicit_value, explicit_label or str(spec.get("takeaway") or spec["title"])
+    metric_pattern = re.compile(r"(?:(?:US\$|R\$|[$€£])\s*)?\d[\d.,]*(?:\s?(?:bilh(?:ão|ões)|milh(?:ão|ões)|billion|million|trillion|bn?|%|x|k|m))?", re.I)
+
+    def select_metric(value: str) -> str:
+        matches = [match.group(0).strip() for match in metric_pattern.finditer(value)]
+        def score(metric: str) -> tuple[int, int]:
+            value_score = (100 if re.search(r"(?:US\$|R\$|[$€£])", metric) else 0)
+            value_score += 50 if re.search(r"(?:million|billion|trillion|milh|bilh|\bbn?\b)", metric, re.I) else 0
+            value_score += 20 if "%" in metric else 0
+            value_score -= 35 if re.fullmatch(r"(?:19|20)\d{2}", metric) else 0
+            return value_score, len(metric)
+        return max(matches, key=score, default="")
+
     candidates = list(spec.get("bullets") or [])
-    candidate = next((item for item in candidates if re.search(r"(?:[$€£]|\b\d)[\d.,]*(?:\s?(?:%|x|k|m|bn?|million|billion|trillion))?", item, re.I)), candidates[0] if candidates else "42%")
+    candidate = next((item for item in candidates if select_metric(item)), candidates[0] if candidates else "42%")
     parts = [part.strip() for part in candidate.split("|") if part.strip()]
     if len(parts) >= 2:
-        numeric = next((part for part in parts if re.search(r"(?:[$€£]|\b\d)[\d.,]*(?:\s?(?:%|x|k|m|bn?|million|billion|trillion))?", part, re.I)), parts[0])
+        numeric = max((select_metric(part) for part in parts), key=len, default=parts[0])
         return numeric, next((part for part in parts if part != numeric), str(spec.get("takeaway") or spec["title"]))
-    match = re.search(r"(?:[$€£]\s*)?\d[\d.,]*(?:\s?(?:%|x|k|m|bn?|million|billion|trillion))?", candidate, re.I)
-    if match:
-        label = re.sub(r"^[\s:—–-]+|[\s:—–-]+$", "", candidate.replace(match.group(0), ""))
-        return match.group(0), label or str(spec.get("takeaway") or spec["title"])
+    metric = select_metric(candidate)
+    if metric:
+        label = re.sub(r"\s*\[C\d+(?:,\s*C\d+)*\]", "", candidate.replace(metric, ""))
+        label = re.sub(r"\s+", " ", re.sub(r"^[\s:—–-]+|[\s:—–-]+$", "", label))
+        return metric, label or str(spec.get("takeaway") or spec["title"])
     return candidate, str(spec.get("takeaway") or spec["title"])
 
 
