@@ -17,6 +17,7 @@
   color-scheme: light;
   --paper: #f5f6f7;          /* cool light gray — reads "tool", not "writing app" */
   --panel: #ffffff;
+  --surface: #ffffff;        /* opaque dialog and field surface — never inherit the backdrop */
   --ink: #17191c;
   --muted: #5b616b;
   --faint: #9aa1aa;
@@ -57,6 +58,7 @@ html[data-theme="dark"] {
   color-scheme: dark;
   --paper: #131417;
   --panel: #1c1e22;
+  --surface: #1c1e22;        /* opaque dialog and field surface — never inherit the backdrop */
   --ink: #e6e8eb;
   --muted: #9aa1ab;
   --faint: #62686f;
