@@ -57,8 +57,16 @@ def test_build_presentation_creates_real_matching_files_with_image(tmp_path):
     pdf = tmp_path / "reports/deck.pdf"
     assert pptx.read_bytes().startswith(b"PK")
     assert pdf.read_bytes().startswith(b"%PDF-")
-    assert len(Presentation(pptx).slides) == 3
+    presentation = Presentation(pptx)
+    assert len(presentation.slides) == 3
     assert len(PdfReader(pdf).pages) == 3
+    for slide in presentation.slides:
+        rendered_text = "\n".join(
+            shape.text for shape in slide.shapes if getattr(shape, "has_text_frame", False)
+        )
+        assert "© Frossard ·" in rendered_text
+        assert "Copyright: © Frossard ·" in slide.notes_slide.notes_text_frame.text
+    assert all("© Frossard ·" in page.extract_text() for page in PdfReader(pdf).pages)
     for path in result["preview_paths"]:
         assert (tmp_path / path).read_bytes().startswith(b"\x89PNG")
     assert (tmp_path / result["contact_sheet_path"]).read_bytes().startswith(b"\x89PNG")

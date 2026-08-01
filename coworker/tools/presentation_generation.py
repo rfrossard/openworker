@@ -6,6 +6,7 @@ import os
 import shutil
 import tempfile
 import zipfile
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ _MAX_SLIDES = 40
 _MAX_BULLETS = 6
 _WIDE_WIDTH = 13.333
 _WIDE_HEIGHT = 7.5
+_COPYRIGHT_OWNER = "Frossard"
 _LAYOUTS = {
     "auto", "image-right", "image-left", "statement", "two-column", "quote", "section",
     "title-only", "big-number", "checklist", "timeline", "process", "comparison",
@@ -401,6 +403,11 @@ def _quality_gate(slides: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _copyright_notice() -> str:
+    """Return the consistent ownership mark used on every rendered slide."""
+    return f"© {_COPYRIGHT_OWNER} · {datetime.now().strftime('%B %Y')}"
+
+
 def _add_pptx(
     destination: str,
     *,
@@ -434,6 +441,7 @@ def _add_pptx(
     accent_rgb = RGBColor.from_string(style["accent"])
     cover_rgb = RGBColor.from_string(style["cover"])
     cover_ink = RGBColor.from_string(style.get("cover_ink", "FFFFFF"))
+    copyright_notice = _copyright_notice()
     blank_layout = next(
         (layout for layout in deck.slide_layouts if "blank" in layout.name.lower()),
         deck.slide_layouts[-1],
@@ -489,13 +497,19 @@ def _add_pptx(
             transition.append(effect)
             slide._element.append(transition)
 
-    def attach_sources(slide, sources):
-        if not sources:
-            return
+    def attach_notes(slide, sources):
+        lines = [f"Copyright: {copyright_notice}. All rights reserved."]
+        if sources:
+            lines.extend(["", "[Sources]", *sources])
         try:
-            slide.notes_slide.notes_text_frame.text = "[Sources]\n" + "\n".join(sources)
+            slide.notes_slide.notes_text_frame.text = "\n".join(lines)
         except (AttributeError, NotImplementedError):
             pass
+
+    def stamp_slide(slide, *, is_dark=False, sources=None):
+        footer_color = cover_ink if is_dark else muted
+        textbox(slide, copyright_notice, 0.76, 7.08, 4.2, 0.18, 8, footer_color)
+        attach_notes(slide, sources or [])
 
     cover = deck.slides.add_slide(blank_layout)
     cover.background.fill.solid()
@@ -615,11 +629,6 @@ def _add_pptx(
             statement = spec["takeaway"] or (spec["bullets"][0] if spec["bullets"] else spec["title"])
             textbox(slide, statement, 1.05, 2.15, 11.1, 2.7, 31, ink, True)
             textbox(slide, str(number), 12.25, 7.0, 0.4, 0.22, 9, muted)
-            if spec["sources"]:
-                try:
-                    slide.notes_slide.notes_text_frame.text = "[Sources]\n" + "\n".join(spec["sources"])
-                except (AttributeError, NotImplementedError):
-                    pass
             continue
         if layout == "quote":
             quote = spec["takeaway"] or (spec["bullets"][0] if spec["bullets"] else spec["title"])
@@ -654,7 +663,6 @@ def _add_pptx(
                         paragraph.font.size = Pt(15 if row_index else 16)
                         paragraph.font.bold = row_index == 0
                         paragraph.font.color.rgb = RGBColor(255, 255, 255) if row_index == 0 else ink
-            attach_sources(slide, spec["sources"])
             continue
         if layout in {"bar-chart", "donut-chart"}:
             values = _chart_values(spec["bullets"])
@@ -690,7 +698,6 @@ def _add_pptx(
                 chart.has_legend = False
             chart.series[0].format.fill.solid()
             chart.series[0].format.fill.fore_color.rgb = accent_rgb
-            attach_sources(slide, spec["sources"])
             continue
         if layout in {"flow-diagram", "roadmap"}:
             values = spec["bullets"][:6]
@@ -714,7 +721,6 @@ def _add_pptx(
                 panel(slide, xs[index], y, node_width, 1.1)
                 textbox(slide, str(index + 1), xs[index] + 0.12, y + 0.13, 0.35, 0.28, 11, accent_rgb, True)
                 textbox(slide, value, xs[index] + 0.48, y + 0.14, node_width - 0.57, 0.75, 14, ink, True)
-            attach_sources(slide, spec["sources"])
             continue
         if layout == "org-chart":
             edges = _org_edges(spec["bullets"])
@@ -742,7 +748,6 @@ def _add_pptx(
             for child_x, child in zip(child_xs, children):
                 panel(slide, child_x, 4.3, child_width, 1.15)
                 textbox(slide, child, child_x + 0.18, 4.58, child_width - 0.36, 0.55, 15, ink, True)
-            attach_sources(slide, spec["sources"])
             continue
         if layout in {"comparison", "pros-cons"}:
             midpoint = max(1, (len(spec["bullets"]) + 1) // 2)
@@ -854,12 +859,14 @@ def _add_pptx(
                 )
                 caption.text_frame.paragraphs[0].alignment = PP_ALIGN.LEFT
         textbox(slide, str(number), 12.25, 7.0, 0.4, 0.22, 9, muted)
-        if spec["sources"]:
-            try:
-                notes = slide.notes_slide.notes_text_frame
-                notes.text = "[Sources]\n" + "\n".join(spec["sources"])
-            except (AttributeError, NotImplementedError):
-                pass
+        attach_notes(slide, spec["sources"])
+    for index, slide in enumerate(deck.slides):
+        layout = "cover" if index == 0 else slides[index - 1]["layout"]
+        stamp_slide(
+            slide,
+            is_dark=layout in {"cover", "section", "conclusion"},
+            sources=[] if index == 0 else slides[index - 1]["sources"],
+        )
     deck.save(destination)
 
 
@@ -886,6 +893,16 @@ def _add_pdf(
     background = HexColor(f"#{style['background']}")
     cover = HexColor(f"#{style['cover']}")
     cover_ink = HexColor(f"#{style.get('cover_ink', 'FFFFFF')}")
+    copyright_notice = _copyright_notice()
+    page_footer_color = cover_ink
+    raw_show_page = canvas.showPage
+
+    def show_page():
+        """Finish every PDF page with the same ownership mark as its PPTX slide."""
+        canvas.setFillColor(page_footer_color)
+        canvas.setFont("Helvetica", 7)
+        canvas.drawString(55, 18, copyright_notice)
+        raw_show_page()
 
     def paint_background(color, *, cover_page=False):
         canvas.setFillColor(color)
@@ -983,7 +1000,8 @@ def _add_pdf(
     text(subtitle, *subtitle_position[:3], cover_ink, max_width=subtitle_position[3])
     canvas.setFillColor(accent_color)
     canvas.rect(60, 115, 130, 8, stroke=0, fill=1)
-    canvas.showPage()
+    show_page()
+    page_footer_color = muted
 
     for number, spec in enumerate(slides, 1):
         paint_background(background)
@@ -996,7 +1014,7 @@ def _add_pdf(
                 text(spec["takeaway"], 62, 205, 16, HexColor("#CDD5E1"), max_width=760)
             canvas.setFillColor(accent_color)
             canvas.rect(62, 95, 115, 7, stroke=0, fill=1)
-            canvas.showPage()
+            show_page()
             continue
         if layout == "table":
             rows = _table_rows(spec["bullets"])
@@ -1021,7 +1039,7 @@ def _add_pdf(
                         "Helvetica-Bold" if row_index == 0 else "Helvetica",
                         column_width - 18,
                     )
-            canvas.showPage()
+            show_page()
             continue
         if layout == "bar-chart":
             values = _chart_values(spec["bullets"])
@@ -1037,7 +1055,7 @@ def _add_pdf(
                 canvas.roundRect(bar_x, chart_y, slot * 0.6, bar_height, 4, stroke=0, fill=1)
                 text(f"{value:g}", bar_x, chart_y + bar_height + 10, 10, ink, "Helvetica-Bold", slot * 0.6)
                 text(label, bar_x, chart_y - 28, 9, muted, max_width=slot * 0.72)
-            canvas.showPage()
+            show_page()
             continue
         if layout == "donut-chart":
             values = _chart_values(spec["bullets"])
@@ -1057,7 +1075,7 @@ def _add_pdf(
                 canvas.circle(540, legend_y + 4, 5, stroke=0, fill=1)
                 text(f"{label}  {value:g}", 555, legend_y, 12, ink, "Helvetica-Bold", 290)
                 legend_y -= 43
-            canvas.showPage()
+            show_page()
             continue
         if layout in {"flow-diagram", "roadmap"}:
             values = spec["bullets"][:6]
@@ -1076,7 +1094,7 @@ def _add_pdf(
                 canvas.roundRect(xs[index], y, node_width, 70, 8, stroke=1, fill=1)
                 text(str(index + 1), xs[index] + 10, y + 43, 10, accent_color, "Helvetica-Bold")
                 text(value, xs[index] + 30, y + 43, 10, ink, "Helvetica-Bold", node_width - 38)
-            canvas.showPage()
+            show_page()
             continue
         if layout == "org-chart":
             edges = _org_edges(spec["bullets"])
@@ -1098,13 +1116,13 @@ def _add_pdf(
                 canvas.setFillColor(background)
                 canvas.roundRect(child_x, 160, child_width, 65, 8, stroke=1, fill=1)
                 text(child, child_x + 12, 190, 11, ink, "Helvetica-Bold", child_width - 24)
-            canvas.showPage()
+            show_page()
             continue
         if layout == "title-only":
             text(spec["title"], 70, 310, 36, ink, "Helvetica-Bold", 810)
             canvas.setFillColor(accent_color)
             canvas.rect(72, 120, 120, 7, stroke=0, fill=1)
-            canvas.showPage()
+            show_page()
             continue
         text(spec["title"], 52, 478, 35, ink, "Helvetica-Bold", 850)
         if spec["takeaway"]:
@@ -1114,7 +1132,7 @@ def _add_pdf(
             statement = spec["takeaway"] or (spec["bullets"][0] if spec["bullets"] else spec["title"])
             text(statement, 75, 320, 28, ink, "Helvetica-Bold", 810)
             text(str(number), 895, 25, 8, muted)
-            canvas.showPage()
+            show_page()
             continue
         if layout == "quote":
             quote = spec["takeaway"] or (spec["bullets"][0] if spec["bullets"] else spec["title"])
@@ -1123,13 +1141,13 @@ def _add_pdf(
             if spec["bullets"]:
                 text(spec["bullets"][-1], 120, 115, 12, muted, max_width=700)
             text(str(number), 895, 25, 8, muted)
-            canvas.showPage()
+            show_page()
             continue
         if layout == "big-number":
             metric = spec["bullets"][0] if spec["bullets"] else "42%"
             text(metric, 60, 300, 58, accent_color, "Helvetica-Bold", 400)
             text(spec["takeaway"] or spec["title"], 485, 310, 22, ink, "Helvetica-Bold", 410)
-            canvas.showPage()
+            show_page()
             continue
         if layout in {"comparison", "pros-cons"}:
             midpoint = max(1, (len(spec["bullets"]) + 1) // 2)
@@ -1143,7 +1161,7 @@ def _add_pdf(
                 for value in values:
                     text(f"• {value}", x + 22, y, 12, ink, max_width=345)
                     y -= 52
-            canvas.showPage()
+            show_page()
             continue
         if layout in {"timeline", "process"}:
             values = spec["bullets"][:5] or [spec["takeaway"] or spec["title"]]
@@ -1154,7 +1172,7 @@ def _add_pdf(
                 canvas.circle(x + 14, 315, 14, stroke=0, fill=1)
                 text(str(index + 1), x + 10, 310, 9, HexColor("#FFFFFF"), "Helvetica-Bold")
                 text(value, x, 260, 11, ink, "Helvetica-Bold", step_width - 18)
-            canvas.showPage()
+            show_page()
             continue
         if layout in {"checklist", "three-columns", "four-cards", "metric-grid", "agenda"}:
             values = spec["bullets"][:6] or [spec["takeaway"] or spec["title"]]
@@ -1166,7 +1184,7 @@ def _add_pdf(
                 marker = "✓" if layout == "checklist" else f"{index + 1:02d}"
                 text(marker, x + 12, y, 11, accent_color, "Helvetica-Bold")
                 text(value, x + 52, y, 15 if layout == "metric-grid" else 11, ink, "Helvetica-Bold", card_width - 75)
-            canvas.showPage()
+            show_page()
             continue
         if layout in {"image-background", "image-top", "image-bottom"}:
             if image:
@@ -1182,7 +1200,7 @@ def _add_pdf(
                     canvas.drawImage(ImageReader(prepared), 55, image_y, width=850, height=225, mask="auto")
                     body_y = 190 if layout == "image-top" else 385
                     text(spec["takeaway"], 58, body_y, 15, accent_color, "Helvetica-Bold", 820)
-            canvas.showPage()
+            show_page()
             continue
         if layout == "two-column":
             midpoint = max(1, (len(spec["bullets"]) + 1) // 2)
@@ -1195,7 +1213,7 @@ def _add_pdf(
             canvas.setLineWidth(0.5)
             canvas.line(480, 95, 480, 380)
             text(str(number), 895, 25, 8, muted)
-            canvas.showPage()
+            show_page()
             continue
         content_width = 380 if image else 820
         body_x = 510 if image and layout == "image-left" else 58
@@ -1225,7 +1243,7 @@ def _add_pdf(
             if spec["image_caption"]:
                 text(spec["image_caption"], image_x + 2, 105, 9, muted, max_width=390)
         text(str(number), 895, 25, 8, muted)
-        canvas.showPage()
+        show_page()
     canvas.save()
 
 

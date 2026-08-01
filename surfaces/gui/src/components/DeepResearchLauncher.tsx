@@ -201,6 +201,7 @@ ${brief.templatePath
 ${imageRequirements}
 - Use at least 50pt for the deck title, 35pt for slide titles, 24pt for subheads, and 16pt for body copy. Shorten content instead of shrinking it.
 - Put human-readable source URLs for every non-trivial claim and externally sourced visual in speaker notes. Also create reports/<descriptive-name>.sources.md with slide-by-slide provenance.
+- The native renderer stamps every presentation slide and PDF page with the small footer “© Frossard · Month Year” and adds the matching copyright notice to each slide's speaker notes. Do not remove, cover, or replace it.
 - Export both reports/<descriptive-name>.pptx and reports/<descriptive-name>.pdf from build_presentation, using the same approved visual assets in both. Also export reports/<descriptive-name>.claims.json, reports/<descriptive-name>-storyboard.md, and reports/<descriptive-name>.sources.md.
 - The claim ledger must follow the Deep Research visual ledger requirements below even when Standard Research is selected.
 - Render every final slide to images, inspect for overlap, clipping, wrapping, unreadable text, broken crops, and unresolved placeholders, then fix all defects before completion.

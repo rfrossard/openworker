@@ -974,6 +974,7 @@ Requirements:
 - Preserve the approved slide order, titles, takeaways, bullets, and layout values. Do not silently replace a selected layout.
 - Treat recommended_layout as a research recommendation, not a locked command. Preserve the user's selected layout when it differs.
 - Run the presentation-studio skill. Build an editable widescreen PPTX and matching slide PDF with build_presentation.
+- The renderer stamps every slide and PDF page with the small footer “© Frossard · Month Year” and adds the matching copyright notice to each slide's speaker notes. Do not remove, cover, or replace that ownership mark.
 - Use the standard PowerPoint widescreen canvas: 13.333 × 7.5 inches (16:9). Do not use Letter, A4, 4:3, or a custom aspect ratio.
 - Use template_id="${selectedTemplate.id}" and call build_presentation with minimum_images=${visualSlides}.
 - Visual mood: ${mood.label}. ${mood.hint} The deck's visual system must also align with the "${selectedTemplate.name}" template: ${selectedTemplate.description}. Keep one coherent visual language across the whole deck, instead of treating slides as unrelated image prompts.
