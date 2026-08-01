@@ -905,7 +905,10 @@ button.btn.danger { color: var(--accent); }
 .slide-designer-section-copy { color: color-mix(in srgb, var(--slide-bg) 75%, var(--slide-accent)); font-size: clamp(12px, 2.4cqw, 19px); }
 .slide-designer-split, .slide-designer-columns { display: grid; grid-template-columns: 1fr 1fr; align-items: stretch; gap: 6%; }
 .slide-designer-columns > ul { padding: 3% 8% 3% 12%; border-left: 1px solid color-mix(in srgb, var(--slide-ink) 18%, transparent); }
-.slide-designer-image-placeholder { min-height: 145px; display: grid; place-items: center; border-radius: 8px; color: var(--slide-ink); background: linear-gradient(135deg, color-mix(in srgb, var(--slide-accent) 28%, var(--slide-bg)), color-mix(in srgb, var(--slide-accent) 7%, var(--slide-bg))); font-size: 10px; font-weight: 650; }
+.slide-designer-image-placeholder { min-height: 145px; display: grid; align-content: center; gap: 7px; padding: 18px; box-sizing: border-box; border: 1px dashed color-mix(in srgb, var(--slide-ink) 28%, transparent); border-radius: 8px; color: var(--slide-ink); background: linear-gradient(135deg, color-mix(in srgb, var(--slide-accent) 28%, var(--slide-bg)), color-mix(in srgb, var(--slide-accent) 7%, var(--slide-bg))); }
+.slide-designer-image-placeholder span { color: var(--slide-accent); font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.slide-designer-image-placeholder strong { font-size: 13px; }
+.slide-designer-image-placeholder p { display: -webkit-box; margin: 0; overflow: hidden; color: color-mix(in srgb, var(--slide-ink) 78%, transparent); font-size: 10px; font-weight: 500; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
 .slide-designer-big-number { display: flex; align-items: baseline; gap: 5%; margin-top: 8%; }
 .slide-designer-big-number b { color: var(--slide-accent); font-size: clamp(48px, 12cqw, 96px); line-height: .9; }
 .slide-designer-big-number span { max-width: 42%; font-size: clamp(12px, 2.5cqw, 20px); font-weight: 650; }
@@ -1141,6 +1144,13 @@ button.btn.danger { color: var(--accent); }
 .presentation-copilot-review-list strong { font-size: 11px; }
 .presentation-copilot-review-list small { color: var(--faint); font-size: 9.5px; }
 .presentation-copilot-review-list em { color: var(--accent); font-size: 9.5px; font-style: normal; }
+.slide-designer-visual-batch { display: grid; gap: 10px; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.slide-designer-visual-batch header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.slide-designer-visual-batch header > div { display: grid; gap: 3px; }
+.slide-designer-visual-batch header span, .slide-designer-visual-batch p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.slide-designer-visual-batch > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.slide-designer-visual-batch > div > span { overflow: hidden; padding: 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: var(--surface); font-size: 10px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.slide-designer-visual-batch > div > span b { margin-right: 6px; color: var(--accent); }
 @keyframes slide-template-fade { from { filter: saturate(.88); } to { filter: saturate(1.12); } }
 @keyframes slide-template-gradient { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
 @keyframes slide-template-wipe { from { background-position: 0% 0%; } to { background-position: 80% 100%; } }

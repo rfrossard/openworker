@@ -83,6 +83,15 @@ A2A Protocol: https://a2a-protocol.org/latest/
     );
   });
 
+  it("removes compact S-number production prefixes from audience-facing titles", () => {
+    const deck = parseMarkdownDeck(`# Brief
+## S1 - The decision
+Choose the secure option.
+## S2: Evidence first
+Compare the sources.`);
+    expect(deck.slides.map((slide) => slide.title)).toEqual(["The decision", "Evidence first"]);
+  });
+
   it("treats the storyboard preamble as a deck brief rather than a slide", () => {
     const deck = parseMarkdownDeck(`# Storyboard: Agent protocols
 
@@ -396,6 +405,11 @@ Original visual.`);
     expect(prompt).toContain('"visual_plan_data"');
     expect(prompt).toContain('"source_type": "primary"');
     expect(prompt).toContain('"claim_ids": [');
+    expect(prompt).toContain("grouped visual-review batch");
+    expect(prompt).toContain("contact sheet");
+    expect(prompt).toContain("Match template");
+    const playfulPrompt = buildMarkdownSlideDesignerPrompt("reports/plan.md", deck, "atlas", "playful");
+    expect(playfulPrompt).toContain("copyrighted characters");
     const photographicPrompt = buildMarkdownSlideDesignerPrompt("reports/plan.md", deck, "science-studio");
     expect(photographicPrompt).toContain("cover_image_path");
     expect(photographicPrompt).toContain('"photo-right" template treatment');
@@ -500,7 +514,7 @@ Original visual.`);
     fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
     fireEvent.click(screen.getByLabelText("Generate an original visual"));
     fireEvent.click(screen.getByRole("button", { name: "Review deck" }));
-    const create = screen.getByRole("button", { name: "Create in composer" });
+    const create = screen.getByRole("button", { name: "Start visual review" });
     expect((create as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(create);
     expect(screen.getByText("Resolve the required review items before creating the presentation.")).toBeTruthy();
@@ -634,6 +648,8 @@ Original visual.`);
     fireEvent.click(screen.getByRole("button", { name: "Review deck" }));
     expect(screen.getByText("USD 0.0336")).toBeTruthy();
     expect(screen.getByText(/No paid image call happens in this screen/i)).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Visual review batch" })).toBeTruthy();
+    expect(screen.getByText(/A calm editorial scene/)).toBeTruthy();
   });
 
   it("calculates the image ceiling from approved visual slides only", () => {

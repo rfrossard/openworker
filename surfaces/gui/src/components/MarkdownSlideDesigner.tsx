@@ -176,6 +176,14 @@ const CONTENT_ELEMENTS: { id: SlideLayout; label: string; hint: string }[] = [
   { id: "quote", label: "Quote", hint: "Feature a voice" },
 ];
 const GEMINI_IMAGE_ESTIMATE_USD = 0.0336;
+const VISUAL_MOODS = [
+  { id: "auto", label: "Match template", hint: "Keep every visual aligned with the selected presentation theme." },
+  { id: "editorial", label: "Editorial", hint: "Elegant, restrained photography and generous negative space." },
+  { id: "technical", label: "Technical", hint: "Precise, modern, systems-oriented illustration and diagrams." },
+  { id: "playful", label: "Playful", hint: "Warm, animated storybook illustration; never use copyrighted characters." },
+  { id: "cinematic", label: "Cinematic", hint: "Dramatic light, photographic composition, and clear title space." },
+] as const;
+type VisualMood = typeof VISUAL_MOODS[number]["id"];
 
 function cleanInline(value: string): string {
   return value
@@ -205,7 +213,9 @@ function blankSlide(id: string, title: string, takeaway = "", bullets: string[] 
 }
 
 function audienceTitle(value: string): string {
-  return cleanInline(value).replace(/^slide\s+\d+\s*[:.)—–-]\s*/i, "").trim();
+  return cleanInline(value)
+    .replace(/^(?:(?:slide|section)\s*|s)\d+\s*[:.)|—–-]+\s*/i, "")
+    .trim();
 }
 
 function audienceCopy(value: string): string {
@@ -848,8 +858,10 @@ export function buildMarkdownSlideDesignerPrompt(
   path: string,
   deck: ParsedMarkdownDeck,
   templateId: string,
+  visualMood: VisualMood = "auto",
 ): string {
   const selectedTemplate = templateById(templateId);
+  const mood = VISUAL_MOODS.find((item) => item.id === visualMood) || VISUAL_MOODS[0];
   const visualSlides = deck.slides.filter((slide) => slide.imageRequired).length;
   const estimate = presentationImageEstimate(deck);
   const quality = presentationQualityReport(deck, templateId);
@@ -906,8 +918,10 @@ Requirements:
 - Run the presentation-studio skill. Build an editable widescreen PPTX and matching slide PDF with build_presentation.
 - Use the standard PowerPoint widescreen canvas: 13.333 × 7.5 inches (16:9). Do not use Letter, A4, 4:3, or a custom aspect ratio.
 - Use template_id="${selectedTemplate.id}" and call build_presentation with minimum_images=${visualSlides}.
+- Visual mood: ${mood.label}. ${mood.hint} The deck's visual system must also align with the "${selectedTemplate.name}" template: ${selectedTemplate.description}. Keep one coherent visual language across the whole deck, instead of treating slides as unrelated image prompts.
 - Generate images only where image_required=true. Use each approved image_prompt as the art direction. If regenerate_image=true, create a new candidate instead of reusing a prior asset.
-- Before the first paid call, present the approved call count and estimated ceiling above for confirmation. Never exceed it without new user approval.
+- First create one grouped visual-review batch: before any deck rendering, present the total call count and estimated ceiling above for approval. After approval, generate one candidate for every selected slide, save a labeled contact sheet plus individual assets under reports/assets/, and present the candidates for review. Do not render the final PPTX/PDF until the user approves the batch or identifies the slides to regenerate.
+- For regenerated slides, preserve the deck-wide mood, template palette, aspect ratio, and composition system while changing the subject or composition requested by the user. Never exceed the approved batch or estimate without new approval.
 - ${selectedTemplate.composition ? `Generate a separate widescreen cover visual composed specifically for the "${selectedTemplate.composition}" template treatment. Preserve intentional negative space for the title, and pass its exact result.path as cover_image_path.` : "Keep the template's native typographic cover."}
 - For non-image layouts, keep image_required=false unless the user explicitly adds an image later.
 - Preserve semantic rows exactly: tables use pipe-separated cells, charts use "Label | Value", and org charts use "Parent > Child".
@@ -958,7 +972,13 @@ function SlidePreview({
       ))}
     </div>
   );
-  const image = <div className="slide-designer-image-placeholder">Generated visual</div>;
+  const image = (
+    <div className="slide-designer-image-placeholder" data-testid="visual-placeholder">
+      <span>Visual batch</span>
+      <strong>{slide.imagePrompt ? "Queued for review" : "Add a visual direction"}</strong>
+      <p>{slide.imagePrompt || "Describe the subject and composition in Design; images are generated together during Review."}</p>
+    </div>
+  );
   return (
     <div
       className={`slide-designer-preview layout-${slide.layout}`}
@@ -1014,9 +1034,9 @@ function SlidePreview({
       ) : slide.layout === "two-column" ? (
         <div className="slide-designer-columns">{bullets(slide.bullets.slice(0, midpoint))}{bullets(slide.bullets.slice(midpoint))}</div>
       ) : slide.layout === "image-left" ? (
-        <div className="slide-designer-split"><div className="slide-designer-image-placeholder">Generated visual</div>{text}</div>
+        <div className="slide-designer-split">{image}{text}</div>
       ) : slide.layout === "image-right" ? (
-        <div className="slide-designer-split">{text}<div className="slide-designer-image-placeholder">Generated visual</div></div>
+        <div className="slide-designer-split">{text}{image}</div>
       ) : text}
     </div>
   );
@@ -1230,6 +1250,7 @@ export function MarkdownSlideDesigner({
   const [deck, setDeck] = useState<ParsedMarkdownDeck | null>(null);
   const [selected, setSelected] = useState(0);
   const [templateId, setTemplateId] = useState("atlas");
+  const [visualMood, setVisualMood] = useState<VisualMood>("auto");
   const [step, setStep] = useState<"content" | "design" | "review">("content");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1323,7 +1344,7 @@ export function MarkdownSlideDesigner({
       setError("Resolve the required review items before creating the presentation.");
       return;
     }
-    const prompt = buildMarkdownSlideDesignerPrompt(path, deck, templateId);
+    const prompt = buildMarkdownSlideDesignerPrompt(path, deck, templateId, visualMood);
     close();
     window.setTimeout(() => onCreate(prompt), 0);
   };
@@ -1363,6 +1384,13 @@ export function MarkdownSlideDesigner({
                   {templateById(templateId).description}
                   {templateById(templateId).transition ? ` · ${templateById(templateId).transition} transition` : ""}
                 </small>
+              </label>
+              <label className="research-field slide-designer-mood-field">
+                <span>Visual mood</span>
+                <select aria-label="Visual mood" value={visualMood} onChange={(event) => setVisualMood(event.target.value as VisualMood)}>
+                  {VISUAL_MOODS.map((mood) => <option key={mood.id} value={mood.id}>{mood.label}</option>)}
+                </select>
+                <small>{VISUAL_MOODS.find((mood) => mood.id === visualMood)?.hint}</small>
               </label>
             </div>
             {visualPlanNotice && <div className="slide-designer-plan-status">{visualPlanNotice}</div>}
@@ -1446,13 +1474,13 @@ export function MarkdownSlideDesigner({
                     )}
                     <label className="presentation-copilot-toggle">
                       <input type="checkbox" aria-label="Generate an original visual" checked={slide.imageRequired} onChange={(event) => updateSlide({ imageRequired: event.target.checked, regenerateImage: false })} />
-                      <span><b>Generate an original visual</b><small>Nano Banana 2 Lite · approval required before the paid call</small></span>
+                      <span><b>Add to visual review batch</b><small>Nano Banana 2 Lite · generated together after final approval</small></span>
                     </label>
                     {slide.imageRequired && <>
-                      <label className="research-field"><span>Visual direction</span><textarea aria-label="Visual direction" rows={3} placeholder="Describe the subject, composition, mood, and intentional negative space." value={slide.imagePrompt} onChange={(event) => updateSlide({ imagePrompt: event.target.value })} /></label>
+                      <label className="research-field"><span>Visual direction</span><textarea aria-label="Visual direction" rows={3} placeholder="Describe the subject, composition, and intentional negative space. The deck mood is applied automatically." value={slide.imagePrompt} onChange={(event) => updateSlide({ imagePrompt: event.target.value })} /><small className="slide-designer-format-help">This appears in the preview as a placeholder. Images are generated together in Review, not while you edit.</small></label>
                       <label className="presentation-copilot-toggle compact">
                         <input type="checkbox" aria-label="Regenerate this visual" checked={slide.regenerateImage} onChange={(event) => updateSlide({ regenerateImage: event.target.checked })} />
-                        <span><b>Regenerate this visual</b><small>Create a fresh candidate instead of reusing an existing asset.</small></span>
+                        <span><b>Request a new candidate</b><small>Regenerate this slide after reviewing the batch.</small></span>
                       </label>
                     </>}
                   </div>}
@@ -1477,6 +1505,23 @@ export function MarkdownSlideDesigner({
                   <div><span>Estimated image cost</span><b>USD {imageEstimate.estimatedCostUsd.toFixed(4)}</b></div>
                 </div>
                 <p className="presentation-copilot-budget-note">No paid image call happens in this screen. The composer must request your approval before generation and may not exceed this estimate without new approval.</p>
+                {imageEstimate.images > 0 && (
+                  <section className="slide-designer-visual-batch" aria-label="Visual review batch">
+                    <header>
+                      <div>
+                        <strong>Visual review batch</strong>
+                        <span>{imageEstimate.images} planned visual{imageEstimate.images === 1 ? "" : "s"} · {VISUAL_MOODS.find((mood) => mood.id === visualMood)?.label} mood</span>
+                      </div>
+                      <button type="button" className="btn" onClick={() => setStep("design")}>Edit visual plan</button>
+                    </header>
+                    <p>Creating in Composer will ask for one approval, generate the selected candidates together, save a contact sheet, and let you approve or regenerate specific slides before the PPTX is rendered.</p>
+                    <div>
+                      {deck.slides.filter((item) => item.imageRequired).map((item, index) => (
+                        <span key={item.id}><b>{index + 1}</b>{item.title}: {item.imagePrompt || "Visual direction needed"}</span>
+                      ))}
+                    </div>
+                  </section>
+                )}
                 {qualityFixNotice && <div className="presentation-quality-fix-notice">{qualityFixNotice}</div>}
                 <section className="presentation-quality-panel" aria-label="Presentation quality check">
                   <header>
@@ -1537,7 +1582,7 @@ export function MarkdownSlideDesigner({
               <button className="btn" onClick={close}>Cancel</button>
               {step === "content" ? <button className="btn primary" disabled={!deck || loading || !!error} onClick={() => setStep("design")}>Continue to design</button>
               : step === "design" ? <button className="btn primary" disabled={!deck || loading || !!error} onClick={() => setStep("review")}>Review deck</button>
-              : <button className="btn primary" disabled={!deck || loading || (!!error && preflight.passed)} onClick={createInComposer}>Create in composer</button>}
+              : <button className="btn primary" disabled={!deck || loading || (!!error && preflight.passed)} onClick={createInComposer}>{imageEstimate.images ? "Start visual review" : "Create in composer"}</button>}
             </footer>
           </section>
         </div>,
