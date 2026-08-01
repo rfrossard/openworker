@@ -349,9 +349,12 @@ Original visual.`);
       layout: "image-right",
       imageRequired: true,
       claimIds: ["C7"],
-      imagePrompt: expect.stringContaining("Wide field scene"),
+      imagePrompt: "",
       visualReferences: [expect.objectContaining({ sourceType: "licensed", license: "Reference only" })],
     });
+    const recommendation = recommendedVisualDirection(applied.deck.slides[6], "atlas");
+    expect(recommendation).toContain("Visual idea:");
+    expect(recommendation).not.toContain("https://example.com/reference.jpg");
   });
 
   it("preserves Markdown when the companion visual ledger is malformed", () => {
@@ -691,7 +694,7 @@ Original visual.`);
     fireEvent.click(screen.getByLabelText("Generate an original visual"));
     const direction = screen.getByLabelText("Visual direction") as HTMLTextAreaElement;
     expect(direction.value).toContain("Act this quarter");
-    expect(direction.value).toContain("Tron template");
+    expect(direction.value).toContain("Tron presentation template");
     expect(direction.value).toContain("No text, labels, logos");
     fireEvent.change(direction, { target: { value: "My intentional art direction" } });
     fireEvent.click(screen.getByRole("button", { name: "Reset to recommendation" }));
@@ -700,7 +703,7 @@ Original visual.`);
 
   it("produces bounded template-aware visual direction", () => {
     const deck = parseMarkdownDeck("# Deck\n## Decision\nChoose the better option.\n- Evidence\n- Tradeoff");
-    expect(recommendedVisualDirection(deck.slides[0], "paper")).toContain("Paper template");
+    expect(recommendedVisualDirection(deck.slides[0], "paper")).toContain("Paper presentation template");
     expect(recommendedVisualDirection(deck.slides[0], "paper")).toContain("16:9");
   });
 

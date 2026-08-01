@@ -215,19 +215,75 @@ export function recommendedVisualDirection(
 ): string {
   const template = templateById(templateId);
   const mood = VISUAL_MOODS.find((item) => item.id === visualMood) || VISUAL_MOODS[0];
-  const subject = cleanInline(slide.takeaway || slide.title).slice(0, 220) || "the slide's core idea";
-  const supportingContext = slide.bullets.slice(0, 2).map(cleanInline).filter(Boolean).join("; ").slice(0, 220);
+  const message = promptText(slide.takeaway || slide.title).slice(0, 240) || "the slide's core idea";
+  const quotedMessage = message.replace(/[.!?]+$/, "");
+  const title = promptText(slide.title).slice(0, 150) || "the central idea";
+  const supportingContext = slide.bullets.map(promptText).filter(Boolean).slice(0, 2).join("; ").slice(0, 200);
   const textSafeSide = slide.layout === "image-left" ? "right" : slide.layout === "image-right" ? "left" : "left or lower third";
   const composition = slide.layout === "image-background"
-    ? "Use a full-bleed composition with a calm, high-contrast text-safe area"
-    : `Place the focal subject on the ${textSafeSide === "right" ? "left" : "right"}, leaving clean negative space on the ${textSafeSide}`;
+    ? "Full-bleed composition, with a quiet high-contrast area reserved for the slide title and no important detail behind it"
+    : `Place the visual focal point on the ${textSafeSide === "right" ? "left" : "right"}; leave the ${textSafeSide} deliberately calm for slide copy`;
+  const concept = visualConcept([title, message, supportingContext].filter(Boolean).join(" "));
   return [
-    `A widescreen 16:9 original editorial visual for a presentation slide about ${subject}.`,
-    supportingContext ? `Include subtle context from: ${supportingContext}.` : "",
+    `Create an original 16:9 ${concept.medium} that makes this slide's message tangible: “${quotedMessage}”.`,
+    `Visual idea: ${concept.direction}.`,
+    supportingContext ? `Bring in these supporting cues only when they strengthen the story: ${supportingContext}.` : "",
     `${composition}.`,
-    `Visual tone: ${mood.label.toLowerCase()}, aligned with the ${template.name} template (${template.description}).`,
+    `Art direction: ${mood.label.toLowerCase()}, visually coherent with the ${template.name} presentation template.`,
     "No text, labels, logos, watermarks, dashboards, UI, or copyrighted characters.",
   ].filter(Boolean).join(" ");
+}
+
+function promptText(value: string): string {
+  return cleanInline(value)
+    .replace(/https?:\/\/[^\s)]+/gi, "")
+    .replace(/\[[A-Za-z]\d+(?:\s*,\s*[A-Za-z]\d+)*\]/g, "")
+    .replace(/\s+[·•—–-]\s*$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function visualConcept(text: string): { medium: string; direction: string } {
+  const value = text.toLowerCase();
+  if (/(partner|parceir|network|rede|ecosystem|ecossistema|community|comunidade|collabor)/.test(value)) {
+    return {
+      medium: "editorial photograph",
+      direction: "a small, diverse group of independent professionals connecting around a shared worktable; a restrained map, threaded material, or architectural lines subtly suggest a trusted network growing beyond one place",
+    };
+  }
+  if (/(growth|expan|scale|crescimento|escala|launch|lançamento|market|mercado)/.test(value)) {
+    return {
+      medium: "editorial photograph",
+      direction: "a clear moment of forward movement — people or a single physical object crossing from a contained space into a wider horizon — conveying deliberate growth rather than generic success imagery",
+    };
+  }
+  if (/(ai|artificial intelligence|agent|modelo|model|protocol|sistema|system|technology|tecnologia)/.test(value)) {
+    return {
+      medium: "refined conceptual illustration",
+      direction: "one intelligible system metaphor with a human scale: connected components, a decision path, or a hand interacting with a precise physical interface; it should feel useful and believable, not like a glowing generic circuit board",
+    };
+  }
+  if (/(risk|risco|decision|decisão|choice|escolha|trade.?off|tradeoff|challenge|desafio)/.test(value)) {
+    return {
+      medium: "cinematic editorial still life",
+      direction: "a single poised moment of choice, using a forked path, balanced physical objects, or a person considering two clearly different directions; communicate judgment and consequence without literal signage",
+    };
+  }
+  if (/(people|pessoas|team|equipe|workforce|employee|talent|culture|cultura)/.test(value)) {
+    return {
+      medium: "authentic editorial photograph",
+      direction: "a candid human moment that shows the work or relationship described by the slide, with genuine interaction and a specific environment rather than posed stock-photo gestures",
+    };
+  }
+  return {
+    medium: "editorial conceptual image",
+    direction: "one specific, human-scale scene or physical metaphor that expresses the key message, with a clear subject and a sense of cause, change, or consequence — not a literal screenshot or a decorative stock image",
+  };
+}
+
+function usableImageDirection(value: string): string {
+  const cleaned = promptText(value);
+  return /https?:\/\//i.test(value) || cleaned.length < 18 ? "" : cleaned;
 }
 
 function cleanInline(value: string): string {
@@ -447,14 +503,15 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
     const visualReferences = normalizeVisualReferences(markdownVisual?.visual_references);
     const visualSources = strings(markdownVisual?.sources, 30).filter((url) => /^https?:\/\//.test(url));
     const visualClaims = strings(markdownVisual?.claim_ids, 50);
-    const referenceDirection = visualReferences.map((item) => [item.description, item.purpose, item.url].filter(Boolean).join(" · ")).join("; ");
     return {
       ...slide,
       layout: visualLayout,
       recommendedLayout: visualLayout,
       bullets: semanticRows.length ? semanticRows.slice(0, 12) : slide.bullets,
       imageRequired: imageRequired || visualLayout === "image-right",
-      imagePrompt: cleanInline(String(markdownVisual?.image_prompt || "")) || referenceDirection || imagePrompt,
+      // A reference asset is useful evidence, but its URL is not art direction for an
+      // image model. Keep it in visualReferences and only retain an authored prompt.
+      imagePrompt: usableImageDirection(String(markdownVisual?.image_prompt || "")) || usableImageDirection(imagePrompt),
       claimIds: visualClaims,
       sourceUrls: [...new Set([...sourceUrls, ...visualSources])].slice(0, 30),
       visualReferences,
@@ -642,7 +699,6 @@ export function applyResearchVisualPlan(deck: ParsedMarkdownDeck, json: string):
     const quoteText = type === "quote" ? cleanInline(String(quote.text || "")) : "";
     const attribution = type === "quote" ? cleanInline(String(quote.attribution || "")) : "";
     const visualReferences = normalizeVisualReferences(section.visual_references);
-    const referenceDirection = visualReferences.map((item) => [item.description, item.purpose, item.url].filter(Boolean).join(" · ")).join("; ");
     appliedSections += 1;
     return {
       ...slide,
@@ -652,7 +708,7 @@ export function applyResearchVisualPlan(deck: ParsedMarkdownDeck, json: string):
       layout,
       recommendedLayout: layout,
       imageRequired: layoutFromRepresentation(type, data) === "image-right",
-      imagePrompt: referenceDirection || slide.imagePrompt,
+      imagePrompt: usableImageDirection(slide.imagePrompt),
       claimIds: strings(section.claim_ids, 50),
       sourceUrls: strings(section.sources, 30).filter((url) => url.startsWith("https://") || url.startsWith("http://")),
       visualReferences,
