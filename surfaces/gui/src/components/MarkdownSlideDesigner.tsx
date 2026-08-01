@@ -69,6 +69,11 @@ export interface BigNumberParts {
   label: string;
 }
 
+function firstAnnotation(data: Record<string, unknown>): string {
+  const annotation = records(data.annotations || data.highlights, 1)[0] || {};
+  return cleanInline(String(annotation.text || annotation.label || annotation.value || ""));
+}
+
 export function isDisplayMetric(value: string): boolean {
   return /(?:US\$|R\$|[$€£])\s*\d|\d[\d.,]*\s*(?:%|x|million|billion|trillion|milh(?:ão|ões)|bilh(?:ão|ões)|days?|months?|years?)/i.test(value);
 }
@@ -76,8 +81,8 @@ export function isDisplayMetric(value: string): boolean {
 /** Keep the number visually dominant while preserving the claim that explains it. */
 export function bigNumberParts(slide: Pick<MarkdownSlide, "title" | "takeaway" | "bullets" | "visualPlanData">): BigNumberParts {
   const data = slide.visualPlanData || {};
-  const explicitValue = String(data.value || data.metric || data.metric_value || "").trim();
-  const explicitLabel = String(data.label || data.metric_label || data.description || "").trim();
+  const explicitValue = cleanInline(String(data.display_value || data.value || data.metric || data.metric_value || ""));
+  const explicitLabel = cleanInline(String(data.display_label || data.label || data.metric_label || data.description || ""));
   if (explicitValue) return { value: explicitValue, label: explicitLabel || slide.takeaway || slide.title };
   const metricPattern = /(?:(?:US\$|R\$|[$€£])\s*)?\d[\d.,]*(?:\s?(?:bilh(?:ão|ões)|milh(?:ão|ões)|billion|million|trillion|bn?|%|x|k|m))?/gi;
   const selectMetric = (value: string) => {
@@ -558,6 +563,8 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
     const visualClaims = strings(markdownVisual?.claim_ids, 50);
     return {
       ...slide,
+      title: audienceTitle(String(visualData.headline || slide.title)) || slide.title,
+      takeaway: slide.takeaway || audienceCopy(String(visualData.subhead || "")),
       layout: visualLayout,
       recommendedLayout: visualLayout,
       bullets: semanticRows.length ? semanticRows.slice(0, 12) : slide.bullets,
@@ -613,8 +620,8 @@ function normalizeVisualReferences(value: unknown): ResearchVisualReference[] {
 
 function rowsFromRepresentation(type: string, data: Record<string, unknown>): string[] {
   if (type === "big_number") {
-    const value = cleanInline(String(data.value ?? ""));
-    const label = cleanInline(String(data.label || ""));
+    const value = cleanInline(String(data.display_value || data.value || ""));
+    const label = cleanInline(String(data.display_label || data.label || ""));
     const context = cleanInline(String(data.context || data.detail || ""));
     return value ? [[value, label].filter(Boolean).join(" | "), context].filter(Boolean) : [];
   }
@@ -636,23 +643,35 @@ function rowsFromRepresentation(type: string, data: Record<string, unknown>): st
   if (type === "bar_chart" || type === "donut_chart" || type === "chart") {
     return records(data.series, 12).map((item) => {
       const label = cleanInline(String(item.label || ""));
-      const value = typeof item.value === "number" ? String(item.value) : cleanInline(String(item.value || ""));
+      const rawValue = typeof item.value === "number" ? String(item.value) : cleanInline(String(item.value || ""));
+      const unit = cleanInline(String(item.unit || data.unit || ""));
+      const value = rawValue && unit && !rawValue.toLowerCase().includes(unit.toLowerCase()) ? `${rawValue} ${unit}` : rawValue;
       return label && value ? `${label} | ${value}` : "";
     }).filter(Boolean);
   }
   if (type === "org_chart") {
     return records(data.relationships || data.items, 12).map((item) => {
-      const parent = cleanInline(String(item.parent || ""));
-      const child = cleanInline(String(item.child || item.label || ""));
+      const parent = cleanInline(String(item.parent || item.from || ""));
+      const child = cleanInline(String(item.child || item.to || item.label || ""));
       return parent && child ? `${parent} > ${child}` : "";
     }).filter(Boolean);
+  }
+  if (type === "flowchart" || type === "flow_diagram") {
+    const relationships = records(data.relationships, 12).map((item) => {
+      const from = cleanInline(String(item.from || item.parent || ""));
+      const to = cleanInline(String(item.to || item.child || ""));
+      const label = cleanInline(String(item.label || ""));
+      return from && to ? [from, label, to].filter(Boolean).join(" → ") : "";
+    }).filter(Boolean);
+    if (relationships.length) return relationships;
   }
   const items = records(data.items || data.steps || data.nodes, 12);
   return items.map((item) => {
     const date = cleanInline(String(item.date || item.time || ""));
     const label = cleanInline(String(item.label || item.title || item.name || ""));
     const detail = cleanInline(String(item.detail || item.description || ""));
-    return [date, label, detail].filter(Boolean).join(date ? " — " : ": ");
+    const status = cleanInline(String(item.status || ""));
+    return [date, label, detail, status ? `(${status})` : ""].filter(Boolean).join(date ? " — " : ": ");
   }).filter(Boolean);
 }
 
@@ -755,8 +774,8 @@ export function applyResearchVisualPlan(deck: ParsedMarkdownDeck, json: string):
     appliedSections += 1;
     return {
       ...slide,
-      title: audienceTitle(String(section.title || "")) || slide.title,
-      takeaway: quoteText || audienceCopy(String(section.takeaway || "")) || slide.takeaway,
+      title: audienceTitle(String(data.headline || section.title || "")) || slide.title,
+      takeaway: quoteText || audienceCopy(String(section.takeaway || data.subhead || "")) || slide.takeaway,
       bullets: semanticRows.length ? semanticRows.slice(0, 12) : (attribution ? [attribution] : slide.bullets),
       layout,
       recommendedLayout: layout,
@@ -1111,6 +1130,7 @@ export function buildMarkdownSlideDesignerPrompt(
       metric_value: bigNumberParts({ ...slide, visualPlanData }).value,
       metric_label: bigNumberParts({ ...slide, visualPlanData }).label,
     } : {}),
+    visual_annotation: firstAnnotation(visualPlanData),
   }));
   return `Create an editable presentation from this existing Markdown artifact:
 
@@ -1194,6 +1214,7 @@ function SlidePreview({
     : 0;
   const midpoint = Math.ceil(slide.bullets.length / 2);
   const metric = bigNumberParts(slide);
+  const annotation = firstAnnotation(slide.visualPlanData);
   const copyCharacters = [slide.title, slide.takeaway, ...slide.bullets].join(" ").length;
   const density = copyCharacters > 720 ? "dense" : copyCharacters > 440 ? "compact" : "comfortable";
   const bullets = (items: string[]) => (
@@ -1261,7 +1282,7 @@ function SlidePreview({
       ) : slide.layout === "table" ? (
         <div className="slide-designer-table">{slide.bullets.slice(0, 6).map((row, index) => <div key={`${row}-${index}`}>{row.split("|").map((cell, cellIndex) => <span key={`${cell}-${cellIndex}`}>{cell.trim()}</span>)}</div>)}</div>
       ) : slide.layout === "bar-chart" ? (
-        <div className="slide-designer-bar-chart">{slide.bullets.slice(0, 6).map((row, index) => { const [label, raw] = row.split("|"); const value = Math.max(8, Math.min(100, Number(raw?.replace(/[%,$]/g, "")) || (index + 1) * 18)); return <div key={`${row}-${index}`}><span>{label?.trim()}</span><i style={{ width: `${value}%` }} /><b>{raw?.trim()}</b></div>; })}</div>
+        <div className="slide-designer-bar-chart">{slide.bullets.slice(0, 6).map((row, index) => { const [label, raw] = row.split("|"); const value = Math.max(8, Math.min(100, Number(raw?.replace(/[^0-9.]/g, "")) || (index + 1) * 18)); return <div key={`${row}-${index}`}><span>{label?.trim()}</span><i style={{ width: `${value}%` }} /><b>{raw?.trim()}</b></div>; })}{annotation && <small>{annotation}</small>}</div>
       ) : slide.layout === "donut-chart" ? (
         <div className="slide-designer-donut-chart"><i /><div>{slide.bullets.slice(0, 5).map((row, index) => <span key={`${row}-${index}`}>{row.split("|")[0]?.trim()}</span>)}</div></div>
       ) : slide.layout === "radar-chart" ? (

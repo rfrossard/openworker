@@ -260,6 +260,30 @@ The first milestone is complete.
     }).value).toBe("US$ 47 bilhões");
   });
 
+  it("uses explicit display fields and semantic relationship data without showing metadata", () => {
+    const deck = parseMarkdownDeck(`# Research
+## Slide 1: Operating model
+\`\`\`openworker-visual
+{
+  "type": "big_number",
+  "data": {"display_value": "US$ 47 billion", "display_label": "future lease obligations", "value": "2019", "label": "raw fallback"}
+}
+\`\`\`
+## Slide 2: Decision path
+\`\`\`openworker-visual
+{
+  "type": "flowchart",
+  "data": {"headline": "A verified decision path", "relationships": [{"from": "Screen", "label": "if supported", "to": "Validate"}]}
+}
+\`\`\``);
+    expect(bigNumberParts(deck.slides[0])).toEqual({ value: "US$ 47 billion", label: "future lease obligations" });
+    expect(deck.slides[1]).toMatchObject({
+      title: "A verified decision path",
+      bullets: ["Screen → if supported → Validate"],
+      layout: "flow-diagram",
+    });
+  });
+
   it("blocks a Big Number without a meaningful display metric", () => {
     const deck = parseMarkdownDeck(`# Research\n## Unsupported metric\nA material change happened.\n\`\`\`openworker-visual\n{"type":"big_number","data":{"value":"one","label":"change"}}\n\`\`\``);
     expect(isDisplayMetric(bigNumberParts(deck.slides[0]).value)).toBe(false);

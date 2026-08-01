@@ -111,6 +111,7 @@ _SCHEMA = {
                             "takeaway": {"type": "string"},
                             "metric_value": {"type": "string", "description": "Large metric for a big-number slide."},
                             "metric_label": {"type": "string", "description": "Plain-language explanation for the large metric."},
+                            "visual_annotation": {"type": "string", "description": "One concise, evidence-backed annotation for a structured visual."},
                             "bullets": {
                                 "type": "array",
                                 "items": {"type": "string"},
@@ -318,6 +319,7 @@ def _normalize_slides(root: Path, slides: list[dict[str, Any]]) -> list[dict[str
                 "layout": str(item.get("layout") or "auto").strip().lower(),
                 "metric_value": str(item.get("metric_value") or "").strip()[:80],
                 "metric_label": str(item.get("metric_label") or "").strip()[:220],
+                "visual_annotation": str(item.get("visual_annotation") or "").strip()[:180],
             }
         )
         if normalized[-1]["layout"] not in _LAYOUTS:
@@ -779,6 +781,8 @@ def _add_pptx(
                 chart.has_legend = False
             chart.series[0].format.fill.solid()
             chart.series[0].format.fill.fore_color.rgb = accent_rgb
+            if spec["visual_annotation"]:
+                textbox(slide, spec["visual_annotation"], 0.88, 6.53, 11.35, 0.26, 11, muted, False)
             continue
         if layout in {"flow-diagram", "roadmap"}:
             values = spec["bullets"][:6]

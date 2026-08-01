@@ -189,7 +189,7 @@ def test_build_presentation_supports_editable_semantic_visuals(tmp_path):
         title="Semantic visual language",
         slides=[
             {"title": "A comparison table", "layout": "table", "bullets": ["Option | Cost | Speed", "A | 10 | Fast", "B | 15 | Medium"], "sources": ["https://example.com/table"]},
-            {"title": "Growth by segment", "layout": "bar-chart", "bullets": ["Core | 72", "New | 44", "Partner | 28"], "sources": ["https://example.com/chart"]},
+            {"title": "Growth by segment", "layout": "bar-chart", "bullets": ["Core | 72", "New | 44", "Partner | 28"], "visual_annotation": "Core remains the largest verified segment.", "sources": ["https://example.com/chart"]},
             {"title": "Revenue mix", "layout": "donut-chart", "bullets": ["Product | 55", "Services | 30", "Other | 15"], "sources": ["https://example.com/mix"]},
             {"title": "Decision flow", "layout": "flow-diagram", "bullets": ["Discover", "Validate", "Build", "Measure"]},
             {"title": "Accountable team", "layout": "org-chart", "bullets": ["CEO > Product", "CEO > Engineering", "CEO > Sales"]},
@@ -212,6 +212,8 @@ def test_build_presentation_supports_editable_semantic_visuals(tmp_path):
     bar_chart = next(shape.chart for shape in presentation.slides[2].shapes if getattr(shape, "has_chart", False))
     assert bar_chart.chart_type == 57  # BAR_CLUSTERED
     assert bar_chart.plots[0].has_data_labels is True
+    chart_text = "\n".join(shape.text for shape in presentation.slides[2].shapes if getattr(shape, "has_text_frame", False))
+    assert "Core remains the largest verified segment." in chart_text
     assert len(PdfReader(tmp_path / "semantic.pdf").pages) == 7
 
 
