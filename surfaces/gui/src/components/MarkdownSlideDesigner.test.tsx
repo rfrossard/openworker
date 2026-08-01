@@ -11,6 +11,7 @@ import {
   presentationImageEstimate,
   presentationPreflight,
   presentationQualityReport,
+  recommendedVisualDirection,
 } from "./MarkdownSlideDesigner";
 
 afterEach(() => {
@@ -522,7 +523,7 @@ Original visual.`);
     expect((screen.getByLabelText("Generate an original visual") as HTMLInputElement).checked).toBe(true);
   });
 
-  it("explains blocked creation instead of leaving an inert composer button", async () => {
+  it("supplies a recommendation so visual review is not blocked by an empty direction", async () => {
     vi.spyOn(api, "readArtifact").mockResolvedValue({
       ok: true,
       path: "reports/strategy.md",
@@ -538,7 +539,7 @@ Original visual.`);
     const create = screen.getByRole("button", { name: "Start visual review" });
     expect((create as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(create);
-    expect(screen.getByText("Resolve the required review items before creating the presentation.")).toBeTruthy();
+    expect(screen.queryByText("Resolve the required review items before creating the presentation.")).toBeNull();
   });
 
   it("applies template tokens to the preview and offers twenty-eight slide styles", async () => {
@@ -675,6 +676,34 @@ Original visual.`);
     expect(screen.getByText(/A calm editorial scene/)).toBeTruthy();
   });
 
+  it("prefills an editable visual recommendation from the slide and selected template", async () => {
+    vi.spyOn(api, "readArtifact").mockResolvedValue({
+      ok: true,
+      path: "reports/strategy.md",
+      kind: "markdown",
+      content: "# Strategy\n## The choice\nAct this quarter.\n- Move now",
+    });
+    render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
+    await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
+    fireEvent.change(screen.getByLabelText("Presentation template"), { target: { value: "tron" } });
+    fireEvent.click(screen.getByLabelText("Generate an original visual"));
+    const direction = screen.getByLabelText("Visual direction") as HTMLTextAreaElement;
+    expect(direction.value).toContain("Act this quarter");
+    expect(direction.value).toContain("Tron template");
+    expect(direction.value).toContain("No text, labels, logos");
+    fireEvent.change(direction, { target: { value: "My intentional art direction" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reset to recommendation" }));
+    expect(direction.value).toContain("Act this quarter");
+  });
+
+  it("produces bounded template-aware visual direction", () => {
+    const deck = parseMarkdownDeck("# Deck\n## Decision\nChoose the better option.\n- Evidence\n- Tradeoff");
+    expect(recommendedVisualDirection(deck.slides[0], "paper")).toContain("Paper template");
+    expect(recommendedVisualDirection(deck.slides[0], "paper")).toContain("16:9");
+  });
+
   it("calculates the image ceiling from approved visual slides only", () => {
     const deck = parseMarkdownDeck("# Deck\n## One\nFirst\n## Two\nSecond");
     deck.slides[1].imageRequired = true;
@@ -750,9 +779,9 @@ Original visual.`);
     fireEvent.click(screen.getByRole("button", { name: "Review deck" }));
     expect(screen.getByRole("region", { name: "Presentation quality check" })).toBeTruthy();
     expect(screen.getByText("Presentation Quality Check")).toBeTruthy();
-    expect(screen.getByText("0/1")).toBeTruthy();
+    expect(screen.getByText("1/1")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Fix automatically" }));
-    expect(screen.getByText(/safe fixes applied/i)).toBeTruthy();
+    expect(screen.getByText(/safe fix applied/i)).toBeTruthy();
     expect(screen.getByText("All editable-content checks passed.")).toBeTruthy();
   });
 

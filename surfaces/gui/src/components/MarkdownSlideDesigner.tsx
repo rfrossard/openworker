@@ -204,6 +204,32 @@ const VISUAL_MOODS = [
 ] as const;
 type VisualMood = typeof VISUAL_MOODS[number]["id"];
 
+/**
+ * A starting point, not a hidden instruction: users see and can freely rewrite it.
+ * Keep the recommendation bounded because slide content is an untrusted artifact.
+ */
+export function recommendedVisualDirection(
+  slide: MarkdownSlide,
+  templateId: string,
+  visualMood: VisualMood = "auto",
+): string {
+  const template = templateById(templateId);
+  const mood = VISUAL_MOODS.find((item) => item.id === visualMood) || VISUAL_MOODS[0];
+  const subject = cleanInline(slide.takeaway || slide.title).slice(0, 220) || "the slide's core idea";
+  const supportingContext = slide.bullets.slice(0, 2).map(cleanInline).filter(Boolean).join("; ").slice(0, 220);
+  const textSafeSide = slide.layout === "image-left" ? "right" : slide.layout === "image-right" ? "left" : "left or lower third";
+  const composition = slide.layout === "image-background"
+    ? "Use a full-bleed composition with a calm, high-contrast text-safe area"
+    : `Place the focal subject on the ${textSafeSide === "right" ? "left" : "right"}, leaving clean negative space on the ${textSafeSide}`;
+  return [
+    `A widescreen 16:9 original editorial visual for a presentation slide about ${subject}.`,
+    supportingContext ? `Include subtle context from: ${supportingContext}.` : "",
+    `${composition}.`,
+    `Visual tone: ${mood.label.toLowerCase()}, aligned with the ${template.name} template (${template.description}).`,
+    "No text, labels, logos, watermarks, dashboards, UI, or copyrighted characters.",
+  ].filter(Boolean).join(" ");
+}
+
 function cleanInline(value: string): string {
   return value
     .replace(/!\[[^\]]*]\([^)]*\)/g, "")
@@ -1607,11 +1633,11 @@ export function MarkdownSlideDesigner({
                       </div>
                     )}
                     <label className="presentation-copilot-toggle">
-                      <input type="checkbox" aria-label="Generate an original visual" checked={slide.imageRequired} onChange={(event) => updateSlide({ imageRequired: event.target.checked, regenerateImage: false })} />
+                      <input type="checkbox" aria-label="Generate an original visual" checked={slide.imageRequired} onChange={(event) => updateSlide({ imageRequired: event.target.checked, imagePrompt: event.target.checked && !slide.imagePrompt.trim() ? recommendedVisualDirection(slide, templateId, visualMood) : slide.imagePrompt, regenerateImage: false })} />
                       <span><b>Add to visual review batch</b><small>Nano Banana 2 Lite · generated together after final approval</small></span>
                     </label>
                     {slide.imageRequired && <>
-                      <label className="research-field"><span>Visual direction</span><textarea aria-label="Visual direction" rows={3} placeholder="Describe the subject, composition, and intentional negative space. The deck mood is applied automatically." value={slide.imagePrompt} onChange={(event) => updateSlide({ imagePrompt: event.target.value })} /><small className="slide-designer-format-help">This appears in the preview as a placeholder. Images are generated together in Review, not while you edit.</small></label>
+                      <label className="research-field"><span>Visual direction</span><textarea aria-label="Visual direction" rows={5} value={slide.imagePrompt || recommendedVisualDirection(slide, templateId, visualMood)} onChange={(event) => updateSlide({ imagePrompt: event.target.value })} /><small className="slide-designer-format-help">This editable recommendation uses this slide's content and the selected template. Images are generated together in Review, not while you edit.</small><button type="button" className="slide-designer-reset-prompt" onClick={() => updateSlide({ imagePrompt: recommendedVisualDirection(slide, templateId, visualMood) })}>Reset to recommendation</button></label>
                       <label className="presentation-copilot-toggle compact">
                         <input type="checkbox" aria-label="Regenerate this visual" checked={slide.regenerateImage} onChange={(event) => updateSlide({ regenerateImage: event.target.checked })} />
                         <span><b>Request a new candidate</b><small>Regenerate this slide after reviewing the batch.</small></span>
@@ -1622,7 +1648,7 @@ export function MarkdownSlideDesigner({
                 {step === "design" ? <aside className="slide-designer-layouts" aria-label="Slide styles">
                   <strong>Choose a style</strong>
                   <span>The preview updates immediately.</span>
-                  {LAYOUTS.map((layout, index) => <div className="slide-designer-layout-option" key={layout.id}>{index === 0 || LAYOUTS[index - 1].category !== layout.category ? <h4>{layout.category}</h4> : null}<button className={slide.layout === layout.id ? "selected" : ""} aria-pressed={slide.layout === layout.id} onClick={() => updateSlide({ layout: layout.id, imageRequired: IMAGE_LAYOUTS.includes(layout.id) || slide.imageRequired })} onKeyDown={(event) => selectLayoutByKeyboard(event, index)}><strong>{layout.label}</strong><small>{layout.description}</small></button></div>)}
+                  {LAYOUTS.map((layout, index) => <div className="slide-designer-layout-option" key={layout.id}>{index === 0 || LAYOUTS[index - 1].category !== layout.category ? <h4>{layout.category}</h4> : null}<button className={slide.layout === layout.id ? "selected" : ""} aria-pressed={slide.layout === layout.id} onClick={() => { const becomesVisual = IMAGE_LAYOUTS.includes(layout.id); updateSlide({ layout: layout.id, imageRequired: becomesVisual || slide.imageRequired, imagePrompt: becomesVisual && !slide.imagePrompt.trim() ? recommendedVisualDirection({ ...slide, layout: layout.id }, templateId, visualMood) : slide.imagePrompt }); }} onKeyDown={(event) => selectLayoutByKeyboard(event, index)}><strong>{layout.label}</strong><small>{layout.description}</small></button></div>)}
                 </aside> : <aside className="presentation-copilot-guidance">
                   <strong>Story check</strong>
                   <span>Confirm the sequence, one message per slide, and a clear progression toward the conclusion.</span>
