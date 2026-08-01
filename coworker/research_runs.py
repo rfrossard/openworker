@@ -40,6 +40,48 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _normalise_plan_steps(
+    value: Any, *, fallback_plan: Optional[list[str]] = None
+) -> list[dict[str, Any]]:
+    """Return durable, UI-friendly research-plan steps.
+
+    Older projects store a simple ``plan`` string list.  Keep that format working
+    while making the richer step representation the source for checklist state and
+    ordering.  The execution plan is always derived from the checked steps.
+    """
+    raw_steps = value if isinstance(value, list) else []
+    steps: list[dict[str, Any]] = []
+    used_ids: set[str] = set()
+    for index, raw in enumerate(raw_steps[:100]):
+        if not isinstance(raw, dict):
+            continue
+        text = str(raw.get("text") or "").strip()[:500]
+        if not text:
+            continue
+        step_id = str(raw.get("id") or f"plan-{index + 1}").strip()[:100]
+        if not step_id or step_id in used_ids:
+            step_id = f"plan-{index + 1}"
+        used_ids.add(step_id)
+        steps.append(
+            {
+                "id": step_id,
+                "text": text,
+                "enabled": bool(raw.get("enabled", True)),
+            }
+        )
+    if steps:
+        return steps
+    return [
+        {"id": f"plan-{index + 1}", "text": text, "enabled": True}
+        for index, item in enumerate(fallback_plan or [])
+        if (text := str(item).strip()[:500])
+    ]
+
+
+def _enabled_plan(steps: list[dict[str, Any]]) -> list[str]:
+    return [str(step["text"]) for step in steps if step.get("enabled")]
+
+
 @dataclass
 class ResearchRun:
     run_id: str
@@ -47,6 +89,7 @@ class ResearchRun:
     question: str
     depth: str
     plan: list[str]
+    plan_steps: list[dict[str, Any]] = field(default_factory=list)
     method: str = "standard"
     deliverable: str = "report"
     audience: str = ""
@@ -98,6 +141,19 @@ class ResearchRun:
                 for item in known.get("claims", [])
                 if isinstance(item, dict)
             ]
+        raw_plan = known.get("plan", [])
+        if not isinstance(raw_plan, list):
+            raw_plan = []
+        clean_plan = [
+            str(item).strip()[:500]
+            for item in raw_plan
+            if str(item).strip()
+        ]
+        known["plan_steps"] = _normalise_plan_steps(
+            known.get("plan_steps"), fallback_plan=clean_plan
+        )
+        enabled_plan = _enabled_plan(known["plan_steps"])
+        known["plan"] = enabled_plan or clean_plan
         if known.get("method") not in RESEARCH_METHODS:
             known["method"] = "standard"
         if known.get("deliverable") not in RESEARCH_DELIVERABLES:
@@ -162,6 +218,7 @@ class ResearchRunStore:
         question: str,
         depth: str,
         plan: list[str],
+        plan_steps: Optional[list[dict[str, Any]]] = None,
         method: str = "standard",
         deliverable: str = "report",
         audience: str = "",
@@ -179,7 +236,9 @@ class ResearchRunStore:
         question = question.strip()
         if not question:
             raise ValueError("Research question is required.")
-        clean_plan = [str(item).strip() for item in plan if str(item).strip()]
+        clean_plan = [str(item).strip()[:500] for item in plan if str(item).strip()]
+        clean_steps = _normalise_plan_steps(plan_steps, fallback_plan=clean_plan)
+        clean_plan = _enabled_plan(clean_steps)
         if not clean_plan:
             raise ValueError("Research plan must contain at least one step.")
         method = str(method).strip().lower()
@@ -206,6 +265,7 @@ class ResearchRunStore:
             question=question,
             depth=depth,
             plan=clean_plan,
+            plan_steps=clean_steps,
             method=method,
             deliverable=deliverable,
             audience=audience,
@@ -235,6 +295,7 @@ class ResearchRunStore:
             "question",
             "depth",
             "plan",
+            "plan_steps",
             "method",
             "deliverable",
             "audience",
@@ -252,8 +313,19 @@ class ResearchRunStore:
             run = self._runs.get(run_id)
             if run is None:
                 return None
+            if "plan_steps" in changes:
+                steps = _normalise_plan_steps(changes.get("plan_steps"))
+                enabled_plan = _enabled_plan(steps)
+                if not enabled_plan:
+                    raise ValueError(
+                        "Research plan must contain at least one checked step."
+                    )
+                run.plan_steps = steps
+                run.plan = enabled_plan
             for key, value in changes.items():
                 if key not in allowed:
+                    continue
+                if key == "plan_steps":
                     continue
                 if key == "status" and value not in RESEARCH_STATUSES:
                     raise ValueError("Invalid research status.")
@@ -276,6 +348,10 @@ class ResearchRunStore:
                     if not value:
                         raise ValueError(
                             "Research plan must contain at least one step."
+                        )
+                    if "plan_steps" not in changes:
+                        run.plan_steps = _normalise_plan_steps(
+                            None, fallback_plan=value
                         )
                 if key == "method":
                     value = str(value).strip().lower()

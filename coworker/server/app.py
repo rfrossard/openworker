@@ -567,6 +567,7 @@ def create_app(manager: SessionManager) -> FastAPI:
             question=str(body.get("question", "")),
             depth=str(body.get("depth", "standard")),
             plan=list(body.get("plan") or []),
+            plan_steps=list(body.get("plan_steps") or []),
             method=str(body.get("method", "standard")),
             deliverable=str(body.get("deliverable", "report")),
             audience=str(body.get("audience", "")),

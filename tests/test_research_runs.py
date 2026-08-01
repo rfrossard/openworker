@@ -108,6 +108,44 @@ def test_planned_research_project_can_be_edited_and_reopened(tmp_path):
     assert restored.plan == ["Find primary sources", "Compare evidence"]
 
 
+def test_research_plan_steps_preserve_checkbox_state_and_order(tmp_path):
+    path = tmp_path / "research-runs.json"
+    store = ResearchRunStore(path)
+    created = store.create(
+        session_id="session-a",
+        question="Plan the research",
+        depth="standard",
+        plan=["Fallback"],
+        plan_steps=[
+            {"id": "sources", "text": "Find primary sources", "enabled": True},
+            {"id": "skip", "text": "Optional social scan", "enabled": False},
+            {"id": "synthesis", "text": "Synthesize findings", "enabled": True},
+        ],
+    )
+
+    assert created.plan == ["Find primary sources", "Synthesize findings"]
+    assert created.plan_steps[1]["enabled"] is False
+    restored = ResearchRunStore(path).list("session-a")[0]
+    assert [step["id"] for step in restored.plan_steps] == ["sources", "skip", "synthesis"]
+
+    updated = store.update(
+        created.run_id,
+        plan_steps=[
+            {"id": "synthesis", "text": "Synthesize findings", "enabled": True},
+            {"id": "sources", "text": "Find primary sources", "enabled": False},
+        ],
+    )
+    assert updated is not None
+    assert updated.plan == ["Synthesize findings"]
+    assert [step["id"] for step in updated.plan_steps] == ["synthesis", "sources"]
+
+    with pytest.raises(ValueError, match="checked step"):
+        store.update(
+            created.run_id,
+            plan_steps=[{"id": "sources", "text": "Find sources", "enabled": False}],
+        )
+
+
 def test_unknown_research_fields_survive_round_trip(tmp_path):
     path = tmp_path / "research-runs.json"
     path.write_text(

@@ -41,13 +41,14 @@ Detailed implementation tracking lives in
 Available:
 
 - guided Deep Research;
+- editable, checkable, and reorderable research plans that persist with the run;
 - claim decomposition and grounded claim ledger;
 - source/evidence artifacts and missing-evidence visibility;
 - structured presentation candidates.
 
 Next:
 
-- visible parallel research lanes;
+- derive visible parallel research lanes from the approved plan;
 - managed fan-out with agent and budget limits;
 - source deduplication, freshness, credibility, and conflict views;
 - adaptive new lanes driven by evidence gaps and model routing.

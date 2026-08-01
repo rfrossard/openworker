@@ -104,7 +104,7 @@ describe("Deep Research launcher", () => {
     const onCreate = vi.fn();
     render(<DeepResearchLauncher sessionId="session-a" onCreate={onCreate} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Deep Research" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Deep Research" }).slice(-1)[0]);
     fireEvent.change(screen.getByLabelText("Research question"), {
       target: { value: "Compare secure browser frameworks" },
     });
@@ -126,6 +126,7 @@ describe("Deep Research launcher", () => {
     expect(request.deliverable).toBe("report");
     expect(request.image_mode).toBe("generate");
     expect(request.image_quality).toBe("medium");
+    expect(request.plan_steps).toHaveLength(4);
     fetchMock.mockRestore();
   });
 
@@ -170,7 +171,7 @@ describe("Deep Research launcher", () => {
     fireEvent.change(screen.getByLabelText("Research question"), {
       target: { value: "Updated question" },
     });
-    fireEvent.change(screen.getByLabelText("Research plan"), {
+    fireEvent.change(screen.getByLabelText("Research plan step 1"), {
       target: { value: "Updated step" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save to composer" }));
@@ -182,6 +183,28 @@ describe("Deep Research launcher", () => {
     );
     expect(onCreate.mock.calls[0][0]).toContain("Updated question");
     expect(onCreate.mock.calls[0][0]).toContain("Updated step");
+    fetchMock.mockRestore();
+  });
+
+  it("lets the user select, reorder, and edit the executable research steps", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      json: async () => ({ ok: true, run: { run_id: "research-plan", session_id: "session-a" } }),
+    } as Response);
+    const onCreate = vi.fn();
+    render(<DeepResearchLauncher sessionId="session-a" onCreate={onCreate} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Deep Research" }).slice(-1)[0]);
+    fireEvent.change(screen.getByLabelText("Research question"), { target: { value: "Plan test" } });
+    fireEvent.click(screen.getByLabelText("Include step 2"));
+    fireEvent.click(screen.getByLabelText("Move step 4 up"));
+    fireEvent.change(screen.getByLabelText("Research plan step 3"), { target: { value: "Finish with a decision" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue in composer" }));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    const request = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(request.plan).not.toContain("Find primary sources and strong independent coverage");
+    expect(request.plan_steps[2].text).toBe("Finish with a decision");
+    expect(request.plan_steps.some((step: { enabled: boolean }) => !step.enabled)).toBe(true);
     fetchMock.mockRestore();
   });
 });

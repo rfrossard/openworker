@@ -90,7 +90,7 @@ use DRM. OpenWorker does not promise to bypass those controls.
 - Model keys and connector credentials stay in the local secret store.
 - Consequential tool calls are approval-gated.
 - Browser sessions, approvals, files, and evidence are isolated by OpenWorker session.
-- Local releases use monotonic checkpoint tags and private GitHub synchronization.
+- Local releases use monotonic checkpoint tags and explicit, protected GitHub synchronization.
 - The installed app is backed up before replacement and critical packaged/installed
   binary checksums are compared.
 - The latest rollback instructions are in [ROLLBACK.md](ROLLBACK.md).

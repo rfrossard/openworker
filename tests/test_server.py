@@ -97,6 +97,7 @@ def test_research_run_rest_is_persistent_and_session_scoped(tmp_path):
     assert run["status"] == "planned"
     assert run["source_limit"] == 10
 
+
     restarted = SessionManager(
         workspace=tmp_path,
         data_dir=tmp_path / "state",
@@ -111,6 +112,32 @@ def test_research_run_rest_is_persistent_and_session_scoped(tmp_path):
         restored_client.get("/v1/sessions/other-session/research-runs").json()["runs"]
         == []
     )
+
+
+def test_research_run_rest_accepts_structured_plan_steps(tmp_path):
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "state",
+        provider=ScriptedProvider([]),
+    )
+    client = TestClient(create_app(manager))
+
+    created = client.post(
+        "/v1/sessions/research-session/research-runs",
+        json={
+            "question": "Compare options",
+            "depth": "standard",
+            "plan": ["Legacy fallback"],
+            "plan_steps": [
+                {"id": "first", "text": "Collect evidence", "enabled": True},
+                {"id": "later", "text": "Optional scan", "enabled": False},
+            ],
+        },
+    ).json()
+
+    assert created["ok"] is True
+    assert created["run"]["plan"] == ["Collect evidence"]
+    assert created["run"]["plan_steps"][1]["enabled"] is False
 
 
 def test_research_run_computes_new_artifacts_and_browser_activity(

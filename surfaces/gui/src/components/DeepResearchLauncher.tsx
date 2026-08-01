@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { createResearchRun, updateResearchRun, type ArtifactInfo, type ResearchRun } from "../api";
+import { createResearchRun, updateResearchRun, type ArtifactInfo, type ResearchPlanStep, type ResearchRun } from "../api";
 import { PRESENTATION_TEMPLATES, templateById } from "../presentationTemplates";
 import { Icon } from "./Icon";
 
@@ -9,7 +9,7 @@ export type ResearchDepth = "quick" | "standard" | "deep";
 interface ResearchBrief {
   question: string;
   depth: ResearchDepth;
-  plan: string;
+  plan: string | string[];
   method?: "standard" | "grounded_claims";
   deliverable?: "report" | "presentation";
   audience?: string;
@@ -21,12 +21,20 @@ interface ResearchBrief {
   templatePath?: string;
 }
 
-const DEFAULT_PLAN = [
+const DEFAULT_PLAN_TEXT = [
   "Define the question, scope, and decision criteria",
   "Find primary sources and strong independent coverage",
   "Compare evidence, dates, and conflicting claims",
   "Synthesize findings, limitations, and recommended next steps",
-].join("\n");
+];
+
+const makePlanSteps = (plan: string[]): ResearchPlanStep[] =>
+  plan.map((text, index) => ({ id: `plan-${index + 1}`, text, enabled: true }));
+
+const DEFAULT_PLAN = makePlanSteps(DEFAULT_PLAN_TEXT);
+
+const enabledPlan = (steps: ResearchPlanStep[]) =>
+  steps.map((step) => step.text.trim()).filter((text, index) => steps[index]?.enabled && Boolean(text));
 
 const DEPTH_SETTINGS: Record<ResearchDepth, { sources: string; label: string }> = {
   quick: { sources: "at least 5 credible sources", label: "Quick" },
@@ -35,8 +43,7 @@ const DEPTH_SETTINGS: Record<ResearchDepth, { sources: string; label: string }> 
 };
 
 export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): string {
-  const plan = brief.plan
-    .split("\n")
+  const plan = (Array.isArray(brief.plan) ? brief.plan : brief.plan.split("\n"))
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line, index) => `${index + 1}. ${line.replace(/^\d+[.)]\s*/, "")}`)
@@ -248,7 +255,7 @@ export function DeepResearchLauncher({
   const [imageQuality, setImageQuality] = useState<"low" | "medium" | "high">("medium");
   const [templateId, setTemplateId] = useState("atlas");
   const [templatePath, setTemplatePath] = useState("");
-  const [plan, setPlan] = useState(DEFAULT_PLAN);
+  const [planSteps, setPlanSteps] = useState<ResearchPlanStep[]>(DEFAULT_PLAN);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -263,7 +270,7 @@ export function DeepResearchLauncher({
     setVisualDirection(editingRun.visual_direction || "");
     setImageMode(editingRun.image_mode || "generate");
     setImageQuality(editingRun.image_quality || "medium");
-    setPlan(editingRun.plan.join("\n"));
+    setPlanSteps(editingRun.plan_steps?.length ? editingRun.plan_steps : makePlanSteps(editingRun.plan));
     setError("");
     setOpen(true);
   }, [editingRun]);
@@ -280,14 +287,37 @@ export function DeepResearchLauncher({
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [open, onEditingClose]);
 
+  const updatePlanStep = (id: string, changes: Partial<ResearchPlanStep>) => {
+    setPlanSteps((steps) => steps.map((step) => step.id === id ? { ...step, ...changes } : step));
+  };
+
+  const movePlanStep = (index: number, direction: -1 | 1) => {
+    setPlanSteps((steps) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= steps.length) return steps;
+      const next = [...steps];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  };
+
+  const addPlanStep = () => {
+    setPlanSteps((steps) => [...steps, { id: `plan-${Date.now()}`, text: "", enabled: true }]);
+  };
+
+  const removePlanStep = (id: string) => {
+    setPlanSteps((steps) => steps.length > 1 ? steps.filter((step) => step.id !== id) : steps);
+  };
+
   const create = async () => {
-    if (!question.trim() || busy) return;
+    const executablePlan = enabledPlan(planSteps);
+    if (!question.trim() || !executablePlan.length || busy) return;
     setBusy(true);
     setError("");
     const brief = {
       question,
       depth,
-      plan,
+      plan: executablePlan,
       method,
       deliverable,
       audience,
@@ -302,7 +332,8 @@ export function DeepResearchLauncher({
       const input = {
         question: question.trim(),
         depth,
-        plan: plan.split("\n").map((item) => item.trim()).filter(Boolean),
+        plan: executablePlan,
+        plan_steps: planSteps.map((step) => ({ ...step, text: step.text.trim() })).filter((step) => step.text),
         method,
         deliverable,
         audience: audience.trim(),
@@ -346,7 +377,7 @@ export function DeepResearchLauncher({
             setImageQuality("medium");
             setTemplateId("atlas");
             setTemplatePath("");
-            setPlan(DEFAULT_PLAN);
+            setPlanSteps(DEFAULT_PLAN);
             setError("");
           }
           setOpen(true);
@@ -549,6 +580,38 @@ export function DeepResearchLauncher({
                 </div>
               </fieldset>
 
+              <fieldset className="research-field research-plan-builder">
+                <legend>Research plan</legend>
+                <small id="research-plan-help">Check the work you want completed. Edit the wording or change the order before continuing.</small>
+                <div className="research-plan-steps" aria-describedby="research-plan-help">
+                  {planSteps.map((step, index) => (
+                    <div className="research-plan-step" key={step.id}>
+                      <label className="research-plan-check">
+                        <input
+                          type="checkbox"
+                          checked={step.enabled}
+                          onChange={(event) => updatePlanStep(step.id, { enabled: event.target.checked })}
+                          aria-label={`Include step ${index + 1}`}
+                        />
+                        <span>{index + 1}</span>
+                      </label>
+                      <input
+                        value={step.text}
+                        onChange={(event) => updatePlanStep(step.id, { text: event.target.value })}
+                        aria-label={`Research plan step ${index + 1}`}
+                        placeholder="Describe a research step"
+                      />
+                      <div className="research-plan-actions" aria-label={`Reorder step ${index + 1}`}>
+                        <button type="button" onClick={() => movePlanStep(index, -1)} disabled={index === 0} aria-label={`Move step ${index + 1} up`}>↑</button>
+                        <button type="button" onClick={() => movePlanStep(index, 1)} disabled={index === planSteps.length - 1} aria-label={`Move step ${index + 1} down`}>↓</button>
+                        <button type="button" onClick={() => removePlanStep(step.id)} disabled={planSteps.length === 1} aria-label={`Remove step ${index + 1}`}>×</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button type="button" className="research-add-plan-step" onClick={addPlanStep}>+ Add step</button>
+              </fieldset>
+
               <details className="research-advanced-options">
                 <summary>Advanced options</summary>
                 <div className="research-advanced-content">
@@ -573,18 +636,6 @@ export function DeepResearchLauncher({
                       </button>
                     </div>
                   </fieldset>
-
-                  <label className="research-field">
-                    <span>Research plan</span>
-                    <textarea
-                      value={plan}
-                      onChange={(event) => setPlan(event.target.value)}
-                      rows={4}
-                      aria-label="Research plan"
-                      aria-describedby="research-plan-help"
-                    />
-                    <small id="research-plan-help">One step per line.</small>
-                  </label>
                 </div>
               </details>
 
@@ -600,7 +651,7 @@ export function DeepResearchLauncher({
                 >
                   Cancel
                 </button>
-                <button className="btn primary" disabled={!question.trim() || busy} onClick={create}>
+                <button className="btn primary" disabled={!question.trim() || !enabledPlan(planSteps).length || busy} onClick={create}>
                   {busy ? "Saving…" : editingRun ? "Save to composer" : "Continue in composer"}
                 </button>
               </footer>

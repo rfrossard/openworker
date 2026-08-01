@@ -250,6 +250,7 @@ export interface ResearchRun {
   question: string;
   depth: "quick" | "standard" | "deep";
   plan: string[];
+  plan_steps?: ResearchPlanStep[];
   method?: "standard" | "grounded_claims";
   deliverable?: "report" | "presentation";
   audience?: string;
@@ -279,6 +280,12 @@ export interface ResearchRun {
   };
   created_at: string;
   updated_at: string;
+}
+
+export interface ResearchPlanStep {
+  id: string;
+  text: string;
+  enabled: boolean;
 }
 
 export interface ResearchClaim {
@@ -314,6 +321,7 @@ export async function createResearchRun(
     question: string;
     depth: "quick" | "standard" | "deep";
     plan: string[];
+    plan_steps?: ResearchPlanStep[];
     method?: "standard" | "grounded_claims";
     deliverable?: "report" | "presentation";
     audience?: string;
@@ -338,6 +346,7 @@ export async function updateResearchRun(
     question: string;
     depth: "quick" | "standard" | "deep";
     plan: string[];
+    plan_steps?: ResearchPlanStep[];
     method?: "standard" | "grounded_claims";
     deliverable?: "report" | "presentation";
     audience?: string;
