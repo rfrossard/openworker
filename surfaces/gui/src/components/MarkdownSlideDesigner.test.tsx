@@ -13,6 +13,7 @@ import {
   presentationQualityReport,
   recommendedVisualDirection,
   bigNumberParts,
+  isDisplayMetric,
 } from "./MarkdownSlideDesigner";
 
 afterEach(() => {
@@ -233,6 +234,12 @@ The first milestone is complete.
       bullets: ["The S-1 revealed US$ 47 bilhões in future lease obligations in 2019 [C3]."],
       visualPlanData: {},
     }).value).toBe("US$ 47 bilhões");
+  });
+
+  it("blocks a Big Number without a meaningful display metric", () => {
+    const deck = parseMarkdownDeck(`# Research\n## Unsupported metric\nA material change happened.\n\`\`\`openworker-visual\n{"type":"big_number","data":{"value":"one","label":"change"}}\n\`\`\``);
+    expect(isDisplayMetric(bigNumberParts(deck.slides[0]).value)).toBe(false);
+    expect(presentationQualityReport(deck).findings.map((finding) => finding.id)).toContain("metric-value-0");
   });
 
   it("flags decorative or overly dense visual choices and auto-fixes safe cases", () => {

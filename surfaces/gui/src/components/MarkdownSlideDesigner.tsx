@@ -69,6 +69,10 @@ export interface BigNumberParts {
   label: string;
 }
 
+export function isDisplayMetric(value: string): boolean {
+  return /(?:US\$|R\$|[$€£])\s*\d|\d[\d.,]*\s*(?:%|x|million|billion|trillion|milh(?:ão|ões)|bilh(?:ão|ões)|days?|months?|years?)/i.test(value);
+}
+
 /** Keep the number visually dominant while preserving the claim that explains it. */
 export function bigNumberParts(slide: Pick<MarkdownSlide, "title" | "takeaway" | "bullets" | "visualPlanData">): BigNumberParts {
   const data = slide.visualPlanData || {};
@@ -867,6 +871,9 @@ export function presentationQualityReport(
     }
     if (slide.layout === "big-number" && (!slide.takeaway.trim() || slide.sourceUrls.length === 0)) {
       add(`metric-context-${index}`, "Evidence", "warning", `Slide ${number} big number needs context, a comparison, and a source.`, index, false);
+    }
+    if (slide.layout === "big-number" && !isDisplayMetric(bigNumberParts(slide).value)) {
+      add(`metric-value-${index}`, "Data", "critical", `Slide ${number} big number needs one explicit metric with a unit, scale, or currency.`, index, true);
     }
     if (STRUCTURED_LAYOUTS.has(slide.layout)
       && Object.keys(slide.visualPlanData).length > 0

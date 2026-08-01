@@ -106,6 +106,12 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
         "color_semantics": {"accent": "meaning of the accent color", "risk": "meaning of risk color"}
       },
       "data": {
+        "value": "US$ 47 billion",
+        "label": "future lease obligations",
+        "context": "S-1 filing, August 2019; compare with US$ 4 billion committed revenue",
+        "period": "August 2019",
+        "baseline": "US$ 4 billion committed revenue",
+        "source_claim_ids": ["C1"],
         "columns": ["Column"],
         "rows": [["Cell"]],
         "series": [{"label": "Category", "value": 42, "claim_ids": ["C1"]}],
@@ -160,7 +166,7 @@ ${visualLedgerSchema}
   "sources": ["https://..."]
 }
 \`\`\`
-- For bar_chart and donut_chart, provide data.series with label, numeric value, and claim_ids. For big_number, provide data.value, data.label, and data.context. For tables, provide actual columns and rows. For quotes, provide exact text and attribution. For timelines, processes, flowcharts, and org charts, provide ordered items or relationships.
+- For bar_chart and donut_chart, provide data.series with label, numeric value, and claim_ids. For big_number, provide data.value (the exact display metric including currency/unit/scale), data.label (what it measures), data.context, data.period, data.baseline, and data.source_claim_ids. Never put the key metric only inside narrative prose or let a date, section number, or citation become data.value. For tables, provide actual columns and rows. For quotes, provide exact text and attribution. For timelines, processes, flowcharts, and org charts, provide ordered items or relationships.
 - Tactical selection rules:
   - Use a table only for 3-7 comparable items across 2-5 meaningful dimensions. Never turn ordinary bullets into a table. Sort deliberately and identify the recommended, highest-risk, or best-value cell or row.
   - Use a horizontal bar chart for ranking or category comparison, a line chart for a verified time trend, a stacked bar for composition across groups, a waterfall for drivers of change, a funnel for stage loss, and a 2x2 matrix for two meaningful decision dimensions. Do not substitute one chart type merely because the renderer supports it.

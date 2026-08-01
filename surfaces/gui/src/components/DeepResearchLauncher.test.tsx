@@ -75,6 +75,7 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("```openworker-visual");
     expect(prompt).toContain('"type": "table"');
     expect(prompt).toContain("For big_number, provide data.value");
+    expect(prompt).toContain("data.period, data.baseline, and data.source_claim_ids");
     expect(prompt).toContain("storyboard blocks and the companion .claims.json visual ledger must agree");
     expect(prompt).toContain('"visual_question"');
     expect(prompt).toContain('"rejected_representations"');
