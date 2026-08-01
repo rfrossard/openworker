@@ -196,11 +196,11 @@ const CONTENT_ELEMENTS: { id: SlideLayout; label: string; hint: string }[] = [
 ];
 const GEMINI_IMAGE_ESTIMATE_USD = 0.0336;
 const VISUAL_MOODS = [
-  { id: "auto", label: "Match template", hint: "Keep every visual aligned with the selected presentation theme." },
-  { id: "editorial", label: "Editorial", hint: "Elegant, restrained photography and generous negative space." },
-  { id: "technical", label: "Technical", hint: "Precise, modern, systems-oriented illustration and diagrams." },
-  { id: "playful", label: "Playful", hint: "Warm, animated storybook illustration; never use copyrighted characters." },
-  { id: "cinematic", label: "Cinematic", hint: "Dramatic light, photographic composition, and clear title space." },
+  { id: "auto", label: "Match template", hint: "Recommended. Uses the presentation template's visual language." },
+  { id: "editorial", label: "Human & editorial", hint: "Authentic photography with a calm, premium editorial feel." },
+  { id: "technical", label: "Technical & precise", hint: "Clear systems-oriented imagery for products, data, and technology." },
+  { id: "playful", label: "Playful & illustrative", hint: "Warm, expressive illustration for approachable stories; never copyrighted characters." },
+  { id: "cinematic", label: "Cinematic & dramatic", hint: "Photographic storytelling with dramatic light and a clear focal point." },
 ] as const;
 type VisualMood = typeof VISUAL_MOODS[number]["id"];
 
@@ -1602,11 +1602,11 @@ export function MarkdownSlideDesigner({
                 </label>
               )}
               <label className="research-field slide-designer-mood-field">
-                <span>Visual mood</span>
+                <span>Visual mood (for generated images)</span>
                 <select aria-label="Visual mood" value={visualMood} onChange={(event) => setVisualMood(event.target.value as VisualMood)}>
                   {VISUAL_MOODS.map((mood) => <option key={mood.id} value={mood.id}>{mood.label}</option>)}
                 </select>
-                <small>{VISUAL_MOODS.find((mood) => mood.id === visualMood)?.hint}</small>
+                <small>Only affects images generated in Review. {VISUAL_MOODS.find((mood) => mood.id === visualMood)?.hint}</small>
               </label>
             </div>
             {visualPlanNotice && <div className="slide-designer-plan-status">{visualPlanNotice}</div>}
