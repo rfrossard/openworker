@@ -106,6 +106,10 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
         "color_semantics": {"accent": "meaning of the accent color", "risk": "meaning of risk color"}
       },
       "data": {
+        "headline": "the one audience-facing conclusion to show on the slide",
+        "subhead": "optional short qualifier that makes the conclusion precise",
+        "display_label": "short label that belongs next to a metric or chart",
+        "display_value": "the exact formatted value an audience should see",
         "value": "US$ 47 billion",
         "label": "future lease obligations",
         "context": "S-1 filing, August 2019; compare with US$ 4 billion committed revenue",
@@ -114,10 +118,17 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
         "source_claim_ids": ["C1"],
         "columns": ["Column"],
         "rows": [["Cell"]],
-        "series": [{"label": "Category", "value": 42, "claim_ids": ["C1"]}],
+        "series": [{"label": "Category", "value": 42, "unit": "%", "period": "2026", "claim_ids": ["C1"]}],
+        "categories": ["explicit ordered category labels when a chart has multiple series"],
+        "axis": {"x_label": "optional X axis", "y_label": "optional Y axis", "min": 0, "max": 100},
+        "highlights": [{"label": "the one thing to notice", "value": "42%", "claim_ids": ["C1"]}],
+        "annotations": [{"text": "short evidence-backed callout", "target": "series or row label", "claim_ids": ["C1"]}],
         "quote": {"text": "Exact verified quote", "attribution": "Speaker or source"},
-        "items": [{"date": "2026", "label": "Event", "detail": "Meaning"}],
-        "relationships": [{"parent": "Parent", "child": "Child"}]
+        "items": [{"id": "M1", "date": "2026", "label": "Event", "detail": "Meaning", "status": "past | current | planned | uncertain", "claim_ids": ["C1"]}],
+        "relationships": [{"from": "Source", "to": "Destination", "label": "relationship", "parent": "Parent", "child": "Child", "claim_ids": ["C1"]}],
+        "comparison_dimensions": [{"label": "Decision criterion", "options": [{"label": "Option A", "value": "Strong", "claim_ids": ["C1"]}]}],
+        "recommendation": {"label": "Recommended action", "rationale": "Why the evidence supports it", "claim_ids": ["C1"]},
+        "image_brief": {"subject": "specific scene or metaphor", "composition": "where the subject appears", "negative_space": "where slide text may sit", "avoid": ["logos", "text in image"]}
       }
     },
     "visual_references": [{
@@ -134,6 +145,8 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
 - The .claims.json file must be valid UTF-8 and follow this schema. Keep the top-level claims array for the Grounded Claims Board and add sections for Slide Designer:
 ${visualLedgerSchema}
 - Choose one primary representation and one layout_recommendation per section. The layout recommendation is visible in Slide Designer, but users can change it without changing the research result. Include only the representation.data fields that apply to that type.
+- Separate display data from evidence metadata. "headline", "takeaway", "display_value", "display_label", labels, row cells, annotations, and quote text must be concise audience-facing language. Claim IDs, source URLs, selection confidence, rejected representations, production state, and renderer instructions are metadata: retain them in JSON but never put them in display fields.
+- Structure values by visual grammar: charts need ordered categories/series, units, periods, axis labels, highlights, and annotations; tables need concise columns, rows, and emphasized cells or rows; timelines/processes need ordered item IDs, dates/status, and claim IDs; flows and org charts need explicit "from"/"to" relationships; comparisons need named dimensions, options, and a recommendation; big numbers need one "display_value"/"value", a label, period, baseline, and definition. Add only fields supported by the evidence.
 - Before choosing it, write the visual_question and classify the data_shape. Record at least one rejected representation whenever a structured visual is chosen. A chart or diagram is not automatically better than concise text.
 - Every numeric chart/table value, exact quote, relationship, event, and process step must map to claim_ids and source URLs. Never invent content to complete a visual.
 - Add visual_references when a primary, licensed, or compositionally useful reference could illustrate the section. References are provenance and art direction, not permission to copy; record URL, purpose, source type, license note, and claim IDs.`;
@@ -167,6 +180,7 @@ ${visualLedgerSchema}
 }
 \`\`\`
 - For bar_chart and donut_chart, provide data.series with label, numeric value, and claim_ids. For big_number, provide data.value (the exact display metric including currency/unit/scale), data.label (what it measures), data.context, data.period, data.baseline, and data.source_claim_ids. Never put the key metric only inside narrative prose or let a date, section number, or citation become data.value. For tables, provide actual columns and rows. For quotes, provide exact text and attribution. For timelines, processes, flowcharts, and org charts, provide ordered items or relationships.
+- Normalize content before writing it: use headline, takeaway, and data values as clean audience-facing prose. Treat Markdown bullets, dividers, slide/section numbers, tags, source citations, URLs, claim IDs, Layout, Transition, Narrative job, comments, and JSON field names as structure or metadata—not text to display. Do not copy any of those raw tokens into a title, takeaway, label, annotation, table cell, chart label, quote, or image prompt. Preserve the source mapping in claim_ids, sources, and speaker notes instead.
 - Tactical selection rules:
   - Use a table only for 3-7 comparable items across 2-5 meaningful dimensions. Never turn ordinary bullets into a table. Sort deliberately and identify the recommended, highest-risk, or best-value cell or row.
   - Use a horizontal bar chart for ranking or category comparison, a line chart for a verified time trend, a stacked bar for composition across groups, a waterfall for drivers of change, a funnel for stage loss, and a 2x2 matrix for two meaningful decision dimensions. Do not substitute one chart type merely because the renderer supports it.

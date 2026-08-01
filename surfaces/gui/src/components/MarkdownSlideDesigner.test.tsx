@@ -95,6 +95,30 @@ Compare the sources.`);
     expect(deck.slides.map((slide) => slide.title)).toEqual(["The decision", "Evidence first"]);
   });
 
+  it("absorbs production debris as structure instead of audience-facing slide copy", () => {
+    const deck = parseMarkdownDeck(`# Research
+## [Slide 12] 12 — **Capital reset** <!-- internal storyboard label -->
+---
+• **Slide ID:** S12
+• **Layout:** big_number
+• **Transition:** fade
+• **Claim IDs:** C1, C2
+• **Takeaway:** Lease obligations became the decision constraint [C1].
+• **Sources:** https://example.com/filing
+• The S-1 disclosed <em>US$ 47 billion</em> in future lease obligations [C1, C2].
+***`);
+
+    expect(deck.slides[0]).toMatchObject({
+      title: "Capital reset",
+      takeaway: "Lease obligations became the decision constraint.",
+      bullets: ["The S-1 disclosed US$ 47 billion in future lease obligations."],
+      layout: "big-number",
+      sourceUrls: ["https://example.com/filing"],
+      visualPlanData: { "slide id": "S12", transition: "fade", "claim ids": "C1, C2" },
+    });
+    expect(JSON.stringify(deck.slides[0])).not.toMatch(/\[Slide 12]|Claim IDs:|\[C1|<!--|---/);
+  });
+
   it("treats the storyboard preamble as a deck brief rather than a slide", () => {
     const deck = parseMarkdownDeck(`# Storyboard: Agent protocols
 

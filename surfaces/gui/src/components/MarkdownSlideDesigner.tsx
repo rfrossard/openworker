@@ -329,9 +329,17 @@ function usableImageDirection(value: string): string {
 
 function cleanInline(value: string): string {
   return value
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/^\s*(?:---+|\*\*\*+|___+)\s*$/g, "")
+    .replace(/```(?:openworker-visual)?/gi, "")
     .replace(/!\[[^\]]*]\([^)]*\)/g, "")
     .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
+    .replace(/<\/?[a-z][^>]*>/gi, "")
+    .replace(/\[(?:(?:claim|source|citation)\s*[:#]?\s*)?[A-Za-z]{1,12}\d+(?:\s*[,;|]\s*(?:[A-Za-z]{1,12}\d+))*\]/g, "")
+    .replace(/&(nbsp|#160);/gi, " ")
+    .replace(/&(amp);/gi, "&")
     .replace(/[*_~`>#]/g, "")
+    .replace(/\s+([,.;:!?])/g, "$1")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -357,7 +365,9 @@ function blankSlide(id: string, title: string, takeaway = "", bullets: string[] 
 
 function audienceTitle(value: string): string {
   return cleanInline(value)
-    .replace(/^(?:(?:slide|section)\s*|s)\d+\s*[:.)|—–-]+\s*/i, "")
+    .replace(/^\[\s*(?:(?:slide|section)\s*|s)\d+\s*]\s*/i, "")
+    .replace(/^(?:(?:slide|section)\s*#?\s*|s\s*)\d+\s*[:.)|—–-]+\s*/i, "")
+    .replace(/^\d+\s*[.)|—–-]+\s*/, "")
     .trim();
 }
 
@@ -394,6 +404,7 @@ function layoutDirective(value: string): SlideLayout {
     "bar-chart": "bar-chart",
     "donut-chart": "donut-chart",
     "big-number": "big-number",
+    bignumber: "big-number",
     "radar-chart": "radar-chart",
     "sankey-diagram": "sankey-diagram",
     "word-cloud": "word-cloud",
@@ -473,14 +484,14 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
     };
     for (const line of visibleLines) {
       const trimmed = line.trim();
-      if (/^<!--[\s\S]*-->$/.test(trimmed) || /^```/.test(trimmed) || /^---+$/.test(trimmed)) continue;
+      if (/^<!--[\s\S]*-->$/.test(trimmed) || /^```/.test(trimmed) || /^(?:---+|\*\*\*+|___+)$/.test(trimmed)) continue;
       if (!trimmed) {
         flush();
         sourceBlock = false;
         continue;
       }
       const directiveLine = trimmed.replace(/\*\*/g, "").replace(/__/g, "");
-      const directive = directiveLine.match(/^(?:[-*+]\s*)?(narrative job|story role|takeaway|key message|message|transition|animation|layout|slide layout|image|image prompt|visual|visual direction|sources?|references?|speaker notes?|notes?|representation|chart type|template)\s*:\s*(.*)$/i);
+      const directive = directiveLine.match(/^(?:[-*+•◦▪]\s*)?(narrative job|story role|takeaway|key message|message|transition|animation|layout|slide layout|image|image prompt|visual|visual direction|sources?|references?|speaker notes?|notes?|representation|chart type|template|slide number|slide id|section id|status|draft|evidence|claim ids?|source claim ids?|production notes?|render(?:er)? instructions?)\s*:\s*(.*)$/i);
       if (directive) {
         flush();
         const key = directive[1].toLowerCase();
@@ -506,12 +517,13 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
         continue;
       }
       const urls = trimmed.match(/https?:\/\/[^\s)>]+/g) || [];
+      if (sourceBlock && !urls.length && /^\s*(?:[-*+•◦▪]|\d+[.)])\s+/.test(line)) sourceBlock = false;
       if (sourceBlock || urls.length) {
         flush();
         sourceUrls.push(...urls);
         continue;
       }
-      const bullet = line.match(/^\s*(?:[-*+]|\d+[.)])\s+(.+)$/);
+      const bullet = line.match(/^\s*(?:[-*+•◦▪]|\d+[.)])\s+(.+)$/);
       if (bullet) {
         flush();
         const cleaned = cleanInline(bullet[1]);
