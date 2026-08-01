@@ -87,7 +87,8 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
     "claim_ids": ["C1"],
     "sources": ["https://..."],
     "representation": {
-      "type": "table | bar_chart | donut_chart | big_number | quote | flowchart | org_chart | timeline | process | roadmap | comparison | metrics | image | text",
+      "type": "table | bar_chart | donut_chart | radar_chart | sankey_diagram | word_cloud | big_number | quote | flowchart | org_chart | timeline | process | roadmap | agenda | checklist | comparison | metrics | image | text",
+      "layout_recommendation": "one Slide Designer layout: table | bar_chart | donut_chart | radar_chart | sankey_diagram | word_cloud | big_number | quote | flow_diagram | org_chart | timeline | process | roadmap | agenda | checklist | comparison | metric_grid | image_left | image_right | image_background | image_top | image_bottom | two_column | three_columns | four_columns | five_columns | two_boxes | three_boxes | four_boxes | five_boxes | statement | section | conclusion | title_only | standard",
       "reason": "why this representation best explains the evidence",
       "visual_question": "the exact question this visual answers",
       "data_shape": "comparison | ranking | trend | composition | distribution | relationship | hierarchy | sequence | decision | single_metric | narrative",
@@ -126,17 +127,18 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
   const visualLedgerRequirements = `Deep Research visual ledger:
 - The .claims.json file must be valid UTF-8 and follow this schema. Keep the top-level claims array for the Grounded Claims Board and add sections for Slide Designer:
 ${visualLedgerSchema}
-- Choose one primary representation per section. Include only the representation.data fields that apply to that type.
+- Choose one primary representation and one layout_recommendation per section. The layout recommendation is visible in Slide Designer, but users can change it without changing the research result. Include only the representation.data fields that apply to that type.
 - Before choosing it, write the visual_question and classify the data_shape. Record at least one rejected representation whenever a structured visual is chosen. A chart or diagram is not automatically better than concise text.
 - Every numeric chart/table value, exact quote, relationship, event, and process step must map to claim_ids and source URLs. Never invent content to complete a visual.
 - Add visual_references when a primary, licensed, or compositionally useful reference could illustrate the section. References are provenance and art direction, not permission to copy; record URL, purpose, source type, license note, and claim IDs.`;
   const storyboardMarkdownContract = `Storyboard Markdown visual contract:
-- Deep Research, not Slide Designer, must decide whether each section is best communicated as a table, chart, big number, quote, diagram, timeline, image, or concise text. Choose the representation that makes the verified evidence easiest to understand, not the one that adds the most decoration.
+- Deep Research, not Slide Designer, must decide whether each section is best communicated as a table, chart, big number, quote, diagram, timeline, image, or concise text. Choose the representation that makes the verified evidence easiest to understand, not the one that adds the most decoration. Add a user-editable layout_recommendation for every section.
 - After the audience-facing Narrative job and Takeaway in every storyboard section, write exactly one fenced \`\`\`openworker-visual block containing valid JSON. Slide Designer reads this block as production data and never renders it as slide copy.
 - Use this shape:
 \`\`\`openworker-visual
 {
   "type": "table",
+  "layout_recommendation": "table",
   "reason": "A table makes the alternatives directly comparable.",
   "visual_question": "Which option offers the strongest value-risk trade-off?",
   "data_shape": "comparison",

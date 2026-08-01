@@ -32,7 +32,8 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("final entailment check");
     expect(prompt).toContain('"schema_version": "openworker.deep-research.v2"');
     expect(prompt).toContain('"sections"');
-    expect(prompt).toContain("table | bar_chart | donut_chart | big_number | quote | flowchart | org_chart | timeline | process");
+    expect(prompt).toContain("table | bar_chart | donut_chart | radar_chart | sankey_diagram | word_cloud");
+    expect(prompt).toContain("layout_recommendation");
     expect(prompt).toContain("Every numeric chart/table value, exact quote, relationship, event, and process step");
     expect(prompt).toContain("visual_references");
     expect(prompt).toContain("Never invent content to complete");

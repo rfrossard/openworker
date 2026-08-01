@@ -140,7 +140,7 @@ Compare the sources.`);
     render(<MarkdownSlideDesigner sessionId="session-1" artifacts={presentationArtifacts} onCreate={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
     await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
-    const selector = screen.getByLabelText("Markdown artifact") as HTMLSelectElement;
+    const selector = screen.getByLabelText("Deep Research Result") as HTMLSelectElement;
     expect(selector.value).toBe("reports/protocol-storyboard.md");
     expect(selector.querySelectorAll("option")).toHaveLength(1);
     expect(screen.queryByText("protocol.sources.md")).toBeNull();
@@ -195,6 +195,24 @@ Compare the sources.`);
     });
     expect(JSON.stringify(deck)).not.toContain("openworker-visual");
     expect(JSON.stringify(deck)).not.toContain("Narrative job:");
+  });
+
+  it("honors a Deep Research layout recommendation while keeping it user-editable", () => {
+    const deck = parseMarkdownDeck(`# Results
+## Slide 1: Adoption
+The first milestone is complete.
+\`\`\`openworker-visual
+{"type":"metrics","layout_recommendation":"big_number","data":{"value":"64%","label":"adoption"}}
+\`\`\``);
+    expect(deck.slides[0]).toMatchObject({
+      title: "Adoption",
+      layout: "big-number",
+      recommendedLayout: "big-number",
+    });
+    expect(applyContentElement(deck.slides[0], "table")).toMatchObject({
+      layout: "table",
+      recommendedLayout: "big-number",
+    });
   });
 
   it("flags decorative or overly dense visual choices and auto-fixes safe cases", () => {
@@ -535,21 +553,21 @@ Original visual.`);
     expect(preview.dataset.template).toBe("atlas");
     const atlasStyle = preview.getAttribute("style");
     fireEvent.change(screen.getByLabelText("Presentation template"), {
-      target: { value: "neon-flow" },
+      target: { value: "dashboard-pro" },
     });
-    expect(preview.dataset.template).toBe("neon-flow");
+    expect(preview.dataset.template).toBe("dashboard-pro");
     expect(preview.dataset.transition).toBe("push");
     expect(preview.dataset.motif).toBe("chart");
     expect(preview.getAttribute("style")).not.toBe(atlasStyle);
-    expect(screen.getByText(/Animated neon gradient/i)).toBeTruthy();
+    expect(screen.getByText(/Structured KPI charts/i)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Presentation template"), {
       target: { value: "environmental-fieldwork" },
     });
     expect(preview.dataset.composition).toBe("torn-photo");
     expect(screen.getByText(/torn-paper edge/i)).toBeTruthy();
-    expect(screen.getByLabelText("Presentation template").querySelectorAll("option")).toHaveLength(47);
-    expect(screen.getByLabelText("Presentation template").querySelectorAll("optgroup")).toHaveLength(5);
-    expect(screen.getByLabelText("Slide styles").querySelectorAll("button")).toHaveLength(28);
+    expect(screen.getByLabelText("Presentation template").querySelectorAll("option")).toHaveLength(12);
+    expect(screen.getByLabelText("Presentation template").querySelectorAll("optgroup")).toHaveLength(4);
+    expect(screen.getByLabelText("Slide styles").querySelectorAll("button")).toHaveLength(36);
     expect(screen.getByText("Core")).toBeTruthy();
     expect(screen.getByText("Visual")).toBeTruthy();
     expect(screen.getByText("Narrative")).toBeTruthy();
