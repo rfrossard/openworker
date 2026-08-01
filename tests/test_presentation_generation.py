@@ -106,6 +106,31 @@ def test_build_presentation_supports_designer_layouts(tmp_path):
     assert len(PdfReader(tmp_path / "designer.pdf").pages) == 4
 
 
+def test_big_number_uses_structured_metric_and_template_font(tmp_path):
+    tool = make_build_presentation_tool(workspace=tmp_path)
+    result = tool(
+        title="Metrics",
+        slides=[{
+            "title": "Revenue increased",
+            "takeaway": "The annual run-rate grew after the launch.",
+            "layout": "big-number",
+            "bullets": ["Revenue | US$ 42M"],
+            "metric_value": "US$ 42M",
+            "metric_label": "Annual recurring revenue after launch",
+        }],
+        pptx_path="metrics.pptx",
+        pdf_path="metrics.pdf",
+        template_id="itau",
+    )
+    assert result["ok"] is True
+    slide = Presentation(tmp_path / "metrics.pptx").slides[1]
+    text = "\n".join(shape.text for shape in slide.shapes if getattr(shape, "has_text_frame", False))
+    assert "US$ 42M" in text
+    assert "Annual recurring revenue after launch" in text
+    title = next(shape for shape in slide.shapes if getattr(shape, "has_text_frame", False) and shape.text == "Revenue increased")
+    assert title.text_frame.paragraphs[0].font.name == "Arial"
+
+
 def test_build_presentation_supports_extended_designer_layouts(tmp_path):
     image = tmp_path / "visual.png"
     _sample_image(image)

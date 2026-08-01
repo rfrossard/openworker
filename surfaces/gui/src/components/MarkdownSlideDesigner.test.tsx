@@ -12,6 +12,7 @@ import {
   presentationPreflight,
   presentationQualityReport,
   recommendedVisualDirection,
+  bigNumberParts,
 } from "./MarkdownSlideDesigner";
 
 afterEach(() => {
@@ -214,6 +215,15 @@ The first milestone is complete.
       layout: "table",
       recommendedLayout: "big-number",
     });
+  });
+
+  it("separates a big metric from its explanatory claim", () => {
+    expect(bigNumberParts({
+      title: "Revenue impact",
+      takeaway: "Recurring revenue grew materially.",
+      bullets: ["Revenue growth | US$ 42M"],
+      visualPlanData: {},
+    })).toEqual({ value: "US$ 42M", label: "Revenue growth" });
   });
 
   it("flags decorative or overly dense visual choices and auto-fixes safe cases", () => {
@@ -457,7 +467,7 @@ Original visual.`);
     expect(preview.getAttribute("data-aspect-ratio")).toBe("16:9");
     expect(preview.getAttribute("data-slide-width-inches")).toBe("13.333");
     expect(preview.getAttribute("data-slide-height-inches")).toBe("7.5");
-    expect(preview.textContent).toContain("Widescreen 16:9 · 13.333 × 7.5 in");
+    expect(preview.textContent).toContain("AI-Generated | By Frossard 2026");
     fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
     fireEvent.click(screen.getByRole("button", { name: /Two columns/i }));
     expect(screen.getByTestId("slide-preview").className).toContain("layout-two-column");

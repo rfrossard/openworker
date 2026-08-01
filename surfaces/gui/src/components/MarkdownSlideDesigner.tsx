@@ -64,6 +64,31 @@ export interface ParsedMarkdownDeck {
   slides: MarkdownSlide[];
 }
 
+export interface BigNumberParts {
+  value: string;
+  label: string;
+}
+
+/** Keep the number visually dominant while preserving the claim that explains it. */
+export function bigNumberParts(slide: Pick<MarkdownSlide, "title" | "takeaway" | "bullets" | "visualPlanData">): BigNumberParts {
+  const data = slide.visualPlanData || {};
+  const explicitValue = String(data.value || data.metric || data.metric_value || "").trim();
+  const explicitLabel = String(data.label || data.metric_label || data.description || "").trim();
+  if (explicitValue) return { value: explicitValue, label: explicitLabel || slide.takeaway || slide.title };
+  const candidate = slide.bullets.find((value) => /(?:[$€£]|\b\d)[\d.,]*(?:\s?(?:%|x|k|m|bn?|million|billion|trillion))?/i.test(value)) || slide.bullets[0] || "42%";
+  const pipe = candidate.split("|").map((value) => value.trim()).filter(Boolean);
+  if (pipe.length >= 2) {
+    const numeric = pipe.find((value) => /(?:[$€£]|\b\d)[\d.,]*(?:\s?(?:%|x|k|m|bn?|million|billion|trillion))?/i.test(value)) || pipe[0];
+    return { value: numeric, label: pipe.find((value) => value !== numeric) || slide.takeaway || slide.title };
+  }
+  const match = candidate.match(/(?:[$€£]\s*)?\d[\d.,]*(?:\s?(?:%|x|k|m|bn?|million|billion|trillion))?/i);
+  if (match) {
+    const remainder = candidate.replace(match[0], "").replace(/^[\s:—–-]+|[\s:—–-]+$/g, "");
+    return { value: match[0], label: remainder || slide.takeaway || slide.title };
+  }
+  return { value: candidate, label: slide.takeaway || slide.title };
+}
+
 export interface ResearchVisualReference {
   url: string;
   description: string;
@@ -1051,6 +1076,10 @@ export function buildMarkdownSlideDesignerPrompt(
     })),
     visual_plan_reason: visualPlanReason,
     visual_plan_data: visualPlanData,
+    ...(slide.layout === "big-number" ? {
+      metric_value: bigNumberParts({ ...slide, visualPlanData }).value,
+      metric_label: bigNumberParts({ ...slide, visualPlanData }).label,
+    } : {}),
   }));
   return `Create an editable presentation from this existing Markdown artifact:
 
@@ -1090,10 +1119,13 @@ Requirements:
 - Preserve semantic rows exactly: tables use pipe-separated cells, charts use "Label | Value", and org charts use "Parent > Child".
 - Honor each visual_question, data_shape, rejected_representations, and design_spec. The selected visual must answer its visual question within five seconds; do not convert verified data into a decorative visual.
 - Use conclusion-led slide titles. For tables, emphasize the recommended or highest-risk row and keep 3-7 items across 2-5 dimensions. For bar charts, rank categories and label values directly. Use donuts only for a true 2-5 category part-to-whole. Big numbers require definition, period, baseline, and source.
+- For big-number slides, render metric_value as the large numeric object and metric_label as the explanatory label. Never render a whole sentence or pipe-delimited row as the number.
 - Use flow diagrams only for real decisions, branches, loops, or exceptions. Use process for a linear sequence, timeline for dated milestones, and org charts only for hierarchy, ownership, governance, or decision rights.
 - Use radar charts only for 3-6 comparable dimensions with a shared scale; use Sankey diagrams only for verified quantified flows; use word clouds only for genuinely recurring, sourced qualitative themes. Otherwise use the selected layout's simpler alternative.
 - Keep one dominant message, one accent meaning, and no more than three visual groups per slide. Prefer a flat editorial composition over grids of UI cards.
 - Protect readability: target 50 pt titles, 32 pt takeaways, and 18 pt body copy. Never reduce body copy below 16 pt or titles below 30 pt to force text into a slide. If the locked copy would overflow, keep the title and takeaway, condense supporting copy without changing factual meaning, or split the material into an appendix slide and report the change.
+- Use one consistent title size throughout the deck after fitting the longest title. Align all standard title and body frames to the same left margin, and keep title frames wide enough to use the available right margin.
+- For Consulting templates, use a concise answer-first title (or title plus short subtitle), compact symmetric alignment, simple editable icons where helpful, and use Review to propose a final one-page synthesis with implications and next steps when it is missing. Do not silently add it without user approval.
 - For every image layout, use an image crop that fills its allocated frame without distortion, preserve the focal subject, and leave the intentionally requested text-safe area clear. Do not place text over a busy image unless the selected layout is image_background and an opaque/gradient overlay gives at least WCAG AA contrast.
 - Preserve claim_ids, source_urls, visual_references, visual_plan_reason, and visual_plan_data in the presentation JSON and speaker notes. They are the evidence contract behind each selected representation.
 - Treat visual_references as provenance and composition guidance. Reuse an asset only when its license permits it; otherwise generate or source a distinct visual with the same approved communicative purpose.
@@ -1130,6 +1162,7 @@ function SlidePreview({
     ? Math.abs(Array.from(slide.id || slide.title).reduce((total, character) => total + character.charCodeAt(0), 0)) % template.backdropVariants.length
     : 0;
   const midpoint = Math.ceil(slide.bullets.length / 2);
+  const metric = bigNumberParts(slide);
   const copyCharacters = [slide.title, slide.takeaway, ...slide.bullets].join(" ").length;
   const density = copyCharacters > 720 ? "dense" : copyCharacters > 440 ? "compact" : "comfortable";
   const bullets = (items: string[]) => (
@@ -1175,7 +1208,7 @@ function SlidePreview({
       data-preview-contrast={Math.min(...previewBackgrounds.map((background) => contrastRatio(readableInk, background) || 0)).toFixed(1)}
       style={previewStyle}
     >
-      <span className="slide-designer-preview-kicker">Widescreen 16:9 · 13.333 × 7.5 in</span>
+      <span className="slide-designer-preview-kicker">AI-Generated | By Frossard {new Date().getFullYear()}</span>
       <h3>{slide.title}</h3>
       {slide.layout === "statement" ? (
         <blockquote>{slide.takeaway || slide.bullets[0] || slide.title}</blockquote>
@@ -1185,7 +1218,7 @@ function SlidePreview({
         <p className="slide-designer-section-copy">{slide.takeaway}</p>
       ) : slide.layout === "title-only" ? null
       : slide.layout === "big-number" ? (
-        <div className="slide-designer-big-number"><b>{slide.bullets[0] || "42%"}</b><span>{slide.takeaway || slide.title}</span></div>
+        <div className="slide-designer-big-number"><b>{metric.value}</b><span>{metric.label}</span></div>
       ) : slide.layout === "checklist" ? (
         <div className="slide-designer-checklist">{slide.bullets.map((item) => <span key={item}>✓ {item}</span>)}</div>
       ) : slide.layout === "timeline" || slide.layout === "process" ? (

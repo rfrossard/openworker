@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import tempfile
 import zipfile
@@ -30,12 +31,12 @@ _TEMPLATES = {
     "atlas": {"background": "F7F8FA", "ink": "1A1F2C", "muted": "5B6577", "accent": "2F6BFF", "cover": "1A1F2C"},
     "aurora": {"background": "F3F5FA", "ink": "101827", "muted": "667085", "accent": "8B5CF6", "cover": "101827"},
     "boardroom": {"background": "101713", "ink": "F4F1DF", "muted": "B1B9A5", "accent": "F6C453", "cover": "101713", "gradient": "1C2A22", "transition": "wipe", "font": "Chalkboard SE"},
-    "editorial": {"background": "F5F0E6", "ink": "211D19", "muted": "766F63", "accent": "B63C2E", "cover": "211D19", "gradient": "E7DFD1", "transition": "fade", "composition": "editorial", "font": "Georgia"},
+    "editorial": {"id": "editorial", "background": "F5F0E6", "ink": "211D19", "muted": "766F63", "accent": "B63C2E", "cover": "211D19", "gradient": "E7DFD1", "transition": "fade", "composition": "editorial", "font": "Georgia", "title_size": 29},
     "forest": {"background": "F2F7F3", "ink": "17352B", "muted": "64756C", "accent": "2F855A", "cover": "17352B"},
     "midnight": {"background": "171D2D", "ink": "F6F8FC", "muted": "AAB4C8", "accent": "5B8CFF", "cover": "090D18"},
     "monochrome": {"background": "FAFAFA", "ink": "171717", "muted": "737373", "accent": "525252", "cover": "171717"},
     "ocean": {"background": "F0F9FF", "ink": "123047", "muted": "617887", "accent": "0891B2", "cover": "123047"},
-    "paper": {"background": "F7F1DF", "ink": "25231F", "muted": "6F695D", "accent": "637D52", "cover": "25231F", "gradient": "E9DFC7", "transition": "fade", "font": "Bradley Hand ITC"},
+    "paper": {"id": "paper", "background": "F7F1DF", "ink": "25231F", "muted": "6F695D", "accent": "637D52", "cover": "25231F", "gradient": "E9DFC7", "transition": "fade", "font": "Bradley Hand ITC", "title_size": 30},
     "plum": {"background": "FBF5FA", "ink": "321B3A", "muted": "806E83", "accent": "A855A0", "cover": "321B3A"},
     "signal": {"background": "FFF7ED", "ink": "18181B", "muted": "71717A", "accent": "EF4444", "cover": "18181B"},
     "studio": {"background": "F5F7FA", "ink": "20242C", "muted": "687180", "accent": "14B8A6", "cover": "20242C"},
@@ -74,13 +75,13 @@ _TEMPLATES = {
     "growth-momentum": {"background": "07131C", "ink": "F8FAFC", "muted": "94A3B8", "accent": "38BDF8", "cover": "07131C", "gradient": "0C4A6E", "transition": "push", "composition": "infographic"},
     "home-investment": {"background": "FCFAF7", "ink": "312E2B", "muted": "78716C", "accent": "F0645A", "cover": "FCFAF7", "gradient": "F4E8DA", "transition": "split", "composition": "minimal-frame", "cover_ink": "312E2B"},
     "museum-editorial": {"background": "15110E", "ink": "F2E7D2", "muted": "B8A998", "accent": "9D6B2F", "cover": "15110E", "gradient": "30221B", "transition": "fade", "composition": "heritage"},
-    "itau": {"background": "001E60", "ink": "FFFFFF", "muted": "C8D4F1", "accent": "EC7000", "cover": "001E60", "gradient": "173B80", "transition": "fade"},
+    "itau": {"id": "itau", "background": "001E60", "ink": "FFFFFF", "muted": "C8D4F1", "accent": "EC7000", "cover": "001E60", "gradient": "173B80", "transition": "fade", "font": "Arial", "title_size": 31},
     "tron": {"background": "051016", "ink": "EAF9FF", "muted": "A1CDD6", "accent": "38DDF5", "cover": "051016", "gradient": "0A2432", "transition": "push", "font": "Aptos Display"},
-    "minecraft": {"background": "24351F", "ink": "F7F3D9", "muted": "C5D6AD", "accent": "78B849", "cover": "24351F", "gradient": "426F38", "transition": "wipe", "font": "Aptos Display"},
-    "mckinsey": {"background": "FFFFFF", "ink": "12263F", "muted": "64748B", "accent": "1D5D9B", "cover": "12263F", "gradient": "EDF3F8", "transition": "fade"},
-    "accenture": {"background": "F7F4FA", "ink": "1A1A1A", "muted": "655D6B", "accent": "A100FF", "cover": "1A1A1A", "gradient": "EBDDFF", "transition": "push"},
-    "bcp": {"background": "FCFAF5", "ink": "172A4D", "muted": "766D5D", "accent": "F5B335", "cover": "172A4D", "gradient": "F2E5C8", "transition": "fade"},
-    "bain": {"background": "FFFDFC", "ink": "1D1D1D", "muted": "716B68", "accent": "CC1F2F", "cover": "1D1D1D", "gradient": "F5E3E2", "transition": "cover"},
+    "minecraft": {"id": "minecraft", "background": "24351F", "ink": "F7F3D9", "muted": "C5D6AD", "accent": "78B849", "cover": "24351F", "gradient": "426F38", "transition": "wipe", "font": "Aptos Display"},
+    "mckinsey": {"id": "mckinsey", "background": "FFFFFF", "ink": "12263F", "muted": "64748B", "accent": "1D5D9B", "cover": "12263F", "gradient": "EDF3F8", "transition": "fade", "font": "Arial", "title_size": 31},
+    "accenture": {"id": "accenture", "background": "F7F4FA", "ink": "1A1A1A", "muted": "655D6B", "accent": "A100FF", "cover": "1A1A1A", "gradient": "EBDDFF", "transition": "push", "font": "Arial", "title_size": 31},
+    "bcp": {"id": "bcp", "background": "FCFAF5", "ink": "172A4D", "muted": "766D5D", "accent": "F5B335", "cover": "172A4D", "gradient": "F2E5C8", "transition": "fade", "font": "Arial", "title_size": 31},
+    "bain": {"id": "bain", "background": "FFFDFC", "ink": "1D1D1D", "muted": "716B68", "accent": "CC1F2F", "cover": "1D1D1D", "gradient": "F5E3E2", "transition": "cover", "font": "Arial", "title_size": 31},
 }
 
 _SCHEMA = {
@@ -108,6 +109,8 @@ _SCHEMA = {
                         "properties": {
                             "title": {"type": "string"},
                             "takeaway": {"type": "string"},
+                            "metric_value": {"type": "string", "description": "Large metric for a big-number slide."},
+                            "metric_label": {"type": "string", "description": "Plain-language explanation for the large metric."},
                             "bullets": {
                                 "type": "array",
                                 "items": {"type": "string"},
@@ -313,6 +316,8 @@ def _normalize_slides(root: Path, slides: list[dict[str, Any]]) -> list[dict[str
                 "image_required": bool(item.get("image_required")),
                 "sources": sources,
                 "layout": str(item.get("layout") or "auto").strip().lower(),
+                "metric_value": str(item.get("metric_value") or "").strip()[:80],
+                "metric_label": str(item.get("metric_label") or "").strip()[:220],
             }
         )
         if normalized[-1]["layout"] not in _LAYOUTS:
@@ -337,6 +342,37 @@ def _normalize_slides(root: Path, slides: list[dict[str, Any]]) -> list[dict[str
         if layout in {"flow-diagram", "org-chart", "roadmap"} and len(bullets) < 2:
             raise ValueError(f"Slide {index} needs at least two connected items.")
     return normalized
+
+
+def _big_number_parts(spec: dict[str, Any]) -> tuple[str, str]:
+    """Extract the display metric from structured research, never a whole data row."""
+    explicit_value = str(spec.get("metric_value") or "").strip()
+    explicit_label = str(spec.get("metric_label") or "").strip()
+    if explicit_value:
+        return explicit_value, explicit_label or str(spec.get("takeaway") or spec["title"])
+    candidates = list(spec.get("bullets") or [])
+    candidate = next((item for item in candidates if re.search(r"(?:[$€£]|\b\d)[\d.,]*(?:\s?(?:%|x|k|m|bn?|million|billion|trillion))?", item, re.I)), candidates[0] if candidates else "42%")
+    parts = [part.strip() for part in candidate.split("|") if part.strip()]
+    if len(parts) >= 2:
+        numeric = next((part for part in parts if re.search(r"(?:[$€£]|\b\d)[\d.,]*(?:\s?(?:%|x|k|m|bn?|million|billion|trillion))?", part, re.I)), parts[0])
+        return numeric, next((part for part in parts if part != numeric), str(spec.get("takeaway") or spec["title"]))
+    match = re.search(r"(?:[$€£]\s*)?\d[\d.,]*(?:\s?(?:%|x|k|m|bn?|million|billion|trillion))?", candidate, re.I)
+    if match:
+        label = re.sub(r"^[\s:—–-]+|[\s:—–-]+$", "", candidate.replace(match.group(0), ""))
+        return match.group(0), label or str(spec.get("takeaway") or spec["title"])
+    return candidate, str(spec.get("takeaway") or spec["title"])
+
+
+def _consistent_title_size(slides: list[dict[str, Any]], baseline: int = 32) -> int:
+    """Fit the longest ordinary title once, so titles remain uniform across a deck."""
+    longest = max((len(str(slide.get("title") or "")) for slide in slides), default=0)
+    if longest > 112:
+        return min(baseline, 23)
+    if longest > 82:
+        return min(baseline, 26)
+    if longest > 58:
+        return min(baseline, 29)
+    return baseline
 
 
 def _split_semantic_row(value: str) -> list[str]:
@@ -449,6 +485,7 @@ def _add_pptx(
     cover_rgb = RGBColor.from_string(style["cover"])
     cover_ink = RGBColor.from_string(style.get("cover_ink", "FFFFFF"))
     deck_font = style.get("font", "Aptos")
+    title_size = _consistent_title_size(slides, int(style.get("title_size", 35)))
     copyright_notice = _copyright_notice()
     blank_layout = next(
         (layout for layout in deck.slide_layouts if "blank" in layout.name.lower()),
@@ -491,6 +528,25 @@ def _add_pptx(
             stops[0].color.rgb = RGBColor.from_string(base_hex)
             stops[-1].color.rgb = RGBColor.from_string(gradient_hex)
             canvas.line.fill.background()
+        # Editable, brand-appropriate motifs replace decorative circles and retain
+        # text-safe areas. They intentionally use only native PowerPoint shapes.
+        template_id = style.get("id", "")
+        if template_id == "paper" and not cover_slide:
+            for position in range(12, 96, 11):
+                line = slide.shapes.add_shape(1, Inches(0), Inches(position / 10), Inches(_WIDE_WIDTH), Inches(0.012))
+                line.fill.solid(); line.fill.fore_color.rgb = RGBColor(137, 157, 184); line.fill.transparency = 62; line.line.fill.background()
+            margin = slide.shapes.add_shape(1, Inches(0.58), 0, Inches(0.024), Inches(_WIDE_HEIGHT))
+            margin.fill.solid(); margin.fill.fore_color.rgb = RGBColor(198, 92, 75); margin.fill.transparency = 45; margin.line.fill.background()
+        elif template_id == "itau":
+            rail = slide.shapes.add_shape(1, 0, 0, Inches(0.34), Inches(_WIDE_HEIGHT))
+            rail.fill.solid(); rail.fill.fore_color.rgb = accent_rgb; rail.line.fill.background()
+            for x, y, w in ((9.9, 0.55, 2.55), (10.55, 6.25, 1.9)):
+                tile = slide.shapes.add_shape(5, Inches(x), Inches(y), Inches(w), Inches(0.24))
+                tile.fill.solid(); tile.fill.fore_color.rgb = accent_rgb; tile.line.fill.background()
+        elif template_id == "minecraft":
+            for x, y, color in ((11.55, 0.42, "78B849"), (11.95, 0.42, "A77A45"), (11.55, 0.82, "A77A45"), (11.95, 0.82, "5E7C3A")):
+                tile = slide.shapes.add_shape(1, Inches(x), Inches(y), Inches(0.36), Inches(0.36))
+                tile.fill.solid(); tile.fill.fore_color.rgb = RGBColor.from_string(color); tile.line.fill.background()
         transition_name = style.get("transition")
         if transition_name:
             transition = OxmlElement("p:transition")
@@ -632,7 +688,7 @@ def _add_pptx(
             bar.fill.fore_color.rgb = accent_rgb
             bar.line.fill.background()
             continue
-        textbox(slide, spec["title"], 0.72, 0.38, 11.8, 0.9, 35, ink, True)
+        textbox(slide, spec["title"], 0.72, 0.38, 11.85, 1.02, title_size, ink, True)
         if spec["takeaway"]:
             textbox(slide, spec["takeaway"], 0.74, 1.4, 11.7, 0.55, 17, accent_rgb, True)
         image = spec["image"]
@@ -645,15 +701,16 @@ def _add_pptx(
             quote = spec["takeaway"] or (spec["bullets"][0] if spec["bullets"] else spec["title"])
             mark = textbox(slide, "“", 0.8, 1.45, 1.0, 1.0, 70, accent_rgb, True)
             mark.text_frame.paragraphs[0].alignment = PP_ALIGN.LEFT
-            textbox(slide, quote, 1.5, 2.0, 10.35, 2.7, 29, ink, True)
+            quote_size = 29 if len(quote) <= 150 else 24 if len(quote) <= 240 else 20
+            textbox(slide, quote, 1.5, 1.78, 10.45, 3.55, quote_size, ink, True)
             if spec["bullets"]:
                 textbox(slide, spec["bullets"][-1], 1.55, 5.25, 9.8, 0.6, 14, muted)
             textbox(slide, str(number), 12.25, 7.0, 0.4, 0.22, 9, muted)
             continue
         if layout == "big-number":
-            metric = spec["bullets"][0] if spec["bullets"] else "42%"
+            metric, metric_label = _big_number_parts(spec)
             textbox(slide, metric, 0.78, 2.0, 5.2, 2.3, 62, accent_rgb, True)
-            textbox(slide, spec["takeaway"] or spec["title"], 6.0, 2.25, 6.0, 2.0, 24, ink, True)
+            textbox(slide, metric_label, 6.0, 2.25, 6.0, 2.0, 24, ink, True)
             textbox(slide, str(number), 12.25, 7.0, 0.4, 0.22, 9, muted)
             continue
         if layout == "table":
@@ -670,7 +727,7 @@ def _add_pptx(
                     cell.fill.solid()
                     cell.fill.fore_color.rgb = accent_rgb if row_index == 0 else background
                     for paragraph in cell.text_frame.paragraphs:
-                        paragraph.font.name = "Aptos"
+                        paragraph.font.name = deck_font
                         paragraph.font.size = Pt(15 if row_index else 16)
                         paragraph.font.bold = row_index == 0
                         paragraph.font.color.rgb = RGBColor(255, 255, 255) if row_index == 0 else ink
@@ -825,7 +882,7 @@ def _add_pptx(
                 for idx, bullet in enumerate(values):
                     paragraph = frame.paragraphs[0] if idx == 0 else frame.add_paragraph()
                     paragraph.text = bullet
-                    paragraph.font.name = "Aptos"
+                    paragraph.font.name = deck_font
                     paragraph.font.size = Pt(18)
                     paragraph.font.color.rgb = ink
                     paragraph.space_after = Pt(12)
@@ -847,7 +904,7 @@ def _add_pptx(
             paragraph = frame.paragraphs[0] if idx == 0 else frame.add_paragraph()
             paragraph.text = bullet
             paragraph.level = 0
-            paragraph.font.name = "Aptos"
+            paragraph.font.name = deck_font
             paragraph.font.size = Pt(18)
             paragraph.font.color.rgb = ink
             paragraph.space_after = Pt(12)
@@ -905,13 +962,18 @@ def _add_pdf(
     cover = HexColor(f"#{style['cover']}")
     cover_ink = HexColor(f"#{style.get('cover_ink', 'FFFFFF')}")
     copyright_notice = _copyright_notice()
+    pdf_regular, pdf_bold = {
+        "Georgia": ("Times-Roman", "Times-Bold"),
+        "Bradley Hand ITC": ("Helvetica-Oblique", "Helvetica-BoldOblique"),
+        "Chalkboard SE": ("Helvetica", "Helvetica-Bold"),
+    }.get(style.get("font", ""), ("Helvetica", "Helvetica-Bold"))
     page_footer_color = cover_ink
     raw_show_page = canvas.showPage
 
     def show_page():
         """Finish every PDF page with the same ownership mark as its PPTX slide."""
         canvas.setFillColor(page_footer_color)
-        canvas.setFont("Helvetica", 7)
+        canvas.setFont(pdf_regular, 7)
         canvas.drawString(55, 18, copyright_notice)
         raw_show_page()
 
@@ -927,7 +989,8 @@ def _add_pdf(
                 extend=True,
             )
 
-    def text(value, x, y, size, color=ink, font="Helvetica", max_width=None):
+    def text(value, x, y, size, color=ink, font=None, max_width=None):
+        font = font or pdf_regular
         canvas.setFillColor(color)
         canvas.setFont(font, size)
         if not max_width:
@@ -1007,7 +1070,7 @@ def _add_pdf(
         }.get(composition, (width * .5, 0, width * .5, height))
         prepared = _cover_image(cover_image, 1200, 750, fit="cover", focus="center")
         canvas.drawImage(ImageReader(prepared), x, y, width=w, height=h, preserveAspectRatio=False, mask="auto")
-    text(title, *title_position[:3], cover_ink, "Helvetica-Bold", title_position[3])
+    text(title, *title_position[:3], cover_ink, pdf_bold, title_position[3])
     text(subtitle, *subtitle_position[:3], cover_ink, max_width=subtitle_position[3])
     canvas.setFillColor(accent_color)
     canvas.rect(60, 115, 130, 8, stroke=0, fill=1)
@@ -1019,8 +1082,8 @@ def _add_pdf(
         layout = spec["layout"]
         if layout in {"section", "conclusion"}:
             paint_background(cover, cover_page=True)
-            text(f"{number:02d}", 60, 465, 12, accent_color, "Helvetica-Bold")
-            text(spec["title"], 60, 335, 34, HexColor("#FFFFFF"), "Helvetica-Bold", 830)
+            text(f"{number:02d}", 60, 465, 12, accent_color, pdf_bold)
+            text(spec["title"], 60, 335, 34, HexColor("#FFFFFF"), pdf_bold, 830)
             if spec["takeaway"]:
                 text(spec["takeaway"], 62, 205, 16, HexColor("#CDD5E1"), max_width=760)
             canvas.setFillColor(accent_color)
@@ -1135,7 +1198,7 @@ def _add_pdf(
             canvas.rect(72, 120, 120, 7, stroke=0, fill=1)
             show_page()
             continue
-        text(spec["title"], 52, 478, 35, ink, "Helvetica-Bold", 850)
+        text(spec["title"], 52, 478, 30, ink, pdf_bold, 850)
         if spec["takeaway"]:
             text(spec["takeaway"], 54, 425, 14, accent_color, "Helvetica-Bold", 840)
         image = spec["image"]
@@ -1147,17 +1210,18 @@ def _add_pdf(
             continue
         if layout == "quote":
             quote = spec["takeaway"] or (spec["bullets"][0] if spec["bullets"] else spec["title"])
-            text("“", 60, 400, 58, accent_color, "Helvetica-Bold")
-            text(quote, 115, 335, 28, ink, "Helvetica-Bold", 760)
+            quote_size = 28 if len(quote) <= 150 else 23 if len(quote) <= 240 else 19
+            text("“", 60, 400, 58, accent_color, pdf_bold)
+            text(quote, 115, 335, quote_size, ink, pdf_bold, 760)
             if spec["bullets"]:
                 text(spec["bullets"][-1], 120, 115, 12, muted, max_width=700)
             text(str(number), 895, 25, 8, muted)
             show_page()
             continue
         if layout == "big-number":
-            metric = spec["bullets"][0] if spec["bullets"] else "42%"
-            text(metric, 60, 300, 58, accent_color, "Helvetica-Bold", 400)
-            text(spec["takeaway"] or spec["title"], 485, 310, 22, ink, "Helvetica-Bold", 410)
+            metric, metric_label = _big_number_parts(spec)
+            text(metric, 60, 300, 58, accent_color, pdf_bold, 400)
+            text(metric_label, 485, 310, 22, ink, pdf_bold, 410)
             show_page()
             continue
         if layout in {"comparison", "pros-cons"}:
