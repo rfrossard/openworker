@@ -562,10 +562,22 @@ function normalizedTitle(value: string): string {
   return audienceTitle(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-function researchArtifactLabel(path: string): string {
+function researchArtifactDescription(path: string): string {
   const stem = path.replace(/^.*\//, "").replace(/(?:-storyboard)?\.(?:md|markdown)$/i, "");
   const description = stem.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-  return `Deep Research Result: ${description || "Untitled research"}`;
+  return description || "Untitled research";
+}
+
+function researchArtifactFunction(path: string): string {
+  const filename = path.replace(/^.*\//, "").toLowerCase();
+  if (/manuscript/.test(filename)) return "Manuscript";
+  if (/storyboard/.test(filename)) return "Storyboard";
+  if (/brief|plan/.test(filename)) return "Brief";
+  return "Research";
+}
+
+function researchArtifactOptionLabel(path: string): string {
+  return `${path.replace(/^.*\//, "")} (${researchArtifactFunction(path)})`;
 }
 
 export function applyResearchVisualPlan(deck: ParsedMarkdownDeck, json: string): ResearchVisualPlanResult {
@@ -922,8 +934,10 @@ export function buildMarkdownSlideDesignerPrompt(
   deck: ParsedMarkdownDeck,
   templateId: string,
   visualMood: VisualMood = "auto",
+  templateAccentId?: string,
 ): string {
   const selectedTemplate = templateById(templateId);
+  const selectedAccent = selectedTemplate.accentOptions?.find((option) => option.id === templateAccentId) || selectedTemplate.accentOptions?.[0];
   const mood = VISUAL_MOODS.find((item) => item.id === visualMood) || VISUAL_MOODS[0];
   const visualSlides = deck.slides.filter((slide) => slide.imageRequired).length;
   const estimate = presentationImageEstimate(deck);
@@ -960,7 +974,7 @@ export function buildMarkdownSlideDesignerPrompt(
 
 Source: ${path}
 Deck title: ${deck.title}
-Editable template: ${selectedTemplate.name} (template_id="${selectedTemplate.id}")
+Editable template: ${selectedTemplate.name} (template_id="${selectedTemplate.id}"${selectedAccent ? `, accent_color="${selectedAccent.color}"` : ""})
 Approved image budget: up to ${estimate.images} image calls, estimated at USD ${estimate.estimatedCostUsd.toFixed(4)} before provider taxes or pricing changes.
 Slide Designer quality score: ${quality.score}/100.
 Unresolved review findings:
@@ -984,7 +998,7 @@ Requirements:
 - Run the presentation-studio skill. Build an editable widescreen PPTX and matching slide PDF with build_presentation.
 - The renderer stamps every slide and PDF page with the small footer “© Frossard · Month Year” and adds the matching copyright notice to each slide's speaker notes. Do not remove, cover, or replace that ownership mark.
 - Use the standard PowerPoint widescreen canvas: 13.333 × 7.5 inches (16:9). Do not use Letter, A4, 4:3, or a custom aspect ratio.
-- Use template_id="${selectedTemplate.id}" and call build_presentation with minimum_images=${visualSlides}.
+- Use template_id="${selectedTemplate.id}"${selectedAccent ? ` and accent_color="${selectedAccent.color}"` : ""} and call build_presentation with minimum_images=${visualSlides}.
 - Visual mood: ${mood.label}. ${mood.hint} The deck's visual system must also align with the "${selectedTemplate.name}" template: ${selectedTemplate.description}. Keep one coherent visual language across the whole deck, instead of treating slides as unrelated image prompts.
 - Generate images only where image_required=true. Use each approved image_prompt as the art direction. If regenerate_image=true, create a new candidate instead of reusing a prior asset.
 - First create one grouped visual-review batch: before any deck rendering, present the total call count and estimated ceiling above for approval. After approval, generate one candidate for every selected slide, save a labeled contact sheet plus individual assets under reports/assets/, and present the candidates for review. Do not render the final PPTX/PDF until the user approves the batch or identifies the slides to regenerate.
@@ -1010,15 +1024,18 @@ Requirements:
 function SlidePreview({
   slide,
   templateId,
+  templateAccentId,
 }: {
   slide: MarkdownSlide;
   templateId: string;
+  templateAccentId?: string;
 }) {
   const template = templateById(templateId);
+  const accent = template.accentOptions?.find((option) => option.id === templateAccentId)?.color || template.colors[1];
   const previewBackgrounds = template.gradient ? [...template.gradient] : [template.colors[2]];
   const readableInk = mostReadableColor([template.colors[0], "#FFFFFF", "#111111"], previewBackgrounds);
-  const readableAccent = Math.min(...previewBackgrounds.map((background) => contrastRatio(template.colors[1], background) || 0)) >= 3
-    ? template.colors[1]
+  const readableAccent = Math.min(...previewBackgrounds.map((background) => contrastRatio(accent, background) || 0)) >= 3
+    ? accent
     : readableInk;
   const previewStyle = {
     "--slide-ink": readableInk,
@@ -1027,6 +1044,9 @@ function SlidePreview({
     "--slide-gradient-a": template.gradient?.[0] || template.colors[2],
     "--slide-gradient-b": template.gradient?.[1] || template.colors[2],
   } as CSSProperties;
+  const backdropIndex = template.backdropVariants?.length
+    ? Math.abs(Array.from(slide.id || slide.title).reduce((total, character) => total + character.charCodeAt(0), 0)) % template.backdropVariants.length
+    : 0;
   const midpoint = Math.ceil(slide.bullets.length / 2);
   const copyCharacters = [slide.title, slide.takeaway, ...slide.bullets].join(" ").length;
   const density = copyCharacters > 720 ? "dense" : copyCharacters > 440 ? "compact" : "comfortable";
@@ -1068,6 +1088,8 @@ function SlidePreview({
       data-transition={template.transition || "none"}
       data-motif={template.motif || "clean"}
       data-composition={template.composition || "standard"}
+      data-theme={template.theme || "atlas"}
+      data-backdrop={template.backdropVariants?.[backdropIndex] || "base"}
       data-preview-contrast={Math.min(...previewBackgrounds.map((background) => contrastRatio(readableInk, background) || 0)).toFixed(1)}
       style={previewStyle}
     >
@@ -1337,6 +1359,7 @@ export function MarkdownSlideDesigner({
   const [deck, setDeck] = useState<ParsedMarkdownDeck | null>(null);
   const [selected, setSelected] = useState(0);
   const [templateId, setTemplateId] = useState("atlas");
+  const [templateAccent, setTemplateAccent] = useState("");
   const [visualMood, setVisualMood] = useState<VisualMood>("auto");
   const [step, setStep] = useState<"content" | "design" | "review">("content");
   const [loading, setLoading] = useState(false);
@@ -1446,7 +1469,7 @@ export function MarkdownSlideDesigner({
       setError("Resolve the required review items before creating the presentation.");
       return;
     }
-    const prompt = buildMarkdownSlideDesignerPrompt(path, deck, templateId, visualMood);
+    const prompt = buildMarkdownSlideDesignerPrompt(path, deck, templateId, visualMood, templateAccent || undefined);
     close();
     window.setTimeout(() => onCreate(prompt), 0);
   };
@@ -1476,10 +1499,10 @@ export function MarkdownSlideDesigner({
               ))}
             </nav>
             <div className="slide-designer-toolbar">
-              <label className="research-field"><span>Deep Research Result</span><select aria-label="Deep Research Result" value={path} onChange={(event) => setPath(event.target.value)}>{markdown.map((artifact) => <option key={artifact.path} value={artifact.path}>{researchArtifactLabel(artifact.path)}</option>)}</select></label>
+              <label className="research-field"><span>{`Deep Research Result: ${deck?.title?.trim() || researchArtifactDescription(path)}`}</span><select aria-label="Deep Research Result" value={path} onChange={(event) => setPath(event.target.value)}>{markdown.map((artifact) => <option key={artifact.path} value={artifact.path}>{researchArtifactOptionLabel(artifact.path)}</option>)}</select></label>
               <label className="research-field">
                 <span>Presentation template</span>
-                <select aria-label="Presentation template" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
+                <select aria-label="Presentation template" value={templateId} onChange={(event) => { setTemplateId(event.target.value); setTemplateAccent(""); }}>
                   {CURATED_SLIDE_DESIGNER_TEMPLATE_GROUPS.map((group) => <optgroup key={group.label} label={group.label}>{templatesInGroup(group.ids).map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</optgroup>)}
                 </select>
                 <small className="slide-designer-template-note">
@@ -1487,6 +1510,15 @@ export function MarkdownSlideDesigner({
                   {templateById(templateId).transition ? ` · ${templateById(templateId).transition} transition` : ""}
                 </small>
               </label>
+              {templateById(templateId).accentOptions && (
+                <label className="research-field slide-designer-accent-field">
+                  <span>Template light</span>
+                  <select aria-label="Template light" value={templateAccent || templateById(templateId).accentOptions?.[0]?.id || ""} onChange={(event) => setTemplateAccent(event.target.value)}>
+                    {templateById(templateId).accentOptions?.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                  </select>
+                  <small>Changes only the editable accent color.</small>
+                </label>
+              )}
               <label className="research-field slide-designer-mood-field">
                 <span>Visual mood</span>
                 <select aria-label="Visual mood" value={visualMood} onChange={(event) => setVisualMood(event.target.value as VisualMood)}>
@@ -1504,7 +1536,7 @@ export function MarkdownSlideDesigner({
                   {deck.slides.map((item, index) => <button key={item.id} className={index === selected ? "selected" : ""} onClick={() => setSelected(index)} onKeyDown={(event) => selectSlideByKeyboard(event, index)}><span>{index + 1}</span><strong>{item.title}</strong><small>{LAYOUTS.find((layout) => layout.id === item.layout)?.label}</small></button>)}
                 </nav>
                 <div className="slide-designer-stage">
-                  <SlidePreview slide={slide} templateId={templateId} />
+                  <SlidePreview slide={slide} templateId={templateId} templateAccentId={templateAccent} />
                   {step === "content" ? <div className="slide-designer-edit-fields">
                     <div className="slide-designer-story-header">
                       <strong>Story and content</strong>

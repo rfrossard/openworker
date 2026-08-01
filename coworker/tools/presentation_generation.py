@@ -29,13 +29,13 @@ _LAYOUTS = {
 _TEMPLATES = {
     "atlas": {"background": "F7F8FA", "ink": "1A1F2C", "muted": "5B6577", "accent": "2F6BFF", "cover": "1A1F2C"},
     "aurora": {"background": "F3F5FA", "ink": "101827", "muted": "667085", "accent": "8B5CF6", "cover": "101827"},
-    "boardroom": {"background": "F7F4ED", "ink": "14213D", "muted": "657083", "accent": "C89B3C", "cover": "14213D"},
-    "editorial": {"background": "FAF7F2", "ink": "292524", "muted": "78716C", "accent": "C2410C", "cover": "292524"},
+    "boardroom": {"background": "101713", "ink": "F4F1DF", "muted": "B1B9A5", "accent": "F6C453", "cover": "101713", "gradient": "1C2A22", "transition": "wipe", "font": "Chalkboard SE"},
+    "editorial": {"background": "F5F0E6", "ink": "211D19", "muted": "766F63", "accent": "B63C2E", "cover": "211D19", "gradient": "E7DFD1", "transition": "fade", "composition": "editorial", "font": "Georgia"},
     "forest": {"background": "F2F7F3", "ink": "17352B", "muted": "64756C", "accent": "2F855A", "cover": "17352B"},
     "midnight": {"background": "171D2D", "ink": "F6F8FC", "muted": "AAB4C8", "accent": "5B8CFF", "cover": "090D18"},
     "monochrome": {"background": "FAFAFA", "ink": "171717", "muted": "737373", "accent": "525252", "cover": "171717"},
     "ocean": {"background": "F0F9FF", "ink": "123047", "muted": "617887", "accent": "0891B2", "cover": "123047"},
-    "paper": {"background": "FCFBF7", "ink": "2B2A27", "muted": "77736B", "accent": "8B6F47", "cover": "2B2A27"},
+    "paper": {"background": "F7F1DF", "ink": "25231F", "muted": "6F695D", "accent": "637D52", "cover": "25231F", "gradient": "E9DFC7", "transition": "fade", "font": "Bradley Hand ITC"},
     "plum": {"background": "FBF5FA", "ink": "321B3A", "muted": "806E83", "accent": "A855A0", "cover": "321B3A"},
     "signal": {"background": "FFF7ED", "ink": "18181B", "muted": "71717A", "accent": "EF4444", "cover": "18181B"},
     "studio": {"background": "F5F7FA", "ink": "20242C", "muted": "687180", "accent": "14B8A6", "cover": "20242C"},
@@ -56,7 +56,7 @@ _TEMPLATES = {
     "editorial-motion": {"background": "FFFBEB", "ink": "292524", "muted": "78716C", "accent": "E11D48", "cover": "292524", "gradient": "FFE4E6", "transition": "split"},
     "photo-story": {"background": "374151", "ink": "F9FAFB", "muted": "D1D5DB", "accent": "F59E0B", "cover": "111827", "gradient": "111827", "transition": "fade"},
     "cinematic-frame": {"background": "18181B", "ink": "FAFAFA", "muted": "A1A1AA", "accent": "EAB308", "cover": "09090B", "gradient": "27272A", "transition": "cover"},
-    "dashboard-pro": {"background": "F8FAFC", "ink": "172033", "muted": "64748B", "accent": "2563EB", "cover": "172033", "gradient": "EFF6FF", "transition": "push"},
+    "dashboard-pro": {"background": "0D1617", "ink": "EDF7F1", "muted": "A8BBB0", "accent": "4ADE80", "cover": "0D1617", "gradient": "142527", "transition": "push", "font": "Aptos Display"},
     "science-spectrum": {"background": "F0FDFA", "ink": "134E4A", "muted": "64748B", "accent": "8B5CF6", "cover": "134E4A", "gradient": "F5F3FF", "transition": "wipe"},
     "impact-report": {"background": "FAFAF9", "ink": "1C1917", "muted": "78716C", "accent": "16A34A", "cover": "1C1917", "gradient": "F0FDF4", "transition": "fade"},
     "science-studio": {"background": "070B12", "ink": "E8F7FA", "muted": "94A9B3", "accent": "56CFE1", "cover": "070B12", "gradient": "122B3A", "transition": "fade", "composition": "photo-right"},
@@ -65,15 +65,22 @@ _TEMPLATES = {
     "social-workshop": {"background": "FFFDF8", "ink": "292524", "muted": "78716C", "accent": "F5C542", "cover": "292524", "gradient": "57534E", "transition": "split", "composition": "collage"},
     "environmental-fieldwork": {"background": "FFFEFB", "ink": "12372A", "muted": "708276", "accent": "91B29A", "cover": "FFFEFB", "gradient": "EAF4EC", "transition": "wipe", "composition": "torn-photo", "cover_ink": "12372A"},
     "personal-brand": {"background": "F7F3F2", "ink": "09090B", "muted": "71717A", "accent": "0B5CAD", "cover": "F7F3F2", "gradient": "EEE9E7", "transition": "cover", "composition": "editorial", "cover_ink": "09090B"},
-    "botanical-noir": {"background": "080D0B", "ink": "EAF7F0", "muted": "9CB2A7", "accent": "8ED1B2", "cover": "080D0B", "gradient": "17241E", "transition": "fade", "composition": "botanical"},
+    "botanical-noir": {"background": "102016", "ink": "F0F8E8", "muted": "B1C7A9", "accent": "A8D67B", "cover": "102016", "gradient": "1B3A25", "transition": "fade", "composition": "botanical", "font": "Georgia"},
     "nature-balance": {"background": "0D2C22", "ink": "F7FFF9", "muted": "B7CCC0", "accent": "A8D5BA", "cover": "0D2C22", "gradient": "0B3B50", "transition": "cover", "composition": "full-bleed"},
     "storytelling-lab": {"background": "F7F3EB", "ink": "111111", "muted": "69635A", "accent": "2C8C8C", "cover": "F7F3EB", "gradient": "EEE8DC", "transition": "push", "composition": "minimal-frame", "cover_ink": "111111"},
     "agricultural-motion": {"background": "263A18", "ink": "FFFFFF", "muted": "CBD5B5", "accent": "A8C96A", "cover": "263A18", "gradient": "566B25", "transition": "push", "composition": "full-bleed"},
     "cultural-heritage": {"background": "17120F", "ink": "F6ECD8", "muted": "C2B29C", "accent": "B88A3B", "cover": "17120F", "gradient": "3B2419", "transition": "fade", "composition": "heritage"},
-    "cyan-infographic": {"background": "FFFFFF", "ink": "172033", "muted": "64748B", "accent": "18B8E6", "cover": "FFFFFF", "gradient": "E7F8FD", "transition": "wipe", "composition": "infographic", "cover_ink": "172033"},
+    "cyan-infographic": {"background": "F4FCFD", "ink": "083344", "muted": "52727B", "accent": "0EA5C9", "cover": "F4FCFD", "gradient": "D7F3F7", "transition": "wipe", "composition": "infographic", "cover_ink": "083344"},
     "growth-momentum": {"background": "07131C", "ink": "F8FAFC", "muted": "94A3B8", "accent": "38BDF8", "cover": "07131C", "gradient": "0C4A6E", "transition": "push", "composition": "infographic"},
     "home-investment": {"background": "FCFAF7", "ink": "312E2B", "muted": "78716C", "accent": "F0645A", "cover": "FCFAF7", "gradient": "F4E8DA", "transition": "split", "composition": "minimal-frame", "cover_ink": "312E2B"},
     "museum-editorial": {"background": "15110E", "ink": "F2E7D2", "muted": "B8A998", "accent": "9D6B2F", "cover": "15110E", "gradient": "30221B", "transition": "fade", "composition": "heritage"},
+    "itau": {"background": "001E60", "ink": "FFFFFF", "muted": "C8D4F1", "accent": "EC7000", "cover": "001E60", "gradient": "173B80", "transition": "fade"},
+    "tron": {"background": "051016", "ink": "EAF9FF", "muted": "A1CDD6", "accent": "38DDF5", "cover": "051016", "gradient": "0A2432", "transition": "push", "font": "Aptos Display"},
+    "minecraft": {"background": "24351F", "ink": "F7F3D9", "muted": "C5D6AD", "accent": "78B849", "cover": "24351F", "gradient": "426F38", "transition": "wipe", "font": "Aptos Display"},
+    "mckinsey": {"background": "FFFFFF", "ink": "12263F", "muted": "64748B", "accent": "1D5D9B", "cover": "12263F", "gradient": "EDF3F8", "transition": "fade"},
+    "accenture": {"background": "F7F4FA", "ink": "1A1A1A", "muted": "655D6B", "accent": "A100FF", "cover": "1A1A1A", "gradient": "EBDDFF", "transition": "push"},
+    "bcp": {"background": "FCFAF5", "ink": "172A4D", "muted": "766D5D", "accent": "F5B335", "cover": "172A4D", "gradient": "F2E5C8", "transition": "fade"},
+    "bain": {"background": "FFFDFC", "ink": "1D1D1D", "muted": "716B68", "accent": "CC1F2F", "cover": "1D1D1D", "gradient": "F5E3E2", "transition": "cover"},
 }
 
 _SCHEMA = {
@@ -441,6 +448,7 @@ def _add_pptx(
     accent_rgb = RGBColor.from_string(style["accent"])
     cover_rgb = RGBColor.from_string(style["cover"])
     cover_ink = RGBColor.from_string(style.get("cover_ink", "FFFFFF"))
+    deck_font = style.get("font", "Aptos")
     copyright_notice = _copyright_notice()
     blank_layout = next(
         (layout for layout in deck.slide_layouts if "blank" in layout.name.lower()),
@@ -454,7 +462,10 @@ def _add_pptx(
         frame.word_wrap = True
         paragraph = frame.paragraphs[0]
         paragraph.text = text
-        paragraph.font.name = "Aptos"
+        # Themes only use common, editable PowerPoint fonts. If a host does not have a
+        # decorative family, PowerPoint safely substitutes its default rather than
+        # flattening content or changing its structure.
+        paragraph.font.name = deck_font
         paragraph.font.size = Pt(size)
         paragraph.font.bold = bold
         paragraph.font.color.rgb = color

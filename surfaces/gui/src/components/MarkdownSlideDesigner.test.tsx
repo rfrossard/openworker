@@ -372,7 +372,8 @@ Original visual.`);
     fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
     await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
     const researchResult = screen.getByLabelText("Deep Research Result") as HTMLSelectElement;
-    expect(researchResult.options[researchResult.selectedIndex]?.text).toBe("Deep Research Result: Strategy");
+    expect(researchResult.options[researchResult.selectedIndex]?.text).toBe("strategy.md (Research)");
+    expect(screen.getByText("Deep Research Result: Results")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
     fireEvent.click(screen.getByRole("button", { name: "Table Rows and columns" }));
     expect((screen.getByLabelText("Row 1 column 1") as HTMLInputElement).value).toBe("Option");
@@ -561,15 +562,15 @@ Original visual.`);
     expect(preview.dataset.transition).toBe("push");
     expect(preview.dataset.motif).toBe("chart");
     expect(preview.getAttribute("style")).not.toBe(atlasStyle);
-    expect(screen.getByText(/Structured KPI charts/i)).toBeTruthy();
+    expect(screen.getByText(/Dark analytical control room/i)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Presentation template"), {
-      target: { value: "science-studio" },
+      target: { value: "botanical-noir" },
     });
-    expect(preview.dataset.composition).toBe("photo-right");
-    expect(screen.getByText(/laboratory photography/i)).toBeTruthy();
+    expect(preview.dataset.composition).toBe("botanical");
+    expect(screen.getByText(/Forest canopy/i)).toBeTruthy();
     expect(Number(preview.dataset.previewContrast)).toBeGreaterThanOrEqual(4.5);
-    expect(screen.getByLabelText("Presentation template").querySelectorAll("option")).toHaveLength(8);
-    expect(screen.getByLabelText("Presentation template").querySelectorAll("optgroup")).toHaveLength(4);
+    expect(screen.getByLabelText("Presentation template").querySelectorAll("option")).toHaveLength(14);
+    expect(screen.getByLabelText("Presentation template").querySelectorAll("optgroup")).toHaveLength(6);
     expect(screen.queryByRole("option", { name: "Neon Flow" })).toBeNull();
     expect(screen.getByLabelText("Slide styles").querySelectorAll("button")).toHaveLength(36);
     expect(screen.getByText("Core")).toBeTruthy();

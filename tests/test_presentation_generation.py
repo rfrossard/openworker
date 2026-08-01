@@ -292,7 +292,7 @@ def test_reference_inspired_templates_use_distinct_cover_compositions(tmp_path):
     cover_image = tmp_path / "cover.png"
     _sample_image(cover_image)
     tool = make_build_presentation_tool(workspace=tmp_path)
-    for template_id in ("science-studio", "environmental-fieldwork", "cyan-infographic"):
+    for template_id in ("science-studio", "environmental-fieldwork", "cyan-infographic", "tron", "itau", "mckinsey"):
         result = tool(
             title=f"{template_id} visual system",
             subtitle="A distinct reference-inspired composition",
