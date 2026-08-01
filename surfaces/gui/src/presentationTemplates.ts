@@ -87,10 +87,10 @@ export const PRESENTATION_TEMPLATE_GROUPS = [
 // Slide Designer intentionally starts with a small, contrast-reviewed set. The
 // complete catalog remains available in the broader presentation artifacts.
 export const CURATED_SLIDE_DESIGNER_TEMPLATE_GROUPS = [
-  { label: "Business & evidence", ids: ["atlas", "boardroom", "paper", "dashboard-pro"] },
-  { label: "Editorial", ids: ["editorial", "storytelling-lab", "personal-brand"] },
-  { label: "Photography & impact", ids: ["science-studio", "environmental-fieldwork", "cultural-heritage"] },
-  { label: "Distinctive", ids: ["botanical-noir", "cyan-infographic"] },
+  { label: "Business & evidence", ids: ["atlas", "boardroom"] },
+  { label: "Editorial", ids: ["paper", "editorial"] },
+  { label: "Visual storytelling", ids: ["science-studio", "botanical-noir"] },
+  { label: "Data & systems", ids: ["dashboard-pro", "cyan-infographic"] },
 ] as const;
 
 export function templatesInGroup(ids: readonly string[]): PresentationTemplate[] {

@@ -674,6 +674,14 @@ function contrastRatio(foreground: string, background: string): number | null {
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
 
+function mostReadableColor(candidates: string[], backgrounds: string[]): string {
+  return candidates.reduce((best, candidate) => {
+    const candidateContrast = Math.min(...backgrounds.map((background) => contrastRatio(candidate, background) || 0));
+    const bestContrast = Math.min(...backgrounds.map((background) => contrastRatio(best, background) || 0));
+    return candidateContrast > bestContrast ? candidate : best;
+  });
+}
+
 export function presentationQualityReport(
   deck: ParsedMarkdownDeck,
   templateId = "atlas",
@@ -1007,16 +1015,14 @@ function SlidePreview({
   templateId: string;
 }) {
   const template = templateById(templateId);
-  const background = template.gradient?.[0] || template.colors[2];
-  const preferredContrast = contrastRatio(template.colors[0], background) || 0;
-  const whiteContrast = contrastRatio("#FFFFFF", background) || 0;
-  const blackContrast = contrastRatio("#111111", background) || 0;
-  const readableInk = preferredContrast >= 4.5
-    ? template.colors[0]
-    : whiteContrast >= blackContrast ? "#FFFFFF" : "#111111";
+  const previewBackgrounds = template.gradient ? [...template.gradient] : [template.colors[2]];
+  const readableInk = mostReadableColor([template.colors[0], "#FFFFFF", "#111111"], previewBackgrounds);
+  const readableAccent = Math.min(...previewBackgrounds.map((background) => contrastRatio(template.colors[1], background) || 0)) >= 3
+    ? template.colors[1]
+    : readableInk;
   const previewStyle = {
     "--slide-ink": readableInk,
-    "--slide-accent": template.colors[1],
+    "--slide-accent": readableAccent,
     "--slide-bg": template.colors[2],
     "--slide-gradient-a": template.gradient?.[0] || template.colors[2],
     "--slide-gradient-b": template.gradient?.[1] || template.colors[2],
@@ -1062,6 +1068,7 @@ function SlidePreview({
       data-transition={template.transition || "none"}
       data-motif={template.motif || "clean"}
       data-composition={template.composition || "standard"}
+      data-preview-contrast={Math.min(...previewBackgrounds.map((background) => contrastRatio(readableInk, background) || 0)).toFixed(1)}
       style={previewStyle}
     >
       <span className="slide-designer-preview-kicker">Widescreen 16:9 · 13.333 × 7.5 in</span>

@@ -371,6 +371,8 @@ Original visual.`);
     render(<MarkdownSlideDesigner sessionId="session-1" artifacts={artifacts} onCreate={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /Slide Designer/i }));
     await waitFor(() => expect(screen.getByTestId("slide-preview")).toBeTruthy());
+    const researchResult = screen.getByLabelText("Deep Research Result") as HTMLSelectElement;
+    expect(researchResult.options[researchResult.selectedIndex]?.text).toBe("Deep Research Result: Strategy");
     fireEvent.click(screen.getByRole("button", { name: "Continue to design" }));
     fireEvent.click(screen.getByRole("button", { name: "Table Rows and columns" }));
     expect((screen.getByLabelText("Row 1 column 1") as HTMLInputElement).value).toBe("Option");
@@ -561,12 +563,14 @@ Original visual.`);
     expect(preview.getAttribute("style")).not.toBe(atlasStyle);
     expect(screen.getByText(/Structured KPI charts/i)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Presentation template"), {
-      target: { value: "environmental-fieldwork" },
+      target: { value: "science-studio" },
     });
-    expect(preview.dataset.composition).toBe("torn-photo");
-    expect(screen.getByText(/torn-paper edge/i)).toBeTruthy();
-    expect(screen.getByLabelText("Presentation template").querySelectorAll("option")).toHaveLength(12);
+    expect(preview.dataset.composition).toBe("photo-right");
+    expect(screen.getByText(/laboratory photography/i)).toBeTruthy();
+    expect(Number(preview.dataset.previewContrast)).toBeGreaterThanOrEqual(4.5);
+    expect(screen.getByLabelText("Presentation template").querySelectorAll("option")).toHaveLength(8);
     expect(screen.getByLabelText("Presentation template").querySelectorAll("optgroup")).toHaveLength(4);
+    expect(screen.queryByRole("option", { name: "Neon Flow" })).toBeNull();
     expect(screen.getByLabelText("Slide styles").querySelectorAll("button")).toHaveLength(36);
     expect(screen.getByText("Core")).toBeTruthy();
     expect(screen.getByText("Visual")).toBeTruthy();
