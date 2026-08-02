@@ -33,6 +33,7 @@ export type SlideLayout =
   | "radar-chart"
   | "sankey-diagram"
   | "word-cloud"
+  | "map"
   | "flow-diagram"
   | "org-chart"
   | "roadmap"
@@ -217,6 +218,7 @@ const LAYOUTS: { id: SlideLayout; label: string; description: string; category: 
   { id: "radar-chart", label: "Radar chart", description: "Compare a small set of dimensions", category: "Data" },
   { id: "sankey-diagram", label: "Sankey diagram", description: "Show quantified flows between stages", category: "Data" },
   { id: "word-cloud", label: "Word cloud", description: "Show recurring qualitative themes", category: "Data" },
+  { id: "map", label: "Map", description: "Compare verified locations or geographic footprint", category: "Data" },
   { id: "metric-grid", label: "Metric grid", description: "Multiple headline indicators", category: "Data" },
   { id: "three-columns", label: "Three columns", description: "Three parallel themes", category: "Data" },
   { id: "four-cards", label: "Four cards", description: "Four concise ideas or features", category: "Data" },
@@ -229,7 +231,7 @@ const LAYOUTS: { id: SlideLayout; label: string; description: string; category: 
 ];
 
 const IMAGE_LAYOUTS: SlideLayout[] = [
-  "image-left", "image-right", "image-background", "image-top", "image-bottom",
+  "image-left", "image-right", "image-background", "image-top", "image-bottom", "map",
 ];
 const CONTENT_ELEMENTS: { id: SlideLayout; label: string; hint: string }[] = [
   { id: "table", label: "Table", hint: "Rows and columns" },
@@ -238,6 +240,7 @@ const CONTENT_ELEMENTS: { id: SlideLayout; label: string; hint: string }[] = [
   { id: "timeline", label: "Timeline", hint: "Order events" },
   { id: "flow-diagram", label: "Flow diagram", hint: "Connect steps" },
   { id: "org-chart", label: "Org chart", hint: "Show relationships" },
+  { id: "map", label: "Map", hint: "Compare locations" },
   { id: "quote", label: "Quote", hint: "Feature a voice" },
 ];
 const GEMINI_IMAGE_ESTIMATE_USD = 0.0336;
@@ -568,7 +571,7 @@ export function parseMarkdownDeck(markdown: string, fallbackTitle = "Presentatio
       layout: visualLayout,
       recommendedLayout: visualLayout,
       bullets: semanticRows.length ? semanticRows.slice(0, 12) : slide.bullets,
-      imageRequired: imageRequired || visualLayout === "image-right",
+      imageRequired: imageRequired || IMAGE_LAYOUTS.includes(visualLayout),
       // A reference asset is useful evidence, but its URL is not art direction for an
       // image model. Keep it in visualReferences and only retain an authored prompt.
       imagePrompt: usableImageDirection(String(markdownVisual?.image_prompt || "")) || usableImageDirection(imagePrompt),
@@ -656,6 +659,14 @@ function rowsFromRepresentation(type: string, data: Record<string, unknown>): st
       return parent && child ? `${parent} > ${child}` : "";
     }).filter(Boolean);
   }
+  if (type === "map") {
+    return records(data.locations || data.items, 12).map((item) => {
+      const location = cleanInline(String(item.location || item.label || item.name || ""));
+      const value = cleanInline(String(item.value ?? ""));
+      const detail = cleanInline(String(item.detail || item.description || ""));
+      return [location, value, detail].filter(Boolean).join(" | ");
+    }).filter(Boolean);
+  }
   if (type === "flowchart" || type === "flow_diagram") {
     const relationships = records(data.relationships, 12).map((item) => {
       const from = cleanInline(String(item.from || item.parent || ""));
@@ -688,6 +699,7 @@ function layoutFromRepresentation(type: string, data: Record<string, unknown>): 
     sankey: "sankey-diagram",
     sankey_diagram: "sankey-diagram",
     word_cloud: "word-cloud",
+    map: "map",
     quote: "quote",
     flowchart: "flow-diagram",
     flow_diagram: "flow-diagram",
@@ -802,6 +814,7 @@ export function presentationImageEstimate(deck: ParsedMarkdownDeck): {
 const STRUCTURED_LAYOUTS = new Set<SlideLayout>([
   "table", "bar-chart", "donut-chart", "timeline", "process", "roadmap",
   "flow-diagram", "org-chart", "quote", "comparison", "metric-grid",
+  "map",
 ]);
 
 function wordCount(value: string): number {
@@ -909,6 +922,12 @@ export function presentationQualityReport(
     }
     if (slide.layout === "timeline" && slide.bullets.length < 2) {
       add(`timeline-${index}`, "Data", "critical", `Slide ${number} needs at least two dated milestones.`, index, true);
+    }
+    if (slide.layout === "map" && slide.bullets.filter((item) => item.split("|").filter(Boolean).length >= 2).length < 2) {
+      add(`map-${index}`, "Data", "critical", `Slide ${number} map needs at least two locations with an evidence-backed value or insight.`, index, true);
+    }
+    if (slide.layout === "map" && !slide.imageRequired) {
+      add(`map-image-${index}`, "Visuals", "critical", `Slide ${number} map needs a real geographic visual before it can be rendered.`, index, true);
     }
     if (slide.layout === "timeline" && Object.keys(slide.visualPlanData).length > 0
       && !records(slide.visualPlanData.items).every((item) => Boolean(String(item.date || item.time || "").trim()))) {
@@ -1105,6 +1124,7 @@ export function suggestSlideLayout(slide: MarkdownSlide, index = 0): SlideLayout
   if (/\b(roadmap|milestone|quarter|phase)\b/.test(title)) return "roadmap";
   if (/\b(process|workflow|flow|steps?)\b/.test(title) && values.length >= 2) return "flow-diagram";
   if (/\b(timeline|history|evolution)\b/.test(title)) return "timeline";
+  if (/\b(map|geograph|market footprint|regional|location|territor|expansion)\b/.test(title) && values.length >= 2) return "map";
   if (/^[“"].+[”"]$/.test(slide.takeaway.trim())) return "quote";
   if (/^\s*[$€£]?\d[\d,.]*%?\s*$/.test(values[0] || "")) return "big-number";
   if (values.length === 4 && values.every((value) => /\d/.test(value))) return "metric-grid";
@@ -1326,6 +1346,8 @@ function SlidePreview({
         <div className="slide-designer-sankey">{slide.bullets.slice(0, 5).map((row, index) => <span key={`${row}-${index}`}><b>{row.split("|")[0]?.trim()}</b><i style={{ width: `${Math.max(25, 100 - index * 13)}%` }} /><em>{row.split("|")[1]?.trim()}</em></span>)}</div>
       ) : slide.layout === "word-cloud" ? (
         <div className="slide-designer-word-cloud">{slide.bullets.slice(0, 12).map((word, index) => <span key={`${word}-${index}`}>{word.split("|")[0]?.trim()}</span>)}</div>
+      ) : slide.layout === "map" ? (
+        <div className="slide-designer-map"><div className="slide-designer-map-canvas">{image}<b>Geographic evidence</b></div><div>{slide.bullets.slice(0, 5).map((row, index) => { const [place, value, detail] = row.split("|"); return <span key={`${row}-${index}`}><i>{index + 1}</i><strong>{place?.trim()}</strong><b>{value?.trim()}</b>{detail ? <small>{detail.trim()}</small> : null}</span>; })}</div></div>
       ) : slide.layout === "comparison" || slide.layout === "pros-cons" ? (
         <div className="slide-designer-comparison"><div><b>{slide.layout === "pros-cons" ? "Pros" : "Option A"}</b>{bullets(slide.bullets.slice(0, midpoint))}</div><div><b>{slide.layout === "pros-cons" ? "Cons" : "Option B"}</b>{bullets(slide.bullets.slice(midpoint))}</div></div>
       ) : slide.layout === "three-columns" || slide.layout === "three-boxes" ? cards(3)

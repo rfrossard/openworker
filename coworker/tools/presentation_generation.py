@@ -25,7 +25,7 @@ _LAYOUTS = {
     "title-only", "big-number", "checklist", "timeline", "process", "comparison",
     "pros-cons", "three-columns", "four-cards", "metric-grid", "image-background",
     "image-top", "image-bottom", "agenda", "conclusion", "table", "bar-chart",
-    "donut-chart", "flow-diagram", "org-chart", "roadmap",
+    "donut-chart", "flow-diagram", "org-chart", "roadmap", "map",
 }
 _TEMPLATES = {
     "atlas": {"background": "F7F8FA", "ink": "1A1F2C", "muted": "5B6577", "accent": "2F6BFF", "cover": "1A1F2C"},
@@ -117,7 +117,7 @@ _SCHEMA = {
                                 "items": {"type": "string"},
                                 "description": (
                                     "Content rows. Use Label | Value for charts, pipe-separated "
-                                    "cells for tables, and Parent > Child for org charts."
+                                    "cells for tables, Parent > Child for org charts, and Location | Value | Insight for maps."
                                 ),
                             },
                             "image_path": {
@@ -343,6 +343,10 @@ def _normalize_slides(root: Path, slides: list[dict[str, Any]]) -> list[dict[str
                 )
         if layout in {"flow-diagram", "org-chart", "roadmap"} and len(bullets) < 2:
             raise ValueError(f"Slide {index} needs at least two connected items.")
+        if layout == "map" and len(_table_rows(bullets)) < 2:
+            raise ValueError(
+                f"Slide {index} needs at least two evidence-backed locations formatted as Location | Value | Insight."
+            )
     return normalized
 
 
@@ -834,6 +838,29 @@ def _add_pptx(
                 panel(slide, child_x, 4.3, child_width, 1.15)
                 textbox(slide, child, child_x + 0.18, 4.58, child_width - 0.36, 0.55, 15, ink, True)
             continue
+        if layout == "map":
+            # Geography must be supplied as a real map/territory image. The editable
+            # location register remains beside it so the output never implies fake precision.
+            if not image:
+                raise ValueError("Map slides require a planned map or geographic image.")
+            slide.shapes.add_picture(
+                _cover_image(image, fit=spec["image_fit"], focus=spec["image_focus"]),
+                Inches(0.78), Inches(2.0), width=Inches(6.35), height=Inches(4.45),
+            )
+            locations = _table_rows(spec["bullets"])[:5]
+            for item_index, row in enumerate(locations):
+                y = 2.0 + item_index * 0.82
+                marker = slide.shapes.add_shape(9, Inches(7.45), Inches(y + 0.1), Inches(0.34), Inches(0.34))
+                marker.fill.solid(); marker.fill.fore_color.rgb = accent_rgb; marker.line.fill.background()
+                textbox(slide, str(item_index + 1), 7.54, y + 0.15, 0.16, 0.12, 8, RGBColor(255, 255, 255), True)
+                location = row[0] if row else "Location"
+                value = row[1] if len(row) > 1 else ""
+                detail = row[2] if len(row) > 2 else ""
+                textbox(slide, location, 7.9, y, 3.95, 0.25, 15, ink, True)
+                textbox(slide, value, 11.15, y, 1.05, 0.25, 14, accent_rgb, True)
+                if detail:
+                    textbox(slide, detail, 7.9, y + 0.30, 4.2, 0.35, 11, muted)
+            continue
         if layout in {"comparison", "pros-cons"}:
             midpoint = max(1, (len(spec["bullets"]) + 1) // 2)
             headings = ("Pros", "Cons") if layout == "pros-cons" else ("Option A", "Option B")
@@ -1239,6 +1266,25 @@ def _add_pdf(
             metric, metric_label = _big_number_parts(spec)
             text(metric, 60, 300, 58, accent_color, pdf_bold, 400)
             text(metric_label, 485, 310, 22, ink, pdf_bold, 410)
+            show_page()
+            continue
+        if layout == "map":
+            if not image:
+                raise ValueError("Map slides require a planned map or geographic image.")
+            prepared = _cover_image(image, 900, 600, fit=spec["image_fit"], focus=spec["image_focus"])
+            canvas.drawImage(ImageReader(prepared), 55, 100, width=480, height=300, mask="auto")
+            for item_index, row in enumerate(_table_rows(spec["bullets"])[:5]):
+                y = 365 - item_index * 58
+                location = row[0] if row else "Location"
+                value = row[1] if len(row) > 1 else ""
+                detail = row[2] if len(row) > 2 else ""
+                canvas.setFillColor(accent_color)
+                canvas.circle(570, y + 4, 10, stroke=0, fill=1)
+                text(str(item_index + 1), 567, y, 8, HexColor("#FFFFFF"), "Helvetica-Bold")
+                text(location, 590, y + 5, 12, ink, "Helvetica-Bold", 190)
+                text(value, 805, y + 5, 11, accent_color, "Helvetica-Bold", 95)
+                if detail:
+                    text(detail, 590, y - 14, 9, muted, max_width=300)
             show_page()
             continue
         if layout in {"comparison", "pros-cons"}:

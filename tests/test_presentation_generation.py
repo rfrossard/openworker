@@ -184,6 +184,7 @@ def test_build_presentation_supports_extended_designer_layouts(tmp_path):
 
 
 def test_build_presentation_supports_editable_semantic_visuals(tmp_path):
+    _sample_image(tmp_path / "visual.png")
     tool = make_build_presentation_tool(workspace=tmp_path)
     result = tool(
         title="Semantic visual language",
@@ -194,6 +195,7 @@ def test_build_presentation_supports_editable_semantic_visuals(tmp_path):
             {"title": "Decision flow", "layout": "flow-diagram", "bullets": ["Discover", "Validate", "Build", "Measure"]},
             {"title": "Accountable team", "layout": "org-chart", "bullets": ["CEO > Product", "CEO > Engineering", "CEO > Sales"]},
             {"title": "Delivery roadmap", "layout": "roadmap", "bullets": ["Q1 Research", "Q2 Pilot", "Q3 Launch", "Q4 Scale"]},
+            {"title": "Geographic footprint", "layout": "map", "bullets": ["São Paulo | 42% | Primary market", "Rio de Janeiro | 28% | Expansion priority"], "image_path": "visual.png", "image_required": True, "sources": ["https://example.com/map"]},
         ],
         pptx_path="semantic.pptx",
         pdf_path="semantic.pdf",
@@ -203,7 +205,7 @@ def test_build_presentation_supports_editable_semantic_visuals(tmp_path):
     assert result["quality_gate"]["passed"] is True
     assert result["quality_gate"]["score"] == 100
     presentation = Presentation(tmp_path / "semantic.pptx")
-    assert len(presentation.slides) == 7
+    assert len(presentation.slides) == 8
     assert any(shape.has_table for shape in presentation.slides[1].shapes)
     assert presentation.slides[2].has_notes_slide
     assert "[Sources]" in presentation.slides[2].notes_slide.notes_text_frame.text
@@ -214,7 +216,19 @@ def test_build_presentation_supports_editable_semantic_visuals(tmp_path):
     assert bar_chart.plots[0].has_data_labels is True
     chart_text = "\n".join(shape.text for shape in presentation.slides[2].shapes if getattr(shape, "has_text_frame", False))
     assert "Core remains the largest verified segment." in chart_text
-    assert len(PdfReader(tmp_path / "semantic.pdf").pages) == 7
+    assert len(PdfReader(tmp_path / "semantic.pdf").pages) == 8
+
+
+def test_build_presentation_rejects_map_without_geographic_evidence(tmp_path):
+    tool = make_build_presentation_tool(workspace=tmp_path)
+    result = tool(
+        title="Map validation",
+        slides=[{"title": "Footprint", "layout": "map", "bullets": ["São Paulo | 42%"]}],
+        pptx_path="map.pptx",
+        pdf_path="map.pdf",
+    )
+    assert result["ok"] is False
+    assert "at least two evidence-backed locations" in result["error"]
 
 
 def test_build_presentation_rejects_incomplete_semantic_data(tmp_path):

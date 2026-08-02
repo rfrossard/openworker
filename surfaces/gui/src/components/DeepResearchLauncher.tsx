@@ -68,6 +68,8 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
     .join("\n");
   const depth = DEPTH_SETTINGS[brief.depth];
   const minimumImages = Math.max(2, Math.ceil(((brief.slideCount || 10) - 1) * 0.4));
+  const consultingTemplateIds = new Set(["mckinsey", "accenture", "bcp", "bain"]);
+  const isConsultingDeck = brief.deliverable === "presentation" && consultingTemplateIds.has(brief.templateId || "");
   const visualLedgerSchema = `{
   "schema_version": "openworker.deep-research.v2",
   "title": "Research title",
@@ -87,8 +89,8 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
     "claim_ids": ["C1"],
     "sources": ["https://..."],
     "representation": {
-      "type": "table | bar_chart | donut_chart | radar_chart | sankey_diagram | word_cloud | big_number | quote | flowchart | org_chart | timeline | process | roadmap | agenda | checklist | comparison | metrics | image | text",
-      "layout_recommendation": "one Slide Designer layout: table | bar_chart | donut_chart | radar_chart | sankey_diagram | word_cloud | big_number | quote | flow_diagram | org_chart | timeline | process | roadmap | agenda | checklist | comparison | metric_grid | image_left | image_right | image_background | image_top | image_bottom | two_column | three_columns | four_columns | five_columns | two_boxes | three_boxes | four_boxes | five_boxes | statement | section | conclusion | title_only | standard",
+      "type": "table | bar_chart | donut_chart | radar_chart | sankey_diagram | word_cloud | map | big_number | quote | flowchart | org_chart | timeline | process | roadmap | agenda | checklist | comparison | metrics | image | text",
+      "layout_recommendation": "one Slide Designer layout: table | bar_chart | donut_chart | radar_chart | sankey_diagram | word_cloud | map | big_number | quote | flow_diagram | org_chart | timeline | process | roadmap | agenda | checklist | comparison | metric_grid | image_left | image_right | image_background | image_top | image_bottom | two_column | three_columns | four_columns | five_columns | two_boxes | three_boxes | four_boxes | five_boxes | statement | section | conclusion | title_only | standard",
       "reason": "why this representation best explains the evidence",
       "visual_question": "the exact question this visual answers",
       "data_shape": "comparison | ranking | trend | composition | distribution | relationship | hierarchy | sequence | decision | single_metric | narrative",
@@ -125,6 +127,8 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
         "annotations": [{"text": "short evidence-backed callout", "target": "series or row label", "claim_ids": ["C1"]}],
         "quote": {"text": "Exact verified quote", "attribution": "Speaker or source"},
         "items": [{"id": "M1", "date": "2026", "label": "Event", "detail": "Meaning", "status": "past | current | planned | uncertain", "claim_ids": ["C1"]}],
+        "map_scope": "world | country | region | city",
+        "locations": [{"location": "São Paulo, Brazil", "value": "42%", "label": "Market share", "detail": "Why this location matters", "status": "current", "claim_ids": ["C1"]}],
         "relationships": [{"from": "Source", "to": "Destination", "label": "relationship", "parent": "Parent", "child": "Child", "claim_ids": ["C1"]}],
         "comparison_dimensions": [{"label": "Decision criterion", "options": [{"label": "Option A", "value": "Strong", "claim_ids": ["C1"]}]}],
         "recommendation": {"label": "Recommended action", "rationale": "Why the evidence supports it", "claim_ids": ["C1"]},
@@ -147,6 +151,7 @@ ${visualLedgerSchema}
 - Choose one primary representation and one layout_recommendation per section. The layout recommendation is visible in Slide Designer, but users can change it without changing the research result. Include only the representation.data fields that apply to that type.
 - Separate display data from evidence metadata. "headline", "takeaway", "display_value", "display_label", labels, row cells, annotations, and quote text must be concise audience-facing language. Claim IDs, source URLs, selection confidence, rejected representations, production state, and renderer instructions are metadata: retain them in JSON but never put them in display fields.
 - Structure values by visual grammar: charts need ordered categories/series, units, periods, axis labels, highlights, and annotations; tables need concise columns, rows, and emphasized cells or rows; timelines/processes need ordered item IDs, dates/status, and claim IDs; flows and org charts need explicit "from"/"to" relationships; comparisons need named dimensions, options, and a recommendation; big numbers need one "display_value"/"value", a label, period, baseline, and definition. Add only fields supported by the evidence.
+- Use a map only when geography changes the decision: at least two evidence-backed locations, a clear geographic question, map_scope, and locations with a value or decision relevance. The visual must be a real map or geographic image with readable labels; never use a generic world silhouette as decoration.
 - Before choosing it, write the visual_question and classify the data_shape. Record at least one rejected representation whenever a structured visual is chosen. A chart or diagram is not automatically better than concise text.
 - Every numeric chart/table value, exact quote, relationship, event, and process step must map to claim_ids and source URLs. Never invent content to complete a visual.
 - Add visual_references when a primary, licensed, or compositionally useful reference could illustrate the section. References are provenance and art direction, not permission to copy; record URL, purpose, source type, license note, and claim IDs.`;
@@ -186,7 +191,7 @@ ${visualLedgerSchema}
   - Use a horizontal bar chart for ranking or category comparison, a line chart for a verified time trend, a stacked bar for composition across groups, a waterfall for drivers of change, a funnel for stage loss, and a 2x2 matrix for two meaningful decision dimensions. Do not substitute one chart type merely because the renderer supports it.
   - Use a donut only for a true part-to-whole relationship with 2-5 non-negative categories whose values form a meaningful total.
   - Use a big number only when the value includes unit, definition, period, baseline, and source. Include the delta or benchmark when available.
-  - Use an org chart for hierarchy, ownership, governance, or decision rights; use a relationship map for a non-hierarchical ecosystem.
+  - Use an org chart for hierarchy, ownership, governance, or decision rights; use a relationship map for a non-hierarchical ecosystem. Use a geographic map only for a location-based comparison, footprint, concentration, expansion, risk, or route.
   - Use a flowchart only when there is a decision, branch, loop, exception, or alternative path. Use a process for a linear sequence.
   - Use a timeline for dated evidence or milestones and mark past, current, planned, or uncertain status.
   - Prefer concise text when the evidence has no defensible structure or a visual would add decoration rather than understanding.
@@ -219,6 +224,7 @@ ${brief.templatePath
 - Apply Presenton-style local/BYOK principles: never send research, files, or credentials to an unapproved external presentation service.
 - Give each slide that materially benefits from imagery one distinct, relevant visual. Never invent charts, data, people, quotes, or outcomes.
 ${imageRequirements}
+${isConsultingDeck ? `- Consulting standard: use a hypothesis-led answer first. For every major recommendation, establish the baseline, quantified evidence, implication, trade-off, owner, timing, dependencies, risk, mitigation, decision gate, and leading KPI. Use primary sources wherever possible; distinguish fact, inference, and recommendation. Include an executive summary, a diagnostic, options or scenarios, a clear recommendation, a sequenced action plan with owners, and a review slide that consolidates decisions, open risks, and next steps. Each visual must answer a management question in five seconds; favor decision-useful comparisons, quantified value bridges, geographic evidence, operating-model/org charts, implementation roadmaps, and concise exhibits over decorative imagery.` : ""}
 - Use at least 50pt for the deck title, 35pt for slide titles, 24pt for subheads, and 16pt for body copy. Shorten content instead of shrinking it.
 - Put human-readable source URLs for every non-trivial claim and externally sourced visual in speaker notes. Also create reports/<descriptive-name>.sources.md with slide-by-slide provenance.
 - The native renderer stamps every presentation slide and PDF page with the small footer “© Frossard · Month Year” and adds the matching copyright notice to each slide's speaker notes. Do not remove, cover, or replace it.
