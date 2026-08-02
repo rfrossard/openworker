@@ -308,6 +308,25 @@ The first milestone is complete.
     expect(fixed.deck.slides[1].layout).toBe("process");
   });
 
+  it("blocks incomplete semantic visuals and removes raw production markup during review", () => {
+    const deck = parseMarkdownDeck(`# Quality
+## Slide 1: Raw title
+Takeaway.
+- evidence
+## Timeline
+Only one milestone.`);
+    deck.slides[0].layout = "org-chart";
+    deck.slides[0].takeaway = "Takeaway [C1].";
+    deck.slides[0].bullets = ["evidence [C1]"];
+    deck.slides[1].layout = "timeline";
+    const report = presentationQualityReport(deck);
+    expect(report.findings.map((finding) => finding.id)).toEqual(expect.arrayContaining([
+      "raw-production-0", "org-0", "timeline-1",
+    ]));
+    const fixed = autoFixPresentation(deck);
+    expect(fixed.deck.slides[0]).toMatchObject({ title: "Raw title", takeaway: "Takeaway.", bullets: ["evidence"] });
+  });
+
   it("maps grounded research sections into editable semantic slide representations", () => {
     const deck = parseMarkdownDeck(`# Evidence deck
 ## Market evidence

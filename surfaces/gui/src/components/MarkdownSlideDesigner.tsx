@@ -880,10 +880,11 @@ export function presentationQualityReport(
     if (wordCount([slide.title, slide.takeaway, ...slide.bullets].join(" ")) > 110) {
       add(`dense-${index}`, "Content", "warning", `Slide ${number} is dense; shorten copy or split the idea.`, index, false);
     }
-    const numericRows = slide.bullets.filter((row) =>
-      row.includes("|")
-      && Number.isFinite(Number(row.split("|").pop()?.trim().replace(/[%,$]/g, ""))),
-    );
+    const numericRows = slide.bullets.filter((row) => {
+      const raw = row.split("|").pop()?.trim() || "";
+      const normalized = raw.replace(/[^0-9.-]/g, "");
+      return row.includes("|") && normalized.length > 0 && Number.isFinite(Number(normalized));
+    });
     if ((slide.layout === "bar-chart" || slide.layout === "donut-chart") && numericRows.length < 2) {
       add(`chart-${index}`, "Data", "critical", `Slide ${number} needs at least two chart rows formatted as Label | Value.`, index, true);
     }
@@ -905,6 +906,29 @@ export function presentationQualityReport(
     }
     if (slide.layout === "big-number" && !isDisplayMetric(bigNumberParts(slide).value)) {
       add(`metric-value-${index}`, "Data", "critical", `Slide ${number} big number needs one explicit metric with a unit, scale, or currency.`, index, true);
+    }
+    if (slide.layout === "timeline" && slide.bullets.length < 2) {
+      add(`timeline-${index}`, "Data", "critical", `Slide ${number} needs at least two dated milestones.`, index, true);
+    }
+    if (slide.layout === "timeline" && Object.keys(slide.visualPlanData).length > 0
+      && !records(slide.visualPlanData.items).every((item) => Boolean(String(item.date || item.time || "").trim()))) {
+      add(`timeline-dates-${index}`, "Evidence", "warning", `Slide ${number} timeline needs a date or period for every milestone.`, index, false);
+    }
+    if ((slide.layout === "process" || slide.layout === "roadmap") && slide.bullets.length < 2) {
+      add(`sequence-${index}`, "Data", "critical", `Slide ${number} needs at least two ordered steps.`, index, true);
+    }
+    if (slide.layout === "flow-diagram" && slide.bullets.length < 2) {
+      add(`flow-${index}`, "Data", "critical", `Slide ${number} needs at least two connected nodes or relationships.`, index, true);
+    }
+    if (slide.layout === "org-chart" && slide.bullets.filter((row) => row.includes(">")).length < 2) {
+      add(`org-${index}`, "Data", "critical", `Slide ${number} needs at least two reporting relationships.`, index, true);
+    }
+    if (slide.layout === "comparison" && slide.bullets.length < 2
+      && records(slide.visualPlanData.comparison_dimensions).length === 0) {
+      add(`comparison-${index}`, "Data", "critical", `Slide ${number} needs two options or structured comparison dimensions.`, index, true);
+    }
+    if ([slide.title, slide.takeaway, ...slide.bullets].some((value) => /(?:```|openworker-visual|\[C\d+|\b(?:slide|section)\s*\d+\s*[:.)|—–-])/i.test(value))) {
+      add(`raw-production-${index}`, "Content", "warning", `Slide ${number} contains production markup or citation tags that should be metadata, not visible copy.`, index, true);
     }
     if (STRUCTURED_LAYOUTS.has(slide.layout)
       && Object.keys(slide.visualPlanData).length > 0
@@ -989,6 +1013,17 @@ export function autoFixPresentation(deck: ParsedMarkdownDeck): PresentationAutoF
       updated.title = fallbackTitle(updated, index);
       fixes.push(`Added a title to slide ${index + 1}.`);
     }
+    const hasRawProduction = [updated.title, updated.takeaway, ...updated.bullets]
+      .some((value) => /(?:```|openworker-visual|\[C\d+|\b(?:slide|section)\s*\d+\s*[:.)|—–-])/i.test(value));
+    if (hasRawProduction) {
+      updated = {
+        ...updated,
+        title: audienceTitle(updated.title),
+        takeaway: audienceCopy(updated.takeaway),
+        bullets: updated.bullets.map(cleanInline).filter(Boolean),
+      };
+      fixes.push(`Removed production markup from the visible copy on slide ${index + 1}.`);
+    }
     if (updated.imageRequired && !updated.imagePrompt.trim()) {
       const reference = updated.visualReferences
         .map((item) => [item.description, item.purpose].filter(Boolean).join(". "))
@@ -999,10 +1034,10 @@ export function autoFixPresentation(deck: ParsedMarkdownDeck): PresentationAutoF
       fixes.push(`Added visual direction to slide ${index + 1}.`);
     }
     if ((updated.layout === "bar-chart" || updated.layout === "donut-chart")
-      && updated.bullets.filter((row) =>
-        row.includes("|")
-        && Number.isFinite(Number(row.split("|").pop()?.trim().replace(/[%,$]/g, ""))),
-      ).length < 2) {
+      && updated.bullets.filter((row) => {
+        const normalized = (row.split("|").pop()?.trim() || "").replace(/[^0-9.-]/g, "");
+        return row.includes("|") && normalized.length > 0 && Number.isFinite(Number(normalized));
+      }).length < 2) {
       updated.layout = "auto";
       fixes.push(`Changed slide ${index + 1} to a text layout because its data cannot support a chart.`);
     }
