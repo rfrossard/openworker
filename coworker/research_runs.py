@@ -20,6 +20,18 @@ from typing import Any, Optional
 RESEARCH_DEPTHS = {"quick", "standard", "deep"}
 RESEARCH_METHODS = {"standard", "grounded_claims"}
 RESEARCH_DELIVERABLES = {"report", "presentation"}
+RESEARCH_MATERIAL_TYPES = {
+    "one-pager",
+    "consulting-strategy",
+    "student-researcher",
+    "first-time-learner",
+    "fifth-grader",
+    "ten-minute-presentation",
+    "research-to-product",
+    "decision-memo",
+    "interactive-workshop",
+    "investment-thesis",
+}
 RESEARCH_IMAGE_MODES = {"generate", "source", "none"}
 RESEARCH_IMAGE_QUALITIES = {"low", "medium", "high"}
 RESEARCH_STATUSES = {
@@ -168,6 +180,7 @@ class ResearchRun:
     lanes: list[dict[str, Any]] = field(default_factory=list)
     method: str = "standard"
     deliverable: str = "report"
+    material_type: str = "one-pager"
     audience: str = ""
     slide_count: int = 10
     visual_direction: str = ""
@@ -243,6 +256,8 @@ class ResearchRun:
             known["method"] = "standard"
         if known.get("deliverable") not in RESEARCH_DELIVERABLES:
             known["deliverable"] = "report"
+        if known.get("material_type") not in RESEARCH_MATERIAL_TYPES:
+            known["material_type"] = "one-pager"
         known["audience"] = str(known.get("audience") or "").strip()[:500]
         try:
             known["slide_count"] = max(
@@ -306,6 +321,7 @@ class ResearchRunStore:
         plan_steps: Optional[list[dict[str, Any]]] = None,
         method: str = "standard",
         deliverable: str = "report",
+        material_type: str = "one-pager",
         audience: str = "",
         slide_count: int = 10,
         visual_direction: str = "",
@@ -332,6 +348,9 @@ class ResearchRunStore:
         deliverable = str(deliverable).strip().lower()
         if deliverable not in RESEARCH_DELIVERABLES:
             raise ValueError("Research deliverable must be report or presentation.")
+        material_type = str(material_type).strip().lower()
+        if material_type not in RESEARCH_MATERIAL_TYPES:
+            raise ValueError("Invalid research material type.")
         audience = str(audience or "").strip()[:500]
         visual_direction = str(visual_direction or "").strip()[:1000]
         try:
@@ -354,6 +373,7 @@ class ResearchRunStore:
             lanes=_derive_lanes(clean_steps, SOURCE_LIMITS[depth]),
             method=method,
             deliverable=deliverable,
+            material_type=material_type,
             audience=audience,
             slide_count=slide_count,
             visual_direction=visual_direction,
@@ -384,6 +404,7 @@ class ResearchRunStore:
             "plan_steps",
             "method",
             "deliverable",
+            "material_type",
             "audience",
             "slide_count",
             "visual_direction",
@@ -451,6 +472,10 @@ class ResearchRunStore:
                         raise ValueError(
                             "Research deliverable must be report or presentation."
                         )
+                if key == "material_type":
+                    value = str(value).strip().lower()
+                    if value not in RESEARCH_MATERIAL_TYPES:
+                        raise ValueError("Invalid research material type.")
                 if key == "audience":
                     value = str(value or "").strip()[:500]
                 if key == "slide_count":

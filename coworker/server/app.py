@@ -570,6 +570,7 @@ def create_app(manager: SessionManager) -> FastAPI:
             plan_steps=list(body.get("plan_steps") or []),
             method=str(body.get("method", "standard")),
             deliverable=str(body.get("deliverable", "report")),
+            material_type=str(body.get("material_type", "one-pager")),
             audience=str(body.get("audience", "")),
             slide_count=body.get("slide_count", 10),
             visual_direction=str(body.get("visual_direction", "")),

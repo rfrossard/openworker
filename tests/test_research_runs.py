@@ -14,6 +14,7 @@ def test_research_run_persists_across_store_restart(tmp_path):
         depth="deep",
         plan=["Find primary evaluations", "Compare cost and quality"],
         deliverable="presentation",
+        material_type="research-to-product",
         audience="Executive leadership",
         slide_count=12,
         visual_direction="Editorial",
@@ -28,6 +29,7 @@ def test_research_run_persists_across_store_restart(tmp_path):
     assert restored[0].status == "planned"
     assert restored[0].source_limit == 20
     assert restored[0].deliverable == "presentation"
+    assert restored[0].material_type == "research-to-product"
     assert restored[0].audience == "Executive leadership"
     assert restored[0].slide_count == 12
     assert restored[0].visual_direction == "Editorial"
@@ -406,3 +408,23 @@ def test_old_and_corrupt_claim_state_is_safely_normalized(tmp_path):
     assert restored.method == "standard"
     assert restored.deliverable == "report"
     assert restored.claims == []
+
+
+def test_invalid_material_type_is_rejected_and_old_value_is_normalized(tmp_path):
+    store = ResearchRunStore(tmp_path / "research-runs.json")
+
+    with pytest.raises(ValueError, match="material type"):
+        store.create(
+            session_id="session-a",
+            question="Test",
+            depth="quick",
+            plan=["Research"],
+            material_type="unknown-format",
+        )
+
+    path = tmp_path / "legacy-runs.json"
+    path.write_text(
+        '''{"version": 1, "runs": [{"run_id": "legacy", "session_id": "session-a", "question": "Existing", "depth": "quick", "plan": ["Research"], "material_type": "future-format"}]}''',
+        encoding="utf-8",
+    )
+    assert ResearchRunStore(path).list("session-a")[0].material_type == "one-pager"

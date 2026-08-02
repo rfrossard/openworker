@@ -84,6 +84,41 @@ describe("Deep Research launcher", () => {
     expect(prompt).toContain("understandable within five seconds");
   });
 
+  it("builds a fact-separated Research-to-Product reasoning contract", () => {
+    const prompt = buildDeepResearchPrompt({
+      question: "How could agentic finance change customer relationships?",
+      depth: "deep",
+      plan: "Find signals\nTest assumptions",
+      deliverable: "presentation",
+      materialType: "research-to-product",
+    });
+
+    expect(prompt).toContain("Material type: Research-to-Product");
+    expect(prompt).toContain("Observations → Hypotheses → Possible Experiments → Tests → Scale");
+    expect(prompt).toContain('"schema_version": "openworker.research-to-product.v1"');
+    expect(prompt).toContain("at least 5 evidence-backed observations");
+    expect(prompt).toContain("exactly 3 macro hypotheses");
+    expect(prompt).toContain("at least 5 experiments");
+    expect(prompt).toContain("7 days or less");
+    expect(prompt).toContain("at least 5 tests");
+    expect(prompt).toContain("independent validation, pilot, repeatable growth");
+    expect(prompt).toContain("fact, inference, and proposal visibly separate");
+  });
+
+  it("applies the consulting reasoning standard without requiring a consulting template", () => {
+    const prompt = buildDeepResearchPrompt({
+      question: "Which expansion option should we choose?",
+      depth: "standard",
+      plan: "Compare options",
+      deliverable: "presentation",
+      materialType: "consulting-strategy",
+      templateId: "atlas",
+    });
+
+    expect(prompt).toContain("Consulting / Strategy reasoning framework");
+    expect(prompt).toContain("Consulting standard: use a hypothesis-led answer first");
+  });
+
   it("persists the run before letting the user review it", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       json: async () => ({

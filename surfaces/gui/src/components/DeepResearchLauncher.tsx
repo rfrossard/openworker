@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { createResearchRun, updateResearchRun, type ArtifactInfo, type ResearchPlanStep, type ResearchRun } from "../api";
+import { createResearchRun, updateResearchRun, type ArtifactInfo, type ResearchMaterialType, type ResearchPlanStep, type ResearchRun } from "../api";
 import { PRESENTATION_TEMPLATES, templateById } from "../presentationTemplates";
 import { Icon } from "./Icon";
 
@@ -12,6 +12,7 @@ interface ResearchBrief {
   plan: string | string[];
   method?: "standard" | "grounded_claims";
   deliverable?: "report" | "presentation";
+  materialType?: ResearchMaterialType;
   audience?: string;
   slideCount?: number;
   visualDirection?: string;
@@ -42,6 +43,22 @@ const DEPTH_SETTINGS: Record<ResearchDepth, { sources: string; label: string; so
   deep: { sources: "at least 20 credible sources", label: "Deep", sourceLimit: 20 },
 };
 
+const MATERIAL_TYPES: Array<{ id: ResearchMaterialType; label: string; description: string }> = [
+  { id: "one-pager", label: "One-pager", description: "Answer-first summary for a fast decision or briefing." },
+  { id: "consulting-strategy", label: "Consulting / Strategy", description: "Hypothesis-led diagnosis, options, recommendation, and action plan." },
+  { id: "student-researcher", label: "Student / Researcher", description: "Question, method, evidence, limitations, and references." },
+  { id: "first-time-learner", label: "First-time Learner", description: "Clear concepts, examples, and a gentle learning path." },
+  { id: "fifth-grader", label: "Are You Smarter Than a 5th Grader?", description: "Plain-language explanations, analogies, and knowledge checks." },
+  { id: "ten-minute-presentation", label: "10-Minute Presentation", description: "A focused 7–10 slide narrative for a short presentation." },
+  { id: "research-to-product", label: "Research-to-Product", description: "Evidence into hypotheses, one-week experiments, tests, and a scale path." },
+  { id: "decision-memo", label: "Decision Memo", description: "A concise decision, trade-offs, owner, and deadline." },
+  { id: "interactive-workshop", label: "Interactive Workshop", description: "A facilitated session with exercises and useful outputs." },
+  { id: "investment-thesis", label: "Investment Thesis", description: "Catalysts, scenarios, diligence questions, and risks." },
+];
+
+const materialTypeById = (id: ResearchMaterialType) =>
+  MATERIAL_TYPES.find((material) => material.id === id) ?? MATERIAL_TYPES[0];
+
 function lanePreview(steps: ResearchPlanStep[], sourceLimit: number) {
   const enabled = steps.filter((step) => step.enabled && step.text.trim());
   const laneCount = Math.min(4, enabled.length);
@@ -67,9 +84,39 @@ export function buildDeepResearchPrompt(brief: ResearchBrief, runId = ""): strin
     .map((line, index) => `${index + 1}. ${line.replace(/^\d+[.)]\s*/, "")}`)
     .join("\n");
   const depth = DEPTH_SETTINGS[brief.depth];
+  const material = materialTypeById(brief.materialType || "one-pager");
   const minimumImages = Math.max(2, Math.ceil(((brief.slideCount || 10) - 1) * 0.4));
   const consultingTemplateIds = new Set(["mckinsey", "accenture", "bcp", "bain"]);
-  const isConsultingDeck = brief.deliverable === "presentation" && consultingTemplateIds.has(brief.templateId || "");
+  const isConsultingDeck = brief.deliverable === "presentation" && (consultingTemplateIds.has(brief.templateId || "") || material.id === "consulting-strategy");
+  const materialReasoning = material.id === "research-to-product" ? `
+Research-to-Product reasoning framework:
+- Purpose: anticipate how an emerging technology can change behaviour, culture, work, business models, competition, economics, and regulation. Explain the technology lineage: prior enabling technologies → current capability → emerging behaviours → downstream accelerants. Treat this as an evidence-guided exploration, not a prediction presented as fact.
+- Produce reports/<descriptive-name>.research-to-product.json in addition to the normal report, claim ledger, and (if requested) storyboard. It must be valid JSON beginning with {"schema_version": "openworker.research-to-product.v1"} and include the keys central_technology, time_horizon, technology_lineage, observations, macro_hypotheses, experiments, tests, and scale_path.
+- Observations: provide at least 5 evidence-backed observations. Each must contain observation_id, statement, signal_type, impacted_domains, claim_ids, sources, confidence, and implication. An observation is a fact or measured signal: never disguise an inference or proposal as an observation.
+- Macro hypotheses: propose exactly 3 macro hypotheses. Each needs hypothesis_id, statement, rationale, impacted_domains, supporting_claim_ids, disconfirming_evidence, uncertainty, and at least 2 explicit sub_hypotheses. Hypotheses are reasoned inferences, not facts.
+- Experiments: propose at least 5 experiments, each feasible in 7 days or less. Each needs experiment_id, linked_hypothesis_ids, objective, minimum_build, target_users, duration_days, success_metric, success_threshold, guardrails, evidence_basis, and claim_ids. When relevant, use actual cited research from universities or institutes such as Stanford HAI or MIT CSAIL to inform the experiment; do not name institutions without a directly relevant source.
+- Tests: propose at least 5 tests spanning red-team, business, technical, trust, and regulatory concerns where relevant. Each needs test_id, test_type, target, failure_mode, method, pass_threshold, fail_threshold, duration_days, owner_role, and linked_hypothesis_ids.
+- Scale path: show how to validate leanly outside a large organisation before enterprise adoption. Include stages for independent validation, pilot, repeatable growth, and regulated/enterprise implementation when appropriate; each must include trigger, distribution_or_growth_loop, evidence_required, risks, and next_decision.
+- Keep fact, inference, and proposal visibly separate throughout the report and visual ledger. Include a pre-mortem: what could make the thesis fail, what early signal would reveal it, and how to reduce the risk.
+- Make the resulting narrative follow Observations → Hypotheses → Possible Experiments → Tests → Scale. For presentations, use a causal map for lineage, an evidence table or signal map for observations, a hypothesis tree, a one-week experiment backlog, a risk/test matrix, and a staged roadmap only when supported by the content.` : material.id === "consulting-strategy" ? `
+Consulting / Strategy reasoning framework:
+- Lead with the answer, then use an issue tree, evidence-backed diagnosis, options, recommendation, implementation plan, owners, timing, dependencies, risks, mitigations, decision gates, and leading KPIs. Make fact, inference, and recommendation visibly distinct.` : material.id === "student-researcher" ? `
+Student / Researcher reasoning framework:
+- State the research question, scope, method, evidence, limitations, competing explanations, and references. Teach rigorous reasoning without overstating certainty.` : material.id === "first-time-learner" ? `
+First-time Learner reasoning framework:
+- Build understanding progressively: define essential terms, use one concrete example per concept, surface common misconceptions, and conclude with a short practical recap.` : material.id === "fifth-grader" ? `
+Fifth-grader reasoning framework:
+- Use plain language, familiar analogies, short sentences, and a few knowledge-check questions with answers. Preserve accuracy; simplify wording, never the evidence.` : material.id === "ten-minute-presentation" ? `
+10-Minute Presentation reasoning framework:
+- Create a 7–10 beat narrative: hook, context, evidence, implication, recommendation, and memorable close. One central idea per minute; remove details that cannot be explained clearly in the time.` : material.id === "decision-memo" ? `
+Decision Memo reasoning framework:
+- State the decision required, context, options, trade-offs, recommendation, owner, deadline, and what new evidence would reverse the recommendation.` : material.id === "interactive-workshop" ? `
+Interactive Workshop reasoning framework:
+- Design a facilitated path with a clear outcome, timed exercises, participant prompts, synthesis method, and tangible outputs. Keep research claims separate from workshop questions or activities.` : material.id === "investment-thesis" ? `
+Investment Thesis reasoning framework:
+- Separate factual market evidence from the thesis. Cover catalyst, market structure, scenarios, risks, disconfirming signals, diligence questions, and decision criteria. Do not provide personalised financial advice.` : `
+One-pager reasoning framework:
+- Make an answer-first executive brief: one core conclusion, 3–5 decision-relevant facts, implications, uncertainty, and recommended next step. Prefer clarity over coverage.`;
   const visualLedgerSchema = `{
   "schema_version": "openworker.deep-research.v2",
   "title": "Research title",
@@ -257,6 +304,10 @@ ${brief.question.trim()}
 
 Research Run: ${runId || "not assigned"}
 
+Material type: ${material.label}
+Material intent: ${material.description}
+${materialReasoning}
+
 Editable research plan:
 ${plan}
 
@@ -295,6 +346,7 @@ export function DeepResearchLauncher({
   const [depth, setDepth] = useState<ResearchDepth>("standard");
   const [method, setMethod] = useState<"standard" | "grounded_claims">("grounded_claims");
   const [deliverable, setDeliverable] = useState<"report" | "presentation">("report");
+  const [materialType, setMaterialType] = useState<ResearchMaterialType>("one-pager");
   const [audience, setAudience] = useState("");
   const [slideCount, setSlideCount] = useState(10);
   const [visualDirection, setVisualDirection] = useState("");
@@ -312,6 +364,7 @@ export function DeepResearchLauncher({
     setDepth(editingRun.depth);
     setMethod(editingRun.method || "standard");
     setDeliverable(editingRun.deliverable || "report");
+    setMaterialType(editingRun.material_type || "one-pager");
     setAudience(editingRun.audience || "");
     setSlideCount(editingRun.slide_count || 10);
     setVisualDirection(editingRun.visual_direction || "");
@@ -367,6 +420,7 @@ export function DeepResearchLauncher({
       plan: executablePlan,
       method,
       deliverable,
+      materialType,
       audience,
       slideCount,
       visualDirection,
@@ -383,6 +437,7 @@ export function DeepResearchLauncher({
         plan_steps: planSteps.map((step) => ({ ...step, text: step.text.trim() })).filter((step) => step.text),
         method,
         deliverable,
+        material_type: materialType,
         audience: audience.trim(),
         slide_count: slideCount,
         visual_direction: visualDirection.trim(),
@@ -419,6 +474,7 @@ export function DeepResearchLauncher({
             setDepth("standard");
             setMethod("grounded_claims");
             setDeliverable("report");
+            setMaterialType("one-pager");
             setAudience("");
             setSlideCount(10);
             setVisualDirection("");
@@ -507,6 +563,27 @@ export function DeepResearchLauncher({
                   </button>
                 </div>
               </fieldset>
+
+              <label className="research-field research-visual-direction">
+                <span>Material type</span>
+                <select
+                  aria-label="Material type"
+                  value={materialType}
+                  onChange={(event) => setMaterialType(event.target.value as ResearchMaterialType)}
+                >
+                  <optgroup label="Briefing and strategy">
+                    {MATERIAL_TYPES.slice(0, 2).map((material) => <option key={material.id} value={material.id}>{material.label}</option>)}
+                    {MATERIAL_TYPES.slice(7).map((material) => <option key={material.id} value={material.id}>{material.label}</option>)}
+                  </optgroup>
+                  <optgroup label="Learning">
+                    {MATERIAL_TYPES.slice(2, 5).map((material) => <option key={material.id} value={material.id}>{material.label}</option>)}
+                  </optgroup>
+                  <optgroup label="Presentations and innovation">
+                    {MATERIAL_TYPES.slice(5, 7).map((material) => <option key={material.id} value={material.id}>{material.label}</option>)}
+                  </optgroup>
+                </select>
+                <small>{materialTypeById(materialType).description}</small>
+              </label>
 
               {deliverable === "presentation" && (
                 <div className="research-presentation-fields">

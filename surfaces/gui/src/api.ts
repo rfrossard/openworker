@@ -254,6 +254,7 @@ export interface ResearchRun {
   lanes?: ResearchLane[];
   method?: "standard" | "grounded_claims";
   deliverable?: "report" | "presentation";
+  material_type?: ResearchMaterialType;
   audience?: string;
   slide_count?: number;
   visual_direction?: string;
@@ -288,6 +289,18 @@ export interface ResearchPlanStep {
   text: string;
   enabled: boolean;
 }
+
+export type ResearchMaterialType =
+  | "one-pager"
+  | "consulting-strategy"
+  | "student-researcher"
+  | "first-time-learner"
+  | "fifth-grader"
+  | "ten-minute-presentation"
+  | "research-to-product"
+  | "decision-memo"
+  | "interactive-workshop"
+  | "investment-thesis";
 
 export interface ResearchLane {
   id: string;
@@ -334,6 +347,7 @@ export async function createResearchRun(
     plan_steps?: ResearchPlanStep[];
     method?: "standard" | "grounded_claims";
     deliverable?: "report" | "presentation";
+    material_type?: ResearchMaterialType;
     audience?: string;
     slide_count?: number;
     visual_direction?: string;
@@ -359,6 +373,7 @@ export async function updateResearchRun(
     plan_steps?: ResearchPlanStep[];
     method?: "standard" | "grounded_claims";
     deliverable?: "report" | "presentation";
+    material_type?: ResearchMaterialType;
     audience?: string;
     slide_count?: number;
     visual_direction?: string;
