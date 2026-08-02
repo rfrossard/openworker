@@ -245,6 +245,29 @@ describe("Deep Research launcher", () => {
     fetchMock.mockRestore();
   });
 
+  it("offers an editable Research-to-Product workflow preset and persists its material type", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      json: async () => ({ ok: true, run: { run_id: "research-r2p", session_id: "session-a" } }),
+    } as Response);
+    const onCreate = vi.fn();
+    render(<DeepResearchLauncher sessionId="session-a" onCreate={onCreate} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Deep Research" }).slice(-1)[0]);
+    fireEvent.change(screen.getByLabelText("Research question"), { target: { value: "Agentic finance signals" } });
+    fireEvent.change(screen.getByLabelText("Material type"), { target: { value: "research-to-product" } });
+    expect(screen.getByRole("region", { name: "Research-to-Product workflow" }).textContent).toContain("Observations");
+    fireEvent.click(screen.getByRole("button", { name: "Use recommended plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue in composer" }));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    const request = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(request.material_type).toBe("research-to-product");
+    expect(request.plan).toHaveLength(5);
+    expect(request.plan[0]).toContain("observations");
+    expect(onCreate.mock.calls[0][0]).toContain("Research-to-Product reasoning framework");
+    fetchMock.mockRestore();
+  });
+
   it("previews bounded Wide Research lanes without implying parallel execution", () => {
     render(<DeepResearchLauncher sessionId="session-a" onCreate={vi.fn()} />);
     const launchers = screen.getAllByRole("button", { name: "Deep Research" });

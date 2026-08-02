@@ -25,7 +25,7 @@ import {
 } from "../api";
 import type { ApprovalDecision, Item, TodoItem } from "../types";
 import { AccessSection } from "./AccessSection";
-import { DeepResearchLauncher } from "./DeepResearchLauncher";
+import { DeepResearchLauncher, MATERIAL_TYPES } from "./DeepResearchLauncher";
 import { Icon } from "./Icon";
 import { Markdown, OPEN_ARTIFACT_EVENT } from "./Markdown";
 import { ResearchEvidenceBoard } from "./ResearchEvidenceBoard";
@@ -286,6 +286,9 @@ export function RightRail({
                     </span>
                     <span>
                       {run.deliverable === "presentation" ? "presentation" : "report"} ·{" "}
+                      <b className="research-material-type">
+                        {MATERIAL_TYPES.find((material) => material.id === run.material_type)?.label || "One-pager"}
+                      </b>{" "}·{" "}
                       {run.method === "grounded_claims" ? "grounded claims" : "standard"} ·{" "}
                       {run.plan.length} plan steps · {run.source_limit} sources planned
                     </span>

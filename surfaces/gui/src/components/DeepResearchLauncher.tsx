@@ -43,7 +43,7 @@ const DEPTH_SETTINGS: Record<ResearchDepth, { sources: string; label: string; so
   deep: { sources: "at least 20 credible sources", label: "Deep", sourceLimit: 20 },
 };
 
-const MATERIAL_TYPES: Array<{ id: ResearchMaterialType; label: string; description: string }> = [
+export const MATERIAL_TYPES: Array<{ id: ResearchMaterialType; label: string; description: string }> = [
   { id: "one-pager", label: "One-pager", description: "Answer-first summary for a fast decision or briefing." },
   { id: "consulting-strategy", label: "Consulting / Strategy", description: "Hypothesis-led diagnosis, options, recommendation, and action plan." },
   { id: "student-researcher", label: "Student / Researcher", description: "Question, method, evidence, limitations, and references." },
@@ -58,6 +58,14 @@ const MATERIAL_TYPES: Array<{ id: ResearchMaterialType; label: string; descripti
 
 const materialTypeById = (id: ResearchMaterialType) =>
   MATERIAL_TYPES.find((material) => material.id === id) ?? MATERIAL_TYPES[0];
+
+const RESEARCH_TO_PRODUCT_PLAN = [
+  "Collect 5+ evidence-backed observations and map the technology lineage",
+  "Form 3 macro hypotheses with explicit sub-hypotheses and disconfirming signals",
+  "Design 5 one-week experiments informed by relevant academic or institutional research",
+  "Define 5 red-team, business, trust, technical, or regulatory tests",
+  "Map a lean validation-to-scale path with decision gates and growth loops",
+];
 
 function lanePreview(steps: ResearchPlanStep[], sourceLimit: number) {
   const enabled = steps.filter((step) => step.enabled && step.text.trim());
@@ -584,6 +592,22 @@ export function DeepResearchLauncher({
                 </select>
                 <small>{materialTypeById(materialType).description}</small>
               </label>
+
+              {materialType === "research-to-product" && (
+                <section className="research-material-guide" aria-label="Research-to-Product workflow">
+                  <div>
+                    <strong>Research-to-Product workflow</strong>
+                    <span>Observations → Hypotheses → Experiments → Tests → Scale</span>
+                  </div>
+                  <p>Use the recommended plan as a starting point. You can still edit, reorder, or uncheck every step below.</p>
+                  <button
+                    type="button"
+                    onClick={() => setPlanSteps(makePlanSteps(RESEARCH_TO_PRODUCT_PLAN))}
+                  >
+                    Use recommended plan
+                  </button>
+                </section>
+              )}
 
               {deliverable === "presentation" && (
                 <div className="research-presentation-fields">

@@ -117,6 +117,10 @@ def _derive_lanes(
         enabled[index : index + chunk_size]
         for index in range(0, len(enabled), chunk_size)
     ]
+    # Chunking can yield fewer groups than the initial lane target (for example,
+    # five steps target four lanes but form 2/2/1). Allocate the whole source
+    # budget across the actual lanes so the UI and persisted plan never lose it.
+    lane_count = len(groups)
     base, remainder = divmod(max(0, source_limit), lane_count)
     lanes: list[dict[str, Any]] = []
     for index, group in enumerate(groups):

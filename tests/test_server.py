@@ -150,6 +150,67 @@ def test_research_run_rest_accepts_structured_plan_steps(tmp_path):
     ]
 
 
+def test_research_to_product_rest_flow_persists_edit_and_restart(tmp_path):
+    """End-to-end no-model flow: create → retrieve → edit → restart.
+
+    This exercises the same REST contract used by the launcher without invoking a
+    billable provider or creating user-facing research artifacts.
+    """
+    state_dir = tmp_path / "state"
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=state_dir,
+        provider=ScriptedProvider([]),
+    )
+    client = TestClient(create_app(manager))
+    plan_steps = [
+        {"id": "observe", "text": "Collect evidence-backed observations", "enabled": True},
+        {"id": "hypothesize", "text": "Form macro hypotheses", "enabled": True},
+        {"id": "experiment", "text": "Design one-week experiments", "enabled": True},
+        {"id": "test", "text": "Define red-team and business tests", "enabled": True},
+        {"id": "scale", "text": "Map scale decisions", "enabled": True},
+    ]
+    created = client.post(
+        "/v1/sessions/research-to-product/research-runs",
+        json={
+            "question": "How could agentic finance change trust?",
+            "depth": "deep",
+            "plan": [item["text"] for item in plan_steps],
+            "plan_steps": plan_steps,
+            "method": "grounded_claims",
+            "deliverable": "presentation",
+            "material_type": "research-to-product",
+            "audience": "Product leadership",
+            "slide_count": 12,
+        },
+    ).json()
+    assert created["ok"] is True
+    run = created["run"]
+    assert run["material_type"] == "research-to-product"
+    assert run["plan"] == [item["text"] for item in plan_steps]
+    assert run["lanes"] and sum(lane["source_budget"] for lane in run["lanes"]) == 20
+
+    updated = client.patch(
+        f"/v1/sessions/research-to-product/research-runs/{run['run_id']}",
+        json={"material_type": "consulting-strategy", "slide_count": 15},
+    ).json()
+    assert updated["ok"] is True
+    assert updated["run"]["material_type"] == "consulting-strategy"
+    assert updated["run"]["slide_count"] == 15
+
+    restarted = SessionManager(
+        workspace=tmp_path,
+        data_dir=state_dir,
+        provider=ScriptedProvider([]),
+    )
+    restored = TestClient(create_app(restarted)).get(
+        "/v1/sessions/research-to-product/research-runs"
+    ).json()["runs"]
+    assert len(restored) == 1
+    assert restored[0]["material_type"] == "consulting-strategy"
+    assert restored[0]["plan_steps"] == plan_steps
+
+
 def test_research_run_computes_new_artifacts_and_browser_activity(
     tmp_path, monkeypatch
 ):
